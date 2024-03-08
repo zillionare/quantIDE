@@ -12,7 +12,9 @@ from importlib.metadata import version
 from os import path
 
 import cfg4py
+from pytest import fixture
 
+from pyqmt.dal import init_dal
 from pyqmt.dal.haystore import Haystore
 
 TABLE_PARAMETER = "{TABLE_PARAMETER}"
@@ -82,4 +84,10 @@ def init_haystore():
                 continue
             haystore.client.command(sql)
 
-    cfg.haystore = haystore
+    haystore.client.close()
+
+@fixture
+def dal():
+    cfg = cfg4py.init(get_config_dir())
+    init_dal()
+

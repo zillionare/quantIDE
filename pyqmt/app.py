@@ -8,8 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from blacksheep import Application, get
 
 from pyqmt.config import get_config_dir
-from pyqmt.dal.cache import RedisCache
-from pyqmt.dal.haystore import Haystore
+from pyqmt.dal import init_dal
 from pyqmt.service import sync
 
 logger = logging.getLogger(__name__)
@@ -25,20 +24,10 @@ async def status():
 
 @app.on_start
 async def before_start(app: Application) -> None:
-    cfg = cfg4py.init(get_config_dir())
-
     # init chores database connection
-    cgx.chores_db = sqlite3.connect(cfg.chores_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)  # type: ignore
-    cfg.chores_db.row_factory = sqlite3.Row
+    init_dal()
 
-    # init haystore client
-    cfg.hay_store = Haystore()  # type: ignore
-    cfg.hay_store.connect()
     sched.add_job(sync.create_sync_jobs, args=(sched,))
-
-    # redis
-    cfg.cache = RedisCache()  # type: ignore
-
     sched.start()
 
 

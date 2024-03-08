@@ -45,5 +45,16 @@ class Haystore(object):
         cols = ["dt", "symbol", "alias", "ipo", "exit", "type"]
         self.client.insert(HaystoreTbl.securities, data, column_names=cols)
 
+    def get_bars(self, code: str, n: int, frame_type: FrameType, end: datetime.datetime):
+        """从clickhouse中获取持久化存储的行情数据"""
+        sql =  "SELECT * from {table: Identifier} where frame < {frame: DateTime} and symbol = {symbol:String}"
+        params = {
+            'table': f"bars_{frame_type.value}",
+            'frame': end,
+            'symbol': code
+        }
+        return self.client.query_np(sql, parameters=params)
+
+
     def save_factors(self, data):
         pass

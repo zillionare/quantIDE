@@ -9,14 +9,14 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.job import Job
 from arrow import Arrow
 from coretypes import FrameType, SecurityType
-from pyqmt.core.constants import EPOCH
 
+from pyqmt.core.constants import EPOCH
 from pyqmt.core.timeframe import tf
 from pyqmt.core.xtwrapper import (
     cache_bars,
     get_ashare_list,
     get_calendar,
-    get_factor,
+    get_factor_ratio,
     get_security_info,
 )
 from pyqmt.dal.chores import (
@@ -31,6 +31,7 @@ import arrow
 from xtquant.xtdata import (
     download_history_data2,
     download_sector_data,
+    get_market_data,
     get_stock_list_in_sector,
 )
 
@@ -212,8 +213,11 @@ def sync_factor():
 
     data = []
     for sec in secs:
-        factor = get_factor(sec, EPOCH, last_trade_day)
+        factor = get_factor_ratio(sec, EPOCH, last_trade_day)
         factor["sec"] = [sec] * len(factor)
         data.append(factor)
 
     cfg.hay_store.save_factors(data)
+
+def sync_minute_intraday():
+    pass

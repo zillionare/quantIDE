@@ -65,6 +65,7 @@ zillionare-core-types = "^0.6.3"
 sqlite-web = "^0.6.1"
 redis = "^5.0.1"
 hiredis = "^2.3.2"
+duckdb = "^0.10.0"
 [tool.poetry.extras]
 test = [
     "pytest",
