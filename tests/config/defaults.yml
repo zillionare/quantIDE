@@ -18,7 +18,7 @@ logging:
     handlers:
       - console
     level: INFO
-chores_db_path: 'd:\\sqlite.test.db'
+chores_db_path: 'd:\\test.duckdb'
 clickhouse:
   host: 192.168.100.10
   user: default

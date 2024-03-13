@@ -4,7 +4,6 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
-
 def handle_xt_error(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
@@ -47,3 +46,6 @@ def str2time(dt: str) -> datetime.datetime:
 
 def time2str(dt: datetime.datetime) -> str:
     return f"{dt.year:0>4}{dt.month:0>2}{dt.day:0>2}{dt.hour:0>2}{dt.minute:0>2}{dt.second:0>2}"
+
+def time2minute(dt: datetime.datetime) ->str:
+    return f"{dt.year:0>4}{dt.month:0>2}{dt.day:0>2}{dt.hour:0>2}{dt.minute:0>2}00"

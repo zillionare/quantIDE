@@ -53,11 +53,11 @@ def drop_chores_tabels(con, tables):
     cur.close()
 
 
-def init_chores_db(conn):
+def init_chores(conn):
     tables = get_chores_tables(conn)
     drop_chores_tabels(conn, tables)
 
-    scripts = os.path.join(os.path.dirname(__file__), "../../scripts/sqlite.txt")
+    scripts = os.path.join(os.path.dirname(__file__), "../../scripts/duckdb.txt")
     with open(scripts, "r", encoding="utf-8") as f:
         sql = f.read()
 
@@ -67,12 +67,9 @@ def init_chores_db(conn):
 
 
 def init_haystore():
-    cfg = cfg4py.init(get_config_dir())
-    haystore = Haystore()
-    haystore.connect()
-
     cmd = "truncate database if exists tests"
-    haystore.client.command(cmd)
+    cfg = cfg4py.get_instance()
+    cfg.haystore.client.command(cmd)
 
     # create tables
     scripts = os.path.join(os.path.dirname(__file__), "../../scripts/clickhouse.txt")
@@ -82,12 +79,9 @@ def init_haystore():
         for sql in content.split("\n\n"):
             if len(sql) < 5:
                 continue
-            haystore.client.command(sql)
-
-    haystore.client.close()
+            cfg.haystore.client.command(sql)
 
 @fixture
 def dal():
-    cfg = cfg4py.init(get_config_dir())
     init_dal()
 

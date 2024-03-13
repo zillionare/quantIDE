@@ -27,8 +27,7 @@ CREATE TABLE if not exists bars_1m
     `low` Float32 DEFAULT -1 CODEC(Delta, ZSTD),
     `close` Float32 DEFAULT -1 CODEC(Delta, ZSTD),
     `volume` Float64 DEFAULT -1 ,
-    `money` Float64 DEFAULT -1 ,
-    `factor` Float64 DEFAULT -1 CODEC(Delta, ZSTD)
+    `money` Float64 DEFAULT -1
 )
 ENGINE = MergeTree
 ORDER BY (frame, symbol)
@@ -40,7 +39,6 @@ CREATE TABLE if not exists securities
     `symbol` LowCardinality(String),
     `alias` LowCardinality(String),
     `ipo` Date CODEC(Delta, ZSTD),
-    `exit` Date CODEC(Delta, ZSTD),
     `type` LowCardinality(String)
 )
 ENGINE = MergeTree

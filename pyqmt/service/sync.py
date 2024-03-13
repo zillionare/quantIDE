@@ -1,23 +1,25 @@
 import datetime
 import logging
 import time
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import cfg4py
+import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.job import Job
-from arrow import Arrow
 from coretypes import FrameType, SecurityType
 
 from pyqmt.core.constants import EPOCH
 from pyqmt.core.timeframe import tf
 from pyqmt.core.xtwrapper import (
     cache_bars,
-    get_ashare_list,
+    get_bars,
     get_calendar,
     get_factor_ratio,
     get_security_info,
+    get_security_list,
 )
 from pyqmt.dal.chores import (
     ashares_sync_status,
@@ -171,12 +173,15 @@ def create_sync_jobs():
     # TODO: 再启动定时任务，每天凌晨进行同步
 
     # 任务2： 每天早上9点，清空get_ashare_list的缓存
-    cfg.sched.add_job(get_ashare_list.cache_clear, "cron", hour="9")
+    cfg.sched.add_job(get_security_list.cache_clear, "cron", hour="9")
 
 
-def sync_day_bars(dt: datetime.date):
-    """保存`dt`日的行情数据"""
-    pass
+def sync_bars(tm: datetime.datetime, frame_type: FrameType):
+    """保存`tm`时的行情数据"""
+    symbols = get_security_list()
+    cache_bars(symbols, frame_type, tm)
+    bars = get_bars(symbols, frame_type, tm, None)
+    cfg.haystore.save_bars(bars)
 
 
 def sync_sector_list(force=False):
@@ -186,21 +191,21 @@ def sync_sector_list(force=False):
         force: 如果dt在事务数据库中存在，则只有force为true时，才会重新转存。
     """
 
-
-def sync_ashare_list(force=False):
+def sync_security_list(force=False):
     last_trading_day: datetime.date = tf.floor(arrow.now().date(), FrameType.DAY)
     if ashares_sync_status(last_trading_day) and not force:
         return
 
+    # todo: if force, then make sure exists records be purged beforehand
     data = []
-    secs = get_ashare_list()
+    secs = get_security_list()
     for sec in secs:
         items = get_security_info(sec)
-        data.append((last_trading_day, sec, *items, SecurityType.STOCK.value))
+        data.append((last_trading_day, sec, *items))
 
-    cfg.hay_store.save_ashare_list(data)
-    cfg.chores_db.save_ashares_sync_status(last_trading_day)
-
+    df = pd.DataFrame(data, columns=["dt","symbol","alias", "ipo", "type"])
+    cfg.haystore.save_ashare_list(df)
+    # cfg.chores_db.save_ashares_sync_status(last_trading_day)
 
 def sync_calendar():
     """交易日历"""
@@ -208,16 +213,69 @@ def sync_calendar():
     tf.save_calendar(calendar)
 
 def sync_factor():
-    secs = get_ashare_list()
+    secs = get_security_list()
     last_trade_day = tf.floor(arrow.now().date(), FrameType.DAY)
 
     data = []
     for sec in secs:
-        factor = get_factor_ratio(sec, EPOCH, last_trade_day)
+        factor = get_factor_ratio(sec, arrow.get(EPOCH).date(), last_trade_day)
         factor["sec"] = [sec] * len(factor)
         data.append(factor)
 
-    cfg.hay_store.save_factors(data)
+    cfg.haystore.save_factors(data)
 
-def sync_minute_intraday():
-    pass
+def sync_minute_bars():
+    secs = get_security_list()
+    # cache_bars(secs, FrameType.MIN1, )
+
+def start_intraday_sync(scheduler):
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=9,
+        minute="31-59",
+        second=1,
+        name=f"{FrameType.MIN1.value}:9:31-59",
+    )
+
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=10,
+        minute="*",
+        second=1,
+        name=f"{FrameType.MIN1.value}:10:*",
+    )
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=11,
+        minute="0-30",  # 0-30，执行31次
+        second=1,
+        name=f"{FrameType.MIN1.value}:11:0-30",
+    )
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=13,
+        minute="1-59",
+        second=1,
+        name=f"{FrameType.MIN1.value}:13:1-59",
+    )
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=14,
+        minute="*",
+        second=1,
+        name=f"{FrameType.MIN1.value}:14:*",
+    )
+    scheduler.add_job(
+        sync_minute_bars,
+        "cron",
+        hour=15,
+        minute=0,  # 15:00, 执行1次
+        second=1,
+        name=f"{FrameType.MIN1.value}:15:00",
+    )
+

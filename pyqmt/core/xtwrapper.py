@@ -1,40 +1,89 @@
 import datetime
+import logging
 from functools import cache
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import arrow
+import cfg4py
 import numpy as np
 import pandas as pd
 from arrow import Arrow
-from coretypes import Frame, FrameType
+from coretypes import Frame, FrameType, SecurityType
 from numpy.typing import NDArray
 from xtquant import xtdata as xt
 
-from pyqmt.core.constants import DATE_FORMAT, EPOCH, TIME_FORMAT, min_level_frames
+from pyqmt.core import date2str, time2minute
+from pyqmt.core.constants import EPOCH, key_price, min_level_frames
 from pyqmt.core.errors import XtQuantError
 from pyqmt.core.timeframe import tf
 
+logger = logging.getLogger(__name__)
+
+cfg = cfg4py.get_instance()
 
 def _format_date(dt: datetime.date):
     """format date to str to facilitate QMT"""
     return dt.strftime("%Y%m%d")
 
+def on_subscribe_callback(data):
+    """从订阅数据中提取lastPrice，存入缓存中
+
+    Args:
+        data: 具有如下结果的json:
+
+    ```json
+    {
+        '000001.SZ': 
+        {
+            'time': 1710127194000, 
+            'lastPrice': 10.42, 
+            'open': 10.38, 
+            'high': 10.47, 
+            'low': 10.34, 
+            'lastClose': 10.38, 
+            'amount': 710422600.0, 
+            'volume': 683450, 
+            'pvolume': 68345011, 
+            'stockStatus': 0, 
+            'openInt': 13, 
+            'transactionNum': 0, 
+            'lastSettlementPrice': 0.0, 
+            'settlementPrice': 0.0, 
+            'pe': 0.0, 
+            'askPrice': [10.42, 10.43, 10.44, 0.0, 0.0], 
+            'bidPrice': [10.41, 10.4, 10.39, 0.0, 0.0], 
+            'askVol': [9349, 7557, 6217, 0, 0], 
+            'bidVol': [3119, 6685, 4865, 0, 0], 
+            'volRatio': 0.0, 
+            'speed1Min': 0.0, 
+            'speed5Min': 0.0
+        }
+    }
+    ```
+    """
+    last_prices = {code: item["lastPrice"] for code, item in data.items()}
+    cfg.cache.security.hset(key_price, mapping=last_prices)
+
+
+def subcribe_live():
+    xt.subscribe_whole_quote(["SH", "SZ"])
+
 def cache_bars(
     symbols: Union[str, List[str]],
     frame_type: FrameType,
-    start_time: Arrow,
-    end_time: Arrow,
+    start_time: Frame,
+    end_time: Frame | None=None,
 ) -> bool:
     """让xtdata缓存行情数据"""
     if isinstance(symbols, str):
         symbols = [symbols]
 
     if frame_type in min_level_frames:
-        start = start_time.format(TIME_FORMAT)
-        end = end_time.format(TIME_FORMAT)
+        start = time2minute(start_time) # type: ignore
+        end = time2minute(end_time) if end_time else '' # type: ignore
     else:
-        start = start_time.format(DATE_FORMAT)
-        end = end_time.format(DATE_FORMAT)
+        start = date2str(start_time)
+        end = date2str(end_time) if end_time else ''
 
     # todo: 增加重启重连功能、超时功能
     try:
@@ -43,24 +92,38 @@ def cache_bars(
         raise XtQuantError.parse_msg(str(e))
 
 
-def get_bars(symbols: List[str], frame_type: FrameType, start: Arrow, end: Arrow):
+def get_bars(symbols: List[str], frame_type: FrameType, start: Frame, end: Frame | None):
     if frame_type in min_level_frames:
-        FMT = TIME_FORMAT
+        start_ = time2minute(start)  # type: ignore
+        end_ = time2minute(end) if end else ''  # type: ignore
     else:
-        FMT = DATE_FORMAT
+        start_ = date2str(start)
+        end_ = date2str(end) if end else ''
 
-    return xt.get_market_data(
+    field_list = ["time", "open", "high", "low", "close", "volume", "amount", "suspendFlag"]
+
+    data = xt.get_market_data_ex(
+        field_list,
         stock_list=symbols,
         period=frame_type.value,
-        start_time=start.format(FMT),
-        end_time=end.format(FMT),
-        fill_data=False,
+        start_time=start_,
+        end_time=end_,
+        fill_data=True,
         dividend_type="none",
+        count=2
     )
+
+    # convert to dataframe. Since py3.6, keys() and values() are all same order
+    df = pd.concat(data.values(),ignore_index=True)
+    df["code"]=np.repeat(list(data.keys()), 2)
+    df.time = np.array(df.time, dtype='datetime64[ms]').astype(datetime.datetime)
+    df.time = df["time"].dt.tz_localize('UTC').dt.tz_convert("Asia/Shanghai")
+
+    return df
 
 
 @cache
-def get_ashare_list():
+def get_security_list():
     ashare_all = "沪深A股"
     return xt.get_stock_list_in_sector(ashare_all)
 
@@ -95,24 +158,33 @@ def get_calendar(end: datetime.date|None = None)->NDArray: # type: ignore
     return utc_datetime.dt.tz_convert("Asia/Shanghai").dt.date.values # type: ignore
 
 
-def get_security_info(symbol: str) -> Tuple[str, datetime.date, datetime.date]:
-    """获取证券详细信息, 即别名、IPO日、退市日
+def get_security_info(symbol: str) -> Tuple[str, datetime.date, str]:
+    """获取证券详细信息, 即别名、IPO日
 
     Args:
         symbol: 证券品种代码
     Returns:
-        证券显示名、IPO日和退市日。其它信息忽略掉。
+        证券显示名、IPO日和类型。其它信息忽略掉。
     """
     item = xt.get_instrument_detail(symbol)
     if item is None:
         raise ValueError(f"invalid symbol: {symbol}")
 
-    if item["ExpireDate"] == 99999999:
-        exit_day = datetime.date(2099, 12, 31)
-    else:
-        exit_day = arrow.get(item["ExpireDate"]).date()
+    code, exchange = symbol.split(".")
+    _type = SecurityType.UNKNOWN
 
-    return item["InstrumentName"], arrow.get(item["OpenDate"]).date(), exit_day
+    if exchange == 'SH':
+        if code.startswith("6"):
+            _type = SecurityType.STOCK
+        elif code.startswith("00"):
+            _type = SecurityType.INDEX
+    elif exchange == 'SZ':
+        if code[:3] == "399":
+            _type = SecurityType.INDEX
+        if code[:2] in ("00", "30"):
+            _type = SecurityType.STOCK
+
+    return item["InstrumentName"], arrow.get(item["OpenDate"]).date(), _type.value
 
 
 @cache
@@ -127,7 +199,7 @@ def get_factor_ratio(symbol: str, start: datetime.date, end: datetime.date)->pd.
         end: 结束日期，不得晚于当前时间
 
     Returns:
-        以日期为index, factor为column的DataFrame
+        以日期为index的Series
     """
     if start < tf.int2date(EPOCH):
         raise ValueError(f"start date should not be earlier than {EPOCH}: {start}")

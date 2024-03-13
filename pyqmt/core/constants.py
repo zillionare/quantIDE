@@ -6,6 +6,8 @@ EPOCH = "20050104"
 TIME_FORMAT = "YYYYMMDDHHmmss"
 DATE_FORMAT = "YYYYMMDD"
 
+key_price = "security:latest_price"
+
 day_level_frames = [FrameType.DAY, FrameType.WEEK, FrameType.MONTH, FrameType.QUARTER]
 
 min_level_frames = [

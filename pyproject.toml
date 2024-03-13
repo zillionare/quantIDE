@@ -14,8 +14,6 @@ classifiers=[
     'License :: OSI Approved :: MIT License',
     'Natural Language :: English',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
 ]
 
@@ -66,6 +64,9 @@ sqlite-web = "^0.6.1"
 redis = "^5.0.1"
 hiredis = "^2.3.2"
 duckdb = "^0.10.0"
+jupysql = "^0.10.10"
+akshare = "^1.12.89"
+clickhouse-sqlalchemy = "^0.3.0"
 [tool.poetry.extras]
 test = [
     "pytest",

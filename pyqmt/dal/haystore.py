@@ -12,9 +12,6 @@ from pyqmt.core.constants import HaystoreTbl
 
 class Haystore(object):
     def __init__(self):
-        self.client: Client = None  # type: ignore
-
-    def connect(self):
         cfg = cfg4py.get_instance()
         host = cfg.clickhouse.host
         user = cfg.clickhouse.user
@@ -24,29 +21,42 @@ class Haystore(object):
             host=host, username=user, password=password, database=database
         )
 
-    def save_bars(self, frame_type: FrameType, bars):
+    def save_bars(self, frame_type: FrameType, bars:pd.DataFrame):
+        """保存行情数据。
+
+        Args:
+            frame_type: 行情数据的周期。只接受1分钟和日线
+            bars: 行情数据，必须包括symbol, frame, OHLC, volume, money字段
+        """
         assert frame_type in [FrameType.DAY, FrameType.MIN1]
         if frame_type == FrameType.DAY:
             table = HaystoreTbl.bars_1d
         else:
             table = HaystoreTbl.bars_1m
 
-        self.client.insert(table, bars, column_names=bars.dtype.names)
+        self.client.insert_df(table, bars)
 
     def save_ashare_list(
         self,
-        data: List[Tuple[datetime.date, str, str, str, datetime.date, datetime.date]],
+        data: pd.DataFrame,
     ):
         """保存证券（股票、指数）列表
 
         Args:
-            data: contains date, code, alias, ipo day, exit day and type
+            data: contains date, code, alias, ipo day, and type
         """
-        cols = ["dt", "symbol", "alias", "ipo", "exit", "type"]
-        self.client.insert(HaystoreTbl.securities, data, column_names=cols)
+        self.client.insert_df(HaystoreTbl.securities, data)
 
     def get_bars(self, code: str, n: int, frame_type: FrameType, end: datetime.datetime):
-        """从clickhouse中获取持久化存储的行情数据"""
+        """从clickhouse中获取持久化存储的行情数据
+        
+        Args:
+            code: 股票代码，以.SZ/.SH结尾
+            frame_type: 行情周期。必须为1分钟或者日线
+            n: 记录数
+            end: 记录截止日期
+        
+        """
         sql =  "SELECT * from {table: Identifier} where frame < {frame: DateTime} and symbol = {symbol:String}"
         params = {
             'table': f"bars_{frame_type.value}",
@@ -56,5 +66,9 @@ class Haystore(object):
         return self.client.query_np(sql, parameters=params)
 
 
+    def query_df(self, sql: str, **params)->pd.DataFrame:
+        """执行任意查询命令"""
+        return self.client.query_df(sql, parameters=params)
+    
     def save_factors(self, data):
         pass

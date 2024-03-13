@@ -1,25 +1,33 @@
 import datetime
+import time
 from unittest.mock import patch
 
 import cfg4py
 import numpy as np
 from pytest import approx
+from xtquant import xtdata
 
-from pyqmt.core.xtwrapper import get_ashare_list, get_calendar, get_factor_ratio
+from pyqmt.core.xtwrapper import (
+    cache_bars,
+    get_calendar,
+    get_factor_ratio,
+    get_security_list,
+    subcribe_live,
+)
 from tests.config import dal
 
 
 def test_get_ashare_list():
     """测试get_ashare_list的cache机制"""
-    ashares = get_ashare_list()
+    ashares = get_security_list()
     with patch(
         "pyqmt.core.xtwrapper.xt.get_stock_list_in_sector", return_value=["hello"]
     ):
-        cached = get_ashare_list()
+        cached = get_security_list()
         assert np.array_equal(cached, ashares)
 
-        get_ashare_list.cache_clear()
-        result = get_ashare_list()
+        get_security_list.cache_clear()
+        result = get_security_list()
         assert np.array_equal(result, ["hello"])
 
 def test_get_calendar():
@@ -44,3 +52,10 @@ def test_get_factor(dal):
     factors = get_factor_ratio(symbol, start, end)
     assert approx(factors.loc[20220708]) == 5.685115
     assert approx(factors.loc[20220825]) == 6.037479
+    
+def test_subscribe_live():
+    subcribe_live()
+
+    for i in range(100):
+        import time
+        time.sleep(1)

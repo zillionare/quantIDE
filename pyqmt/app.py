@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from concurrent.futures import ProcessPoolExecutor
 
 import cfg4py
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 app = Application()
 sched = BackgroundScheduler(timezone="Asia/Shanghai")
 
-
 @get("/status")
 async def status():
     return "OK"
@@ -24,9 +24,11 @@ async def status():
 
 @app.on_start
 async def before_start(app: Application) -> None:
+    cfg = cfg4py.init(get_config_dir())
     # init chores database connection
     init_dal()
 
+    cfg.executor = ProcessPoolExecutor() #type: ignore
     sched.add_job(sync.create_sync_jobs, args=(sched,))
     sched.start()
 
