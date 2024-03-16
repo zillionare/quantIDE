@@ -1,23 +1,38 @@
 
+from tkinter import N
+
 import cfg4py
-import duckdb
 
-from pyqmt.core.timeframe import tf
+from pyqmt.dal.cache import RedisCache
+from pyqmt.dal.chores import Chores
+from pyqmt.dal.haystore import Haystore
 
-from .cache import RedisCache
-from .haystore import Haystore
+chorse: Chores | None = None
+cache: RedisCache | None = None
+haystore: Haystore | None = None
 
-
-def init_dal():
-    cfg = cfg4py.get_instance()
+def init():
+    global chores, haystore, cache
 
     # init chores database connection
-    cfg.chores_db = duckdb.connect(cfg.chores_db_path) # type: ignore
+    chores = Chores()
 
     # init haystore client
-    cfg.haystore = Haystore()  # type: ignore
+    haystore = Haystore()  # type: ignore
 
     # redis
-    cfg.cache = RedisCache()  # type: ignore
+    cache = RedisCache()  # type: ignore
 
-    tf.init()
+def close():
+    global chores, haystore, cache
+
+    if haystore is not None:
+        haystore.close()
+
+    if chorse is not None:
+        chores.close()
+
+    if cache is not None:
+        cache.close()
+
+__all__ = ["chores", "haystore", "cache"]

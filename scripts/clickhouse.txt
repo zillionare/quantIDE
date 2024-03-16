@@ -15,7 +15,7 @@ CREATE TABLE if not exists bars_day
     `suspend` UInt8 DEFAULT 0 CODEC(Delta, ZSTD),
     `turnover` Float32 DEFAULT -1 
 )
-ENGINE = MergeTree
+ENGINE = MergeTree()
 ORDER BY (frame, symbol)
 
 CREATE TABLE if not exists bars_1m

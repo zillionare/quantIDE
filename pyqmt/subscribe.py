@@ -14,7 +14,7 @@ from xtquant import xtdata as xtd
 from xtquant.xtdata import run
 
 from pyqmt.core.constants import key_price
-from pyqmt.core.xtwrapper import get_security_list
+from pyqmt.core.xtwrapper import get_stock_list
 from pyqmt.dal import init_dal
 
 cfg = cfg4py.get_instance()
@@ -65,7 +65,7 @@ def on_subscribe_callback(data):
     """
     global cfg, f
     last_prices = {code: item["lastPrice"] for code, item in data.items()}
-    cfg.cache.security.hset(key_price, mapping=last_prices)
+    cache.security.hset(key_price, mapping=last_prices)
 
     bars = [(code, item["time"], item["open"], item["high"], item["low"], item["lastClose"], item["volume"], item["amount"]) for code, item in data.items()]
     df = pd.DataFrame(bars, columns=["symbol", "frame", "open", "high", "low", "close", "volume", "money"])
@@ -74,7 +74,7 @@ def on_subscribe_callback(data):
     df.frame = df["frame"].dt.tz_localize('UTC').dt.tz_convert("Asia/Shanghai")
 
     print(f"timestamp: {pd.unique(df.frame)}")
-    # cfg.haystore.save_bars(FrameType.MIN1, df)
+    # haystore.save_bars(FrameType.MIN1, df)
     f.write(json.dumps(data))
     f.flush()
 

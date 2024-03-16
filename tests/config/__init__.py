@@ -7,15 +7,13 @@ Contributors:
 
 """
 import os
-import sys
 from importlib.metadata import version
-from os import path
 
 import cfg4py
+import duckdb
 from pytest import fixture
 
-from pyqmt.dal import init_dal
-from pyqmt.dal.haystore import Haystore
+from pyqmt.dal import haystore, init_dal
 
 TABLE_PARAMETER = "{TABLE_PARAMETER}"
 DROP_TABLE_SQL = f"DROP TABLE {TABLE_PARAMETER};"
@@ -34,42 +32,23 @@ def endpoint():
     return f"{prefix}/v{major}.{minor}"
 
 
-def get_chores_tables(con):
-    cur = con.cursor()
-    cur.execute(GET_TABLES_SQL)
-    tables = cur.fetchall()
-    cur.close()
-    return tables
-
-
-def drop_chores_tabels(con, tables):
-    cur = con.cursor()
-    for (table,) in tables:
-        if table == "sqlite_sequence":
-            continue
-
-        sql = DROP_TABLE_SQL.replace(TABLE_PARAMETER, table)
-        cur.execute(sql)
-    cur.close()
-
-
-def init_chores(conn):
-    tables = get_chores_tables(conn)
-    drop_chores_tabels(conn, tables)
+def init_chores():
+    cfg = cfg4py.init(get_config_dir())
 
     scripts = os.path.join(os.path.dirname(__file__), "../../scripts/duckdb.txt")
     with open(scripts, "r", encoding="utf-8") as f:
-        sql = f.read()
+        create_tables = f.read()
 
-        cursor = conn.cursor()
-        cursor.executescript(sql)
-        conn.commit()
+    with duckdb.connect(cfg.chores_db_path) as conn:
+        for (name, ) in conn.sql("show tables").fetchall():
+            conn.sql(f"drop table {name}")
+
+        conn.sql(create_tables)
 
 
 def init_haystore():
     cmd = "truncate database if exists tests"
-    cfg = cfg4py.get_instance()
-    cfg.haystore.client.command(cmd)
+    haystore.client.command(cmd)
 
     # create tables
     scripts = os.path.join(os.path.dirname(__file__), "../../scripts/clickhouse.txt")
@@ -79,7 +58,7 @@ def init_haystore():
         for sql in content.split("\n\n"):
             if len(sql) < 5:
                 continue
-            cfg.haystore.client.command(sql)
+            haystore.client.command(sql)
 
 @fixture
 def dal():

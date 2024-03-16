@@ -16,6 +16,7 @@ from pyqmt.core import date2str, time2minute
 from pyqmt.core.constants import EPOCH, key_price, min_level_frames
 from pyqmt.core.errors import XtQuantError
 from pyqmt.core.timeframe import tf
+from pyqmt.dal import chores
 
 logger = logging.getLogger(__name__)
 
@@ -62,34 +63,46 @@ def on_subscribe_callback(data):
     ```
     """
     last_prices = {code: item["lastPrice"] for code, item in data.items()}
-    cfg.cache.security.hset(key_price, mapping=last_prices)
+    cache.security.hset(key_price, mapping=last_prices)
 
 
 def subcribe_live():
     xt.subscribe_whole_quote(["SH", "SZ"])
 
 def cache_bars(
-    symbols: Union[str, List[str]],
-    frame_type: FrameType,
-    start_time: Frame,
-    end_time: Frame | None=None,
-) -> bool:
-    """让xtdata缓存行情数据"""
-    if isinstance(symbols, str):
-        symbols = [symbols]
+    frame_type: FrameType
+):
+    """让xtdata缓存行情数据
+    
+    Args:
+        frame_type: 行情周期，比如FrameType.MIN1, FrameType.DAY
+    Raises:
+        XtQuantError: 如果错误来自XtQuant
 
-    if frame_type in min_level_frames:
-        start = time2minute(start_time) # type: ignore
-        end = time2minute(end_time) if end_time else '' # type: ignore
+    """
+    time_range = chores.get_bars_cache_status(frame_type)
+    if time_range is None:
+        start = chores.calc_bars_cache_start(frame_type)
     else:
-        start = date2str(start_time)
-        end = date2str(end_time) if end_time else ''
+        start = time_range[1]
+        
+    # 直到 2024/3/15, dhd_2 API 只能接受start/end为日期，不能到分钟，与文档不一致，原因不明。
+    end = tf.floor(datetime.datetime.now(), FrameType.DAY)
 
     # todo: 增加重启重连功能、超时功能
     try:
-        return xt.download_history_data2(symbols, frame_type.value, start, end)  # type: ignore
+        symbols = get_stock_list()
+        success = xt.download_history_data2(symbols, 
+                                            frame_type.value, 
+                                            date2str(start), 
+                                            date2str(end)) # type: ignore
     except Exception as e:
         raise XtQuantError.parse_msg(str(e))
+
+    if not success:
+        raise XtQuantError(f"cache_bars failed with no exceptions")
+    
+    chores.save_bars_cache_status(start, end, frame_type)
 
 
 def get_bars(symbols: List[str], frame_type: FrameType, start: Frame, end: Frame | None):
@@ -123,7 +136,7 @@ def get_bars(symbols: List[str], frame_type: FrameType, start: Frame, end: Frame
 
 
 @cache
-def get_security_list():
+def get_stock_list():
     ashare_all = "沪深A股"
     return xt.get_stock_list_in_sector(ashare_all)
 

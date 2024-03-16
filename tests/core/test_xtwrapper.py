@@ -11,7 +11,7 @@ from pyqmt.core.xtwrapper import (
     cache_bars,
     get_calendar,
     get_factor_ratio,
-    get_security_list,
+    get_stock_list,
     subcribe_live,
 )
 from tests.config import dal
@@ -19,15 +19,15 @@ from tests.config import dal
 
 def test_get_ashare_list():
     """测试get_ashare_list的cache机制"""
-    ashares = get_security_list()
+    ashares = get_stock_list()
     with patch(
         "pyqmt.core.xtwrapper.xt.get_stock_list_in_sector", return_value=["hello"]
     ):
-        cached = get_security_list()
+        cached = get_stock_list()
         assert np.array_equal(cached, ashares)
 
-        get_security_list.cache_clear()
-        result = get_security_list()
+        get_stock_list.cache_clear()
+        result = get_stock_list()
         assert np.array_equal(result, ["hello"])
 
 def test_get_calendar():

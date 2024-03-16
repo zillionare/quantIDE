@@ -21,6 +21,10 @@ class Haystore(object):
             host=host, username=user, password=password, database=database
         )
 
+    def close(self):
+        """关闭clickhouse连接"""
+        self.client.close()
+        
     def save_bars(self, frame_type: FrameType, bars:pd.DataFrame):
         """保存行情数据。
 

@@ -1,15 +1,14 @@
 """Main module."""
 
 import logging
-import sqlite3
 from concurrent.futures import ProcessPoolExecutor
 
 import cfg4py
 from apscheduler.schedulers.background import BackgroundScheduler
 from blacksheep import Application, get
 
+from pyqmt import dal
 from pyqmt.config import get_config_dir
-from pyqmt.dal import init_dal
 from pyqmt.service import sync
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ async def status():
 async def before_start(app: Application) -> None:
     cfg = cfg4py.init(get_config_dir())
     # init chores database connection
-    init_dal()
+    dal.init()
 
     cfg.executor = ProcessPoolExecutor() #type: ignore
     sched.add_job(sync.create_sync_jobs, args=(sched,))
@@ -41,4 +40,4 @@ async def after_start(app: Application) -> None:
 @app.on_stop
 async def on_stop(app: Application) -> None:
     cfg = cfg4py.get_instance()
-    cfg.chores_db.close()
+    dal.close()

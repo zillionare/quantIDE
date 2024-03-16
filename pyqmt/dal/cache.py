@@ -25,3 +25,7 @@ class RedisCache:
     @property
     def security(self):
         return self.r
+
+    def close(self):
+        """关闭缓存连接"""
+        self.r.close()

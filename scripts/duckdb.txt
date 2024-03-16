@@ -12,33 +12,27 @@ create index symbol_frame_idx on bars_cache_failure (symbol, frame_type, frame);
 
 -- 创建qmt缓存下载任务表
 create table if not exists bars_cache_status (
-    "id" INTEGER primary key AUTOINCREMENT,
+    "frame_type" string primary key, --记录属于哪个周期。1分钟和1天允许不一样的起点
     "start" date,
-    "end" date,
-    "epoch" date, --同步的范围起点
-    "frame_type" int  --记录属于哪个周期。1分钟和1天允许不一样的起点
+    "stop" date
 );
 
-insert into bars_cache_status (epoch, frame_type) values ('2022-01-01', 6);
-insert into bars_cache_status (epoch, frame_type) values ('2022-01-01', 1);
 
 -- 创建clickhouse行情同步表
-create table if not exists sync_bars_jobs (
-    "id" INTEGER primary key AUTOINCREMENT,
+CREATE SEQUENCE IF NOT EXISTS bars_sync_status_id;
+
+create table if not exists bars_sync_status (
+    "id" INTEGER default nextval('bars_sync_status_id') primary key,
     "start" date,
-    "end" date,
-    "frame_type" int,  --记录属于哪个周期。1分钟和1天允许不一样的起点
-    "ohlc" bool,  -- OHLC是否已经同步到clickhouse
-    "st" bool, -- st状态是否已同步到clickhouse
-    "factor" bool, -- 因子是否已同步到clickhouse
-    "limit_price" bool, -- 涨跌停价是否已同步到clickhouse
-    "suspend" bool, -- 停牌数据是否已同步到clickhouse
-    "turnover" bool -- 换手率是否已同步到clickhouse
+    "stop" date,
+    "frame_type" str,  --记录属于哪个周期。1分钟和1天允许不一样的起点
+    "kind" str, -- 记录类型， 可以是ohlc, st, factor, limit_price, suspend, turnover
 );
 
 --创建clickhouse 板块同步表
+CREATE SEQUENCE IF NOT EXISTS sync_secotrs_jobs_id;
 create table if not exists sync_secotrs_jobs(
-    "id" INTEGER primary key AUTOINCREMENT,
+    "id" INTEGER default nextval('bars_sync_status_id') primary key,
     "frame" date, -- 日期
     "count" int -- 当天板块数
 );
@@ -49,3 +43,8 @@ create table if not exists sync_ashare_list_status(
     "count" int -- 当天个股数
 );
 
+-- 创建系统配置表
+create table if not exists sys(
+    "key" varchar(20) primary key,
+    "value" varchar primary key
+)

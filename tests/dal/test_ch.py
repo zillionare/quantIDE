@@ -10,14 +10,14 @@ import pandas as pd
 import pytest
 from coretypes import FrameType, SecurityType
 
-from pyqmt.dal import init_dal
+from pyqmt import dal
 from tests.config import get_config_dir, init_haystore
 
 
 @pytest.fixture(scope="module", autouse=True)
 def cfg():
     cfg4py.init(get_config_dir())
-    init_dal()
+    dal.init()
     init_haystore()
     return cfg4py.get_instance()
 
@@ -40,9 +40,9 @@ def test_performance(n, cfg):
     df.money = np.random.random(n) * 1_0000_0000
 
     t0 = time.time()
-    cfg.haystore.save_bars(FrameType.MIN1, df)
+    _haystore.save_bars(FrameType.MIN1, df)
     t1 = time.time()
-    bars = cfg.haystore.get_bars(sampled[-1], -1, FrameType.MIN1, end)
+    bars = _haystore.get_bars(sampled[-1], -1, FrameType.MIN1, end)
     t2 = time.time()
     print(f"query returns {len(bars)}")
     print(f"insert cost {t1-t0:.1f} seconds, read cost {t2-t1:.1f} seconds")
@@ -58,4 +58,4 @@ def test_save_securities():
         (tm, "000001.SZ", "平安银行", tm, "stock"), 
         (tm, "600001.SH", "浦发银行", tm, "stock"), 
     ], columns=["dt", "symbol", "alias", "ipo", "type"])
-    cfg.haystore.save_ashare_list(shares)
+    _haystore.save_ashare_list(shares)

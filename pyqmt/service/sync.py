@@ -1,15 +1,38 @@
+"""
+
+## 数据同步
+
+### 程序启动时的同步
+
+在程序每次启动时，检查：
+
+1. 从chores.bars_cache_status表中，对照start, end和epoch，进行运算
+2. 如果start > epoch，则创建[epoch, now, frame_type]的下载任务,完成
+3. 如果now > end, 则创建[end, now, frame_type]的下载任务。完成
+
+下载任务成功与否，以xtquant.xtdata的返回值为准。基于xtquant的开发状态，如果xtdata出错，很难补救，放弃努力。
+
+
+### 每日同步
+
+在每天凌晨进行数据同步。
+
+### 日内tick同步
+
+在日内进行tick订阅，将其存入clickhouse。通过clickhouse的聚合方法合成日内的分钟线。
+"""
+
 import datetime
 import logging
-import time
 from concurrent.futures import ProcessPoolExecutor
-from functools import partial
+from functools import cache, partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import cfg4py
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.job import Job
-from coretypes import FrameType, SecurityType
+from coretypes import FrameType
 
 from pyqmt.core.constants import EPOCH
 from pyqmt.core.timeframe import tf
@@ -19,23 +42,15 @@ from pyqmt.core.xtwrapper import (
     get_calendar,
     get_factor_ratio,
     get_security_info,
-    get_security_list,
+    get_stock_list,
 )
-from pyqmt.dal.chores import (
-    ashares_sync_status,
-    bars_cache_status,
-    save_bars_cache_status,
-)
+from pyqmt.dal import chores
 
 Frame = Union[datetime.date, datetime.datetime]
 
+from copy import copy
+
 import arrow
-from xtquant.xtdata import (
-    download_history_data2,
-    download_sector_data,
-    get_market_data,
-    get_stock_list_in_sector,
-)
 
 from pyqmt.config import get_config_dir
 from pyqmt.core import date2str, handle_xt_error, str2date, str2time, time2str
@@ -44,6 +59,53 @@ from pyqmt.core.constants import DATE_FORMAT, TIME_FORMAT
 logger = logging.getLogger(__name__)
 cfg = cfg4py.get_instance()
 
+
+def on_startup_sync():
+    """"在程序启动时进行数据同步。
+    
+    程序启动时的数据同步主要场景：
+    1. 程序刚安装，第一次同步
+    2. 程序意外退出后的再次启动
+    
+    程序第一次启动时，后台线程启动全量下载，直到完成，并删除first_startup标志。此后启动，只从bars_sync_end开始，直到最后一个已结束的交易日。
+    """
+    for frame_type in (FrameType.DAY, FrameType.WEEK, FrameType.MONTH, FrameType.QUARTER):
+        cache_bars(frame_type)
+
+        start = chores.get_bars_sync_end(frame_type, "OHLC")
+        last_closed = tf.floor(datetime.datetime.now(), frame_type)
+        if start == last_closed:
+            continue
+
+        if start > last_closed:
+            logger.warning("向haystore同步行情时，发现记录错误: 已收盘%s, 记录为%s", last_closed, start)
+
+        # 一次sync约100万条记录
+        n = len(get_stock_list())
+        tasks = []
+        while start < tf.floor(datetime.datetime.now(), frame_type):
+            end = tf.shift(start, 1_000_000 // n, frame_type)
+            if end > last_closed:
+                end = last_closed
+            tasks.append(copy((start, end, frame_type)))
+            start = tf.shift(end, 1, frame_type)
+
+        sync_bars(frame_type)
+
+    for frame_type in (FrameType.MIN60, FrameType.MIN30, FrameType.MIN30, FrameType.MIN15, FrameType.MIN5, FrameType.MIN1):
+        pass
+
+def sync_bars(frame_type: FrameType, start: datetime.date, end: datetime.date):
+    """将下载到本地的数据同步到haystore中
+    
+    Args:
+        frame_type: 要同步的行情周期
+        start: 起始日期
+        end: 结束日期
+    """
+    stock_list = get_stock_list()
+    bars = get_bars(stock_list, frame_type, tm, None)
+    haystore.save_bars(bars)
 
 def schedule_after(after: Job, job_func: Callable, args: Tuple[List[str], FrameType]):
     def listener(after, job_func, args, event):
@@ -61,92 +123,6 @@ def schedule_after(after: Job, job_func: Callable, args: Tuple[List[str], FrameT
     cfg.sched.add_listener(my_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
 
-def sync_bars_forward(symbols: List[str], frame_type: FrameType):
-    """向未来同步
-
-    epoch --> start --> end |-- >now
-    """
-    status = bars_cache_status(frame_type)
-
-    now = arrow.now().shift(days=-1)
-    end = status["end"]
-
-    span = -365 if frame_type == FrameType.DAY else -10
-
-    if end is None:
-        job_start = now.shift(days=span)
-    else:
-        job_start = end
-
-    # 如果是同步分钟线，强制从0931到1500
-    if frame_type == FrameType.MIN1:
-        job_start = job_start.floor("minute").replace(hour=9).replace(minute=30)
-        now = now.floor("hour").replace(hour=15)
-
-    result = cache_bars(symbols, frame_type, job_start, now)
-    if result is not None:
-        logger.info("cache_bars returns %s", result)
-
-    start = arrow.get(status["start"] or job_start)
-    save_bars_cache_status(start, now, frame_type)
-    logger.info("done with %s forward sync: %s~%s", frame_type.value, job_start, now)
-
-
-def sync_bars_backward(symbols: List[str], frame_type: FrameType):
-    """向过去方向同步
-
-    epoch <--| start <--end <-- Now
-    """
-    status = bars_cache_status(frame_type)
-
-    epoch = arrow.get(status["epoch"])
-    start = status["start"]
-
-    if start is None:
-        logger.info("wait until first sync finish, before forward sync start")
-        return
-
-    if start <= epoch.date():
-        logger.info("backward sync already done: %s~%s", start, epoch)
-        return
-
-    start = arrow.get(start)
-    assert start < arrow.now()
-
-    # convert date to Arrow
-    cursor = arrow.get(start)
-
-    if frame_type == FrameType.DAY:
-        span = -365
-    else:
-        cursor = start.floor("hour").replace(hour=15)
-        span = -10
-
-    logger.info("start %s backward sync: %s~%s", frame_type.value, epoch, cursor)
-
-    while cursor > epoch:
-        batch_start = cursor.shift(days=span)
-        if batch_start < epoch:
-            batch_start = epoch
-
-        if frame_type == FrameType.MIN1:
-            batch_start = batch_start.replace(hour=9).replace(minute=30)
-
-        logger.info(
-            "syncing from %s to %s, %s symbols in total",
-            batch_start,
-            cursor,
-            len(symbols),
-        )
-
-        cache_bars(symbols, frame_type, batch_start, cursor)
-        save_bars_cache_status(batch_start, arrow.get(status["end"]), frame_type)
-        cursor = batch_start.shift(days=-1)
-        time.sleep(1)
-
-    start = bars_cache_status(frame_type, "start")
-    end = bars_cache_status(frame_type, "end")
-    logger.info("done with %s backward sync: %s~%s", frame_type.value, start, end)
 
 
 def create_sync_jobs():
@@ -173,16 +149,7 @@ def create_sync_jobs():
     # TODO: 再启动定时任务，每天凌晨进行同步
 
     # 任务2： 每天早上9点，清空get_ashare_list的缓存
-    cfg.sched.add_job(get_security_list.cache_clear, "cron", hour="9")
-
-
-def sync_bars(tm: datetime.datetime, frame_type: FrameType):
-    """保存`tm`时的行情数据"""
-    symbols = get_security_list()
-    cache_bars(symbols, frame_type, tm)
-    bars = get_bars(symbols, frame_type, tm, None)
-    cfg.haystore.save_bars(bars)
-
+    cfg.sched.add_job(get_stock_list.cache_clear, "cron", hour="9")
 
 def sync_sector_list(force=False):
     """保存当天的板块列表
@@ -198,14 +165,14 @@ def sync_security_list(force=False):
 
     # todo: if force, then make sure exists records be purged beforehand
     data = []
-    secs = get_security_list()
+    secs = get_stock_list()
     for sec in secs:
         items = get_security_info(sec)
         data.append((last_trading_day, sec, *items))
 
     df = pd.DataFrame(data, columns=["dt","symbol","alias", "ipo", "type"])
-    cfg.haystore.save_ashare_list(df)
-    # cfg.chores_db.save_ashares_sync_status(last_trading_day)
+    haystore.save_ashare_list(df)
+    # chores.save_ashares_sync_status(last_trading_day)
 
 def sync_calendar():
     """交易日历"""
@@ -213,7 +180,7 @@ def sync_calendar():
     tf.save_calendar(calendar)
 
 def sync_factor():
-    secs = get_security_list()
+    secs = get_stock_list()
     last_trade_day = tf.floor(arrow.now().date(), FrameType.DAY)
 
     data = []
@@ -222,10 +189,10 @@ def sync_factor():
         factor["sec"] = [sec] * len(factor)
         data.append(factor)
 
-    cfg.haystore.save_factors(data)
+    haystore.save_factors(data)
 
 def sync_minute_bars():
-    secs = get_security_list()
+    secs = get_stock_list()
     # cache_bars(secs, FrameType.MIN1, )
 
 def start_intraday_sync(scheduler):

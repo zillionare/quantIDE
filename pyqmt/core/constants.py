@@ -25,6 +25,7 @@ class HaystoreTbl:
 
 class ChoreTbl:
     ashares_sync = "sync_ashare_list_status"
-    bars_cache = "bars_cache_status"
+    bars_cache_status = "bars_cache_status"
     sync_bars_jobs = "sync_bars_jobs"
     sync_sector_jobs = "sync_sector.jobs"
+    sys = "sys"
