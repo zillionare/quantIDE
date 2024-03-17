@@ -18,10 +18,12 @@ min_level_frames = [
     FrameType.MIN60,
 ]
 
+
 class HaystoreTbl:
     securities = "securities"
     bars_1m = "bars_1m"
-    bars_1d = "bars_1d"
+    bars_1d = "bars_day"
+
 
 class ChoreTbl:
     ashares_sync = "sync_ashare_list_status"

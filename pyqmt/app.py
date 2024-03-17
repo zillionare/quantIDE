@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 app = Application()
 sched = BackgroundScheduler(timezone="Asia/Shanghai")
 
+
 @get("/status")
 async def status():
     return "OK"
@@ -25,9 +26,9 @@ async def status():
 async def before_start(app: Application) -> None:
     cfg = cfg4py.init(get_config_dir())
     # init chores database connection
-    dal.init()
+    dal.init_dal()
 
-    cfg.executor = ProcessPoolExecutor() #type: ignore
+    cfg.executor = ProcessPoolExecutor()  # type: ignore
     sched.add_job(sync.create_sync_jobs, args=(sched,))
     sched.start()
 

@@ -1,13 +1,25 @@
 import uuid
+from multiprocessing import Queue
 from typing import Any, Callable, Optional, Tuple
 
 
-class Job:
+class Actor:
     """自带执行体的任务。
-    
+
     本类及其子类必须是可串行化(serializable)的。
     """
-    def __init__(self, target: Callable, args: Tuple[Any], name: Optional[str] = None):
+
+    def __init__(self, name: Optional[str] = None):
+        self.name = name or uuid.uuid4().hex[-6:]
+
+    def run(self, results_queue: Queue):
+        raise NotImplementedError
+
+
+class GeneralActor:
+    def __init__(
+        self, target: Callable, args: tuple[Any, ...], name: Optional[str] = None
+    ):
         self.target = target
         self.args = args
         self.name = name or uuid.uuid4().hex[-6:]
@@ -17,7 +29,9 @@ class Job:
         if results_queue is not None:
             results_queue.put_nowait(result)
 
-class StopOnSightJob(Job):
+
+class StopOnSightActor(Actor):
     """执行体在见到此任务后，将执行退出进程操作"""
+
     def __init__(self):
-        pass
+        super().__init__("stop-on-sight")

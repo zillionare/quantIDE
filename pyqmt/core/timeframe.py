@@ -14,8 +14,8 @@ from arrow import Arrow
 from coretypes import Frame, FrameType
 from numpy.typing import NDArray
 
+from pyqmt.core.context import g
 from pyqmt.core.ext import count_between, floor, shift
-from pyqmt.dal import cache
 
 logger = logging.getLogger(__file__)
 EPOCH = datetime.datetime(1970, 1, 1, 0, 0, 0)
@@ -73,9 +73,10 @@ class TimeFrame:
             "quarter_frames",
             "year_frames",
         ]
+
         for name, frame_type in zip(names, cls.day_level_frames):
             key = f"calendar:{frame_type.value}"
-            result = cache.security.lrange(key, 0, -1)
+            result = g.cache.security.lrange(key, 0, -1)
             if result is not None and len(result):
                 frames = [int(x) for x in result]
                 setattr(cls, name, np.array(frames))
@@ -94,14 +95,14 @@ class TimeFrame:
             frames = [cls.date2int(x) for x in days]
 
             key = f"calendar:{ft.value}"
-            pl = cache.security.pipeline()
+            pl = g.cache.security.pipeline()
             pl.delete(key)
             pl.rpush(key, *frames)
             pl.execute()
 
         frames = [cls.date2int(x) for x in trade_days]
         key = f"calendar:{FrameType.DAY.value}"
-        pl = cache.security.pipeline()
+        pl = g.cache.security.pipeline()
         pl.delete(key)
         pl.rpush(key, *frames)
         pl.execute()
@@ -110,7 +111,7 @@ class TimeFrame:
     def remove_calendar(cls):
         for ft in cls.day_level_frames:
             key = f"calendar:{ft.value}"
-            cache.security.delete(key)
+            g.cache.security.delete(key)
 
     @classmethod
     def int2time(cls, tm: int) -> datetime.datetime:

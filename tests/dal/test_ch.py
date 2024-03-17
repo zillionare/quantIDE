@@ -17,7 +17,7 @@ from tests.config import get_config_dir, init_haystore
 @pytest.fixture(scope="module", autouse=True)
 def cfg():
     cfg4py.init(get_config_dir())
-    dal.init()
+    dal.init_dal()
     init_haystore()
     return cfg4py.get_instance()
 
@@ -26,7 +26,10 @@ def cfg():
 def test_performance(n, cfg):
     n = n * 10000
     codes = [f"{i:06d}.XSHG" for i in range(1, 8000)]
-    df = pd.DataFrame([], columns=["frame","symbol","open", "high", "low", "close", "volume", "money"])
+    df = pd.DataFrame(
+        [],
+        columns=["frame", "symbol", "open", "high", "low", "close", "volume", "money"],
+    )
 
     end = datetime.datetime(2023, 12, 31)
     df.frame = [end - datetime.timedelta(minutes=i) for i in range(0, n)]
@@ -46,7 +49,6 @@ def test_performance(n, cfg):
     t2 = time.time()
     print(f"query returns {len(bars)}")
     print(f"insert cost {t1-t0:.1f} seconds, read cost {t2-t1:.1f} seconds")
-    
 
 
 def test_save_securities():
@@ -54,8 +56,11 @@ def test_save_securities():
 
     # ["dt", "symbol", "alias", "ipo", "type"]
     tm = datetime.date(2024, 3, 11)
-    shares = pd.DataFrame([
-        (tm, "000001.SZ", "平安银行", tm, "stock"), 
-        (tm, "600001.SH", "浦发银行", tm, "stock"), 
-    ], columns=["dt", "symbol", "alias", "ipo", "type"])
+    shares = pd.DataFrame(
+        [
+            (tm, "000001.SZ", "平安银行", tm, "stock"),
+            (tm, "600001.SH", "浦发银行", tm, "stock"),
+        ],
+        columns=["dt", "symbol", "alias", "ipo", "type"],
+    )
     _haystore.save_ashare_list(shares)

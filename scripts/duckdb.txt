@@ -25,8 +25,8 @@ create table if not exists bars_sync_status (
     "id" INTEGER default nextval('bars_sync_status_id') primary key,
     "start" date,
     "stop" date,
-    "frame_type" str,  --记录属于哪个周期。1分钟和1天允许不一样的起点
-    "kind" str, -- 记录类型， 可以是ohlc, st, factor, limit_price, suspend, turnover
+    "frame_type" string,  --记录属于哪个周期。1分钟和1天允许不一样的起点
+    "kind" string, -- 记录类型， 可以是ohlc, st, factor, limit_price, suspend, turnover
 );
 
 --创建clickhouse 板块同步表
@@ -46,5 +46,8 @@ create table if not exists sync_ashare_list_status(
 -- 创建系统配置表
 create table if not exists sys(
     "key" varchar(20) primary key,
-    "value" varchar primary key
-)
+    "value" varchar not null
+);
+
+insert into sys (key, value) values ('on_startup_sync_1m', '3y');
+insert into sys (key, value) values ('on_startup_sync_5m', '3y');

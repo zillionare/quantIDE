@@ -25,7 +25,7 @@ logging:
     handlers:
       - console
     level: INFO
-chores_db_path: d:\data\pyqmt.db
+chores_db_path: d:\data\pyqmt.duckdb
 clickhouse:
   host: 192.168.100.10
   user: default

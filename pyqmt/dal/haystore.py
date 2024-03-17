@@ -24,8 +24,8 @@ class Haystore(object):
     def close(self):
         """关闭clickhouse连接"""
         self.client.close()
-        
-    def save_bars(self, frame_type: FrameType, bars:pd.DataFrame):
+
+    def save_bars(self, frame_type: FrameType, bars: pd.DataFrame):
         """保存行情数据。
 
         Args:
@@ -51,28 +51,25 @@ class Haystore(object):
         """
         self.client.insert_df(HaystoreTbl.securities, data)
 
-    def get_bars(self, code: str, n: int, frame_type: FrameType, end: datetime.datetime):
+    def get_bars(
+        self, code: str, n: int, frame_type: FrameType, end: datetime.datetime
+    ):
         """从clickhouse中获取持久化存储的行情数据
-        
+
         Args:
             code: 股票代码，以.SZ/.SH结尾
             frame_type: 行情周期。必须为1分钟或者日线
             n: 记录数
             end: 记录截止日期
-        
+
         """
-        sql =  "SELECT * from {table: Identifier} where frame < {frame: DateTime} and symbol = {symbol:String}"
-        params = {
-            'table': f"bars_{frame_type.value}",
-            'frame': end,
-            'symbol': code
-        }
+        sql = "SELECT * from {table: Identifier} where frame < {frame: DateTime} and symbol = {symbol:String}"
+        params = {"table": f"bars_{frame_type.value}", "frame": end, "symbol": code}
         return self.client.query_np(sql, parameters=params)
 
-
-    def query_df(self, sql: str, **params)->pd.DataFrame:
+    def query_df(self, sql: str, **params) -> pd.DataFrame:
         """执行任意查询命令"""
         return self.client.query_df(sql, parameters=params)
-    
+
     def save_factors(self, data):
         pass

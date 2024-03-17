@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import logging
-from typing import Optional
 
 import cfg4py
 from redis import Redis
