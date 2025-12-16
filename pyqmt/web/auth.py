@@ -2,8 +2,16 @@ import os
 from typing import Optional
 import datetime
 import logging
+from functools import wraps
+from typing import Callable, Any
+import inspect
+from fastapi import Request, Header
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import HTTPException, status, Depends
 
 import jwt
+import cfg4py
+from pyqmt.config.schema import Config
 
 # 设置日志
 logger = logging.getLogger(__name__)
@@ -14,6 +22,9 @@ SESSION_COOKIE = "pyqmt_session"
 ALGORITHM = "HS256"
 # default expiration in minutes for access tokens
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("PYQMT_ACCESS_EXPIRE_MINUTES", "60"))
+
+# 获取配置实例
+cfg: Config = cfg4py.get_instance()
 
 
 def create_jwt(username: str, secret: Optional[str] = None, expires_minutes: Optional[int] = None) -> str:
@@ -59,12 +70,6 @@ def verify_jwt(token: str, secret: Optional[str] = None) -> Optional[str]:
 # async def protected(request: Request, user: str):
 #     ...
 #
-from functools import wraps
-from typing import Callable, Any
-import inspect
-from fastapi import Request
-from fastapi.responses import RedirectResponse
-from fastapi import HTTPException, status, Depends
 
 
 def auth(func: Callable) -> Callable:
