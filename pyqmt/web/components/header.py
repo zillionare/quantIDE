@@ -27,7 +27,7 @@ def header_component(logo: str, brand:str, nav_items: list[tuple], user: str|Non
     # 用户菜单
     user_menu = Div() if not user else Div(
         P(f"欢迎, {user}", cls="text-white mr-4"),
-        A("退出", href="/logout", cls="text-white hover:text-gray-300")
+        A("退出", href="/auth/logout", cls="text-white hover:text-gray-300")
     )
     
     return Header(

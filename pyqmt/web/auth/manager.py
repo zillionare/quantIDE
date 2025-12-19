@@ -45,8 +45,13 @@ class AuthManager:
         """ Get the singleton instance of AuthManager """
         return AuthManager._instance
 
-    def initialize(self):
-        """Initialise the auth system"""
+    def initialize(self, app=None, prefix='/auth'):
+        """Initialise the auth system and optionally register routes
+        
+        Args:
+            app: FastHTML application instance for route registration (optional)
+            prefix: URL prefix for auth routes (default: /auth)
+        """
         # Create tables
         self.db = self.auth_db.initialize_auth_tables()
 
@@ -55,6 +60,10 @@ class AuthManager:
 
         # Create default admin
         self._create_default_admin()
+
+        # Register auth routes if app is provided
+        if app is not None:
+            self.register_routes(app, prefix=prefix)
 
         admin = self.get_user('admin')
         (f"Admin User class: {type(admin)}")
