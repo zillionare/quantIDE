@@ -16,14 +16,23 @@ apikeys:
     - client: client1
       key: key1
 
+broker: qmt
 qmt:
-  - account: 38800xxxx
-    type: 1001
-    name: 账户1
-    path: "c:\\apps\\qmt\\userdata_mini"
-    enabled: true
+  account: "8881457417"
+  type: 1001
+  name: 账户1
+  path: "c:\\apps\\qmt\\userdata_mini"
 
-dingtalk:
-  access_token: dingtalk-access-token
-  secret: dingtalk-secret
-  keyword: dingtalk-keyword
+notify:
+  dingtalk:
+    access_token: dingtalk-access-token
+    secret: dingtalk-secret
+    keyword: dingtalk-keyword
+  mail:
+    mail_to: nonexist@quantide.cn
+    mail_from: nonexist@quantide.cn
+    mail_server: smtp.exmail.qq.com
+
+db:
+  path: ":memory:"
+

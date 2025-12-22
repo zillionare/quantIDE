@@ -38,11 +38,31 @@ class Config(object):
 
         clients: list
 
-    qmt: list
+    broker: str
 
-    class dingtalk:
-        access_token: str
+    class qmt:
+        account: str
 
-        secret: str
+        type: int
 
-        keyword: str
+        name: str
+
+        path: str
+
+    class notify:
+        class dingtalk:
+            access_token: str
+
+            secret: str
+
+            keyword: str
+
+        class mail:
+            mail_to: str
+
+            mail_from: str
+
+            mail_server: str
+
+    class db:
+        path: str
