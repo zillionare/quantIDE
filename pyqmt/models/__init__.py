@@ -1,5 +1,37 @@
+"""Modles 定义
+
+本模块定义了常用的数据模型，比如 Order, Trade, Position, Asset 等。同时还提供了一些工具函数，比如将 dataclass 转换为 fastlite 兼容的 schema 字典。
+
+## db_model
+
+自动为 dataclass 注入表名、主键、索引等元数据。
+
+## _dataclass_to_schema
+
+sqlite_utils 赋予应用无须事先创建表结构的能力，但是，为了性能和数据类型精确性考虑，手动创建数据库表是更好的方式。
+
+`_dataclass_to_schema` 自动将 dataclass 转换为数据库字段声明，从而可以用于创建数据库表结构（基于 sqlite_utils）。
+
+Example:
+
+```python
+for model in [OrderModel, TradeModel, AssetModel]:
+    table = model.__table_name__
+    pk = model.__pk__
+
+    t: su.db.Table = self[table]
+    t.create(model.to_db_schema(), pk=pk)
+
+    if model.__indexes__ is not None:
+        indexes, is_unique = model.__indexes__
+        t.create_index(indexes, unique=is_unique)
+```
+
+通过这样的封装，初始化数据库、创建表结构就变得非常简洁。
+"""
+
 from dataclasses import dataclass, field, fields
-from typing import Type, TypeVar, ClassVar
+from typing import Type, TypeVar
 import datetime
 import uuid
 from pyqmt.core.enums import OrderSide, BidType, OrderStatus

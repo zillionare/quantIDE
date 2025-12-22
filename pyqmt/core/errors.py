@@ -1,35 +1,50 @@
 from typing import Optional
+from enum import IntEnum
+import bidict
 
 
-class XtQuantError(Exception):
-    """xt错误基类"""
 
-    def __init__(self, msg: str, error_code: Optional[int] = None):
-        if error_code is not None:
-            self.error_code = error_code
+class WebErrors(IntEnum):
+    """错误码"""
+    BAD_PARAMS = 400            # 无效参数
+    UNAUTHORIZED = 401          # 未授权
+    FORBIDDEN = 403             # 禁止访问
+    NOT_FOUND = 404             # 资源不存在
+    METHOD_NOT_ALLOWED = 405    # 方法不允许
+    INTERNAL_SERVER_ERROR = 500 # 内部服务器错误
+
+class TradeErrors(IntEnum):
+    """交易处理错误码"""
+    NO_ERROR = 0
+    ERROR_UNKNOWN = 1
+    ERROR_NOT_LOGIN = 2
+    ERROR_BAD_PARAMS = 3
+    ERROR_XT_ORDER_FAIL = 4
+    ERROR_XT_ORDER_TIMEOUT = 5
+
+class BaseTradeError(BaseException):
+    """基础错误处理基类"""
+    def __init__(self, code: TradeErrors, msg: str, *args):
+        self.code = code
         self.msg = msg
+        self.args = args
 
     def __str__(self):
-        return f"{self.__class__.__name__}({self.error_code}: {self.msg})"
-
-    @classmethod
-    def parse_msg(cls, msg: str) -> "XtQuantError":
-        """从xtquant的错误消息中，解析出具体的Error class"""
-        if msg.startswith("行情服务连接断开"):
-            return XtDisconnected(msg)
-        elif msg.startswith("下载数据失败："):
-            try:
-                msg, error_code = msg.split(":")
-                return XtDownloadDataError(msg, error_code)
-            except:
-                return XtDownloadDataError(msg)
-        else:
-            return XtQuantError(msg)
+        return f"({self.code.value} | {self.msg % self.args})"
+    
+class WebError(BaseTradeError):
+    """web API 中的错误处理基类"""
+    ...
 
 
-class XtDisconnected(XtQuantError):
-    pass
+class TradeError(BaseTradeError):
+    """交易处理错误"""
+    ...
 
+class XtQuantTradeError(BaseTradeError):
+    """XtQuantTradeError"""
+    ...
 
-class XtDownloadDataError(XtQuantError):
-    pass
+class XtTradeConnectError(BaseTradeError):
+    """XtTradeConnectError"""
+    ...
