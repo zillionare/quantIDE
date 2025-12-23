@@ -3,7 +3,10 @@ from enum import IntEnum
 
 class BidType(IntEnum):
     FIXED  = 0              # 指定价格下单
-    MARKET = 1              # 最新价（市价）下单
+    LATEST = 1              # 最新价，兼顾成交速度与价格可控，有可能部成
+    MARKET = 2              # 市价单，5档转撤
+    MINE_FIRST = 3          # 本方最优价
+    PEER_FIRST = 4          # 对方最优价
     UNKNOWN = 255           # 未知
 
 class OrderSide(IntEnum):

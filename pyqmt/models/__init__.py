@@ -60,7 +60,7 @@ def db_model(table_name: str, pk: str, indexes:tuple[list[str], bool]):
     def wrapper(cls: Type[T])->Type[T]:
         setattr(cls, "__table_name__", table_name)
         setattr(cls, "__pk__", pk)
-        setattr(cls, "__indexes__", indexes or []) # 例如 (["oid", "fid"], True)
+        setattr(cls, "__indexes__", indexes or []) # 例如 (["qtoid", "foid"], True)
 
         if not hasattr(cls, 'to_db_schema'):
             @classmethod
@@ -72,7 +72,7 @@ def db_model(table_name: str, pk: str, indexes:tuple[list[str], bool]):
     return wrapper
 
 
-@db_model("orders", "oid", (["oid", "tm"], True))
+@db_model("orders", "qtoid", (["qtoid", "tm"], True))
 @dataclass
 class OrderModel:
     asset: str                              # 资产代码
@@ -82,15 +82,14 @@ class OrderModel:
     bid_type: BidType                       # 委托类型，比如限价单、市价单  
     tm: datetime.datetime|None = None       # 下单时间
 
-    fid: str|None = None                    # 外部接口(比如QMT)指定的 id，透传，一般用以查错
+    foid: str|None = None                   # 代理(比如QMT)指定的 id，透传，一般用以查错
     cid: str|None = None                    # 券商柜台合约 id
     status: OrderStatus = OrderStatus.UNREPORTED # 委托状态，比如未报、待报、已报、部成等
     status_msg: str = ""                    # 委托状态描述，比如废单原因
 
     # 本委托 ID, pk
-    oid: str = field(default_factory=lambda: str(uuid.uuid4()))
+    qtoid: str = field(default_factory=lambda: "qtide-" + uuid.uuid4().hex[:16])
     strategy: str = ""                   # 策略名称
-    remark: str = ""                     # 备注
 
     @classmethod
     def to_db_schema(cls)->dict:
@@ -99,7 +98,7 @@ class OrderModel:
         # 修正无法自动转换的类型
         schema["status"] = int
         schema["bid_type"] = int
-        schema["fid"] = str
+        schema["foid"] = str
         return schema
     
     def __post_init__(self):
@@ -114,20 +113,19 @@ class OrderModel:
 @db_model("trades", "tid", (["tid", "tm"], True))
 @dataclass
 class TradeModel:
-    oid: str                            # 对应的 Order id      
+    tid: str                            # 成交 id，pk。可使用代理（比如 qmt）返回值
+    qtoid: str                          # 对应的 Order id (quantide order id)
+    foid: str                           # 代理（比如qmt）给出的 order id
     asset: str                          # 资产代码    
     shares: float|int                   # 成交数量
     price: float                        # 成交价格
     amount: float                       # 成交金额 = 成交数量 * 成交价格
     tm: datetime.datetime               # 成交时间
-    side: OrderSide                     # 成交方向，在 qmt 中是order_type
+    side: OrderSide                     # 成交方向
 
-    fid: str                            # 外部接口(比如QMT)指定的 traded_id
-    cid: str                            # 柜台合同编号，应与同 oid 中的 cid 相一致
+    cid: str                            # 柜台合同编号，应与同 qtoid 中的 cid 相一致
 
     fee: float = 0                      # 本笔交易手续费
-    # 本次 fill(成交) ID
-    tid: str = field(default_factory=lambda: str(uuid.uuid4())) 
 
     @classmethod
     def to_db_schema(cls)->dict:
