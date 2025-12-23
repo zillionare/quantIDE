@@ -10,7 +10,7 @@ import os
 from importlib.metadata import version
 from pathlib import Path
 import pytz
-from pytz.tzinfo import DstTzInfo
+from .schema import Config
 
 import cfg4py
 
@@ -43,8 +43,8 @@ def init_config(config_dir: str|Path|None=None):
     return cfg4py.get_instance()
 
 
-cfg = cfg4py.get_instance()
+cfg: Config = cfg4py.get_instance()
 
-cfg.TIMEZONE: DstTzInfo = pytz.timezone("Asia/Shanghai") # type: ignore
+cfg.TIMEZONE = pytz.timezone("Asia/Shanghai")
 
 __all__ = ["cfg", "endpoint", "init_config"]

@@ -4,7 +4,7 @@ from typing import Any
 
 class Config(object):
     __access_counter__ = 0
-
+    TIMEZONE: Any
     def __cfg4py_reset_access_counter__(self):
         self.__access_counter__ = 0
 
