@@ -5,7 +5,7 @@ from pyqmt.dal.tradedb import TradeDB
 from pyqmt.models import OrderModel, TradeModel, PositionModel, AssetModel
 from pyqmt.core.enums import OrderSide, BidType, OrderStatus
 import datetime
-from dataclasses import asdict
+import sqlite3
 
 @pytest.fixture
 def temp_db_file():
@@ -33,6 +33,13 @@ def test_table_creation(temp_db_file):
     # 注意：sqlite-utils 中 pks 是一个列表
     assert "qtoid" in orders_table.pks
     assert "tid" in trades_table.pks
+    
+    # Check foreign key constraints
+    foreign_keys = list(trades_table.foreign_keys)
+    assert len(foreign_keys) > 0
+    # Check that there's a foreign key from trades.qtoid to orders.qtoid
+    qtoid_fk = [fk for fk in foreign_keys if fk.column == 'qtoid' and fk.other_table == 'orders' and fk.other_column == 'qtoid']
+    assert len(qtoid_fk) == 1
 
 
 def test_order(temp_db_file):
@@ -95,15 +102,19 @@ def test_get_order_by_foid(temp_db_file):
     assert retrieved_order.qtoid == "internal_1"
     assert retrieved_order.foid == "123"
 
+
 def test_trades_crud(temp_db_file):
     """Test trades CRUD operations with self-contained workflow"""
     db = TradeDB()
     db.init(temp_db_file)
     
+    # First create an order that we'll reference in the trade
+    qtoid = db.save_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    
     # Create and save multiple trade records
     trade1 = TradeModel(
         tid="trade1",
-        qtoid="qtoid1",
+        qtoid=qtoid,  # Reference to the existing order
         foid="foid1",
         asset="000001.SZ",
         shares=100,
@@ -116,7 +127,7 @@ def test_trades_crud(temp_db_file):
     
     trade2 = TradeModel(
         tid="trade2",
-        qtoid="qtoid2",
+        qtoid=qtoid,  # Reference to the same order
         foid="foid2",
         asset="000002.SZ",
         shares=200,
@@ -127,27 +138,14 @@ def test_trades_crud(temp_db_file):
         cid="cid2"
     )
     
-    trade3 = TradeModel(
-        tid="trade3",
-        qtoid="qtoid1",  # Same qtoid as trade1 to test query by qtoid
-        foid="foid1",    # Same foid as trade1 to test query by foid
-        asset="000001.SZ",
-        shares=150,
-        price=11.0,
-        amount=1650.0,
-        tm=datetime.datetime.now(),
-        side=OrderSide.BUY,
-        cid="cid1"
-    )
-    
     # Test save_trades with multiple trades (batch insert)
-    db.save_trades([trade1, trade2, trade3])
+    db.save_trades([trade1, trade2])
     
     # Test get_trade to retrieve a single trade by tid
     retrieved_trade = db.get_trade("trade1")
     assert retrieved_trade is not None
     assert retrieved_trade.tid == "trade1"
-    assert retrieved_trade.qtoid == "qtoid1"
+    assert retrieved_trade.qtoid == qtoid
     assert retrieved_trade.asset == "000001.SZ"
     assert retrieved_trade.shares == 100
     assert retrieved_trade.price == 10.5
@@ -155,53 +153,105 @@ def test_trades_crud(temp_db_file):
     assert retrieved_trade.side == OrderSide.BUY
     
     # Test query_trade to retrieve trades by qtoid
-    trades_by_qtoid = db.query_trade(qtoid="qtoid1")
-    assert len(trades_by_qtoid) == 2  # Should return trade1 and trade3
+    trades_by_qtoid = db.query_trade(qtoid=qtoid)
+    assert len(trades_by_qtoid) == 2  # Should return trade1 and trade2
     trade_tids = [t.tid for t in trades_by_qtoid]
     assert "trade1" in trade_tids
-    assert "trade3" in trade_tids
+    assert "trade2" in trade_tids
     
     # Test query_trade to retrieve trades by foid
     trades_by_foid = db.query_trade(foid="foid1")
-    assert len(trades_by_foid) == 2  # Should return trade1 and trade3
-    trade_tids = [t.tid for t in trades_by_foid]
-    assert "trade1" in trade_tids
-    assert "trade3" in trade_tids
+    assert len(trades_by_foid) == 1  # Should return trade1
+    assert trades_by_foid[0].tid == "trade1"
     
     # Test query_trade with no parameters to get all trades
     all_trades = db.query_trade()
-    assert len(all_trades) == 3
+    assert len(all_trades) == 2
     all_tids = [t.tid for t in all_trades]
     assert "trade1" in all_tids
     assert "trade2" in all_tids
-    assert "trade3" in all_tids
     
     # Test saving a single trade record
-    trade4 = TradeModel(
-        tid="trade4",
-        qtoid="qtoid4",
-        foid="foid4",
+    trade3 = TradeModel(
+        tid="trade3",
+        qtoid=qtoid,  # Reference to the same order
+        foid="foid3",
         asset="000004.SZ",
         shares=300,
         price=30.5,
         amount=9150.0,
         tm=datetime.datetime.now(),
         side=OrderSide.BUY,
-        cid="cid4"
+        cid="cid3"
     )
     
     # Save single trade
-    db.save_trades(trade4)
+    db.save_trades(trade3)
     
     # Verify single trade was added
     all_trades = db.query_trade()
-    assert len(all_trades) == 4
+    assert len(all_trades) == 3
     trade_tids = [t.tid for t in all_trades]
-    assert "trade4" in trade_tids
+    assert "trade3" in trade_tids
     
     # Test get_trade for the new single trade
-    retrieved_trade4 = db.get_trade("trade4")
-    assert retrieved_trade4 is not None
-    assert retrieved_trade4.tid == "trade4"
-    assert retrieved_trade4.asset == "000004.SZ"
-    assert retrieved_trade4.shares == 300
+    retrieved_trade3 = db.get_trade("trade3")
+    assert retrieved_trade3 is not None
+    assert retrieved_trade3.tid == "trade3"
+    assert retrieved_trade3.asset == "000004.SZ"
+    assert retrieved_trade3.shares == 300
+
+
+def test_foreign_key_constraint(temp_db_file):
+    """Test foreign key constraint enforcement"""
+    db = TradeDB()
+    db.init(temp_db_file)
+    
+    # Create an order first
+    qtoid = db.save_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    
+    # Create a trade that references the order - this should succeed
+    valid_trade = TradeModel(
+        tid="valid_trade",
+        qtoid=qtoid,  # Valid reference to existing order
+        foid="foid1",
+        asset="000001.SZ",
+        shares=100,
+        price=10.5,
+        amount=1050.0,
+        tm=datetime.datetime.now(),
+        side=OrderSide.BUY,
+        cid="cid1"
+    )
+    
+    # This should succeed since qtoid references an existing order
+    db.save_trades(valid_trade)
+    
+    # Verify the trade was saved
+    retrieved_trade = db.get_trade("valid_trade")
+    assert retrieved_trade is not None
+    assert retrieved_trade.qtoid == qtoid
+    
+    # Verify foreign key constraint is defined
+    foreign_keys = list(db["trades"].foreign_keys)
+    qtoid_fk = [fk for fk in foreign_keys if fk.column == 'qtoid' and fk.other_table == 'orders' and fk.other_column == 'qtoid']
+    assert len(qtoid_fk) == 1
+    
+    # Now test what happens when we try to insert a trade with a non-existent qtoid
+    # This should fail due to foreign key constraint
+    invalid_trade = TradeModel(
+        tid="invalid_trade",
+        qtoid="non_existent_qtoid",  # Invalid reference to non-existent order
+        foid="foid2",
+        asset="000002.SZ",
+        shares=200,
+        price=20.5,
+        amount=4100.0,
+        tm=datetime.datetime.now(),
+        side=OrderSide.SELL,
+        cid="cid2"
+    )
+    
+    # Attempt to save the invalid trade - this should raise an exception due to foreign key constraint
+    with pytest.raises(sqlite3.IntegrityError):
+        db.save_trades(invalid_trade)

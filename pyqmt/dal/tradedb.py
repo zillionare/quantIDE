@@ -62,6 +62,9 @@ class TradeDB:
         if not hasattr(self._thread_local, "conn"):
             conn = sqlite3.connect(self.db_path, check_same_thread=True)
 
+            # 启用外键约束
+            conn.execute("PRAGMA foreign_keys = ON")
+
             self._thread_local.conn = conn
             self._thread_local.db = su.Database(conn)
 
@@ -79,9 +82,17 @@ class TradeDB:
             t: su.db.Table = db[table]  # type: ignore
             t.create(model.to_db_schema(), pk=pk)
 
+            # 创建索引
             if model.__indexes__ is not None:
                 indexes, is_unique = model.__indexes__
                 t.create_index(indexes, unique=is_unique)
+
+            # 创建外键约束
+            if hasattr(model, '__foreign_keys__') and model.__foreign_keys__:
+                for fk in model.__foreign_keys__:
+                    if len(fk) == 3:  # (from_column, to_table, to_column)
+                        from_col, to_table, to_col = fk
+                        t.add_foreign_key(from_col, to_table, to_col)
 
     def __getitem__(self, table_name) -> su.db.Table:
         """代理获取表对象"""
