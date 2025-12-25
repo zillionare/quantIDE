@@ -119,6 +119,11 @@ class OrderModel:
     qtoid: str = field(default_factory=lambda: "qtide-" + uuid.uuid4().hex[:16])
     strategy: str = ""                   # 策略名称
 
+    def __post_init__(self):
+        if isinstance(self.tm, str):
+            self.tm = datetime.datetime.fromisoformat(self.tm)
+
+
 
 @db_model("trades", "tid", (["tid", "tm"], True), foreign_keys=[("qtoid", "orders", "qtoid")])
 @dataclass
@@ -137,14 +142,9 @@ class TradeModel:
 
     fee: float = 0                      # 本笔交易手续费
 
-    @classmethod
-    def to_db_schema(cls)->dict:
-        schema = _dataclass_to_schema(cls)
-
-        # 修正无法自动转换的类型
-        schema["side"] = int
-        schema["tm"] = str
-        return schema
+    def __post_init__(self):
+        if isinstance(self.tm, str):
+            self.tm = datetime.datetime.fromisoformat(self.tm)
 
 
 @db_model("positions", "asset", (["asset", "dt"], True))
@@ -155,6 +155,16 @@ class PositionModel:
     shares: float|int
     avail: float|int                      # 可用数量
     price: float                          # 持仓价格
+    
+    def __post_init__(self):
+        if isinstance(self.dt, str):
+            # 处理可能包含时间的ISO格式字符串
+            if 'T' in self.dt:
+                self.dt = datetime.datetime.fromisoformat(self.dt).date()
+            else:
+                self.dt = datetime.datetime.strptime(self.dt, "%Y-%m-%d").date()
+        elif isinstance(self.dt, datetime.datetime):
+            self.dt = self.dt.date()
 
 
 @db_model("assets", "dt", (["dt"], True))
@@ -166,3 +176,14 @@ class AssetModel:
     frozen_cash: float
     market_value: float
     total: float
+
+    def __post_init__(self):
+        if isinstance(self.dt, str):
+            # 处理可能包含时间的ISO格式字符串
+            if 'T' in self.dt:
+                self.dt = datetime.datetime.fromisoformat(self.dt).date()
+            else:
+                self.dt = datetime.datetime.strptime(self.dt, "%Y-%m-%d").date()
+        elif isinstance(self.dt, datetime.datetime):
+            self.dt = self.dt.date()
+

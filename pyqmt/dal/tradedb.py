@@ -48,6 +48,7 @@ class TradeDB:
 
         # 初始化表结构
         self._init_tables(db)
+        conn.commit()
         conn.close()
         self._initialized = True
 
@@ -105,6 +106,11 @@ class TradeDB:
     def get_positions(self, dt: datetime.date) -> list[PositionModel]:
         """获取指定日期的持仓信息"""
         rows = self.db["positions"].rows_where("dt = ?", (dt,))
+        return [PositionModel(**row) for row in rows]
+    
+    def positions_all(self)->list[PositionModel]:
+        """获取所有持仓信息"""
+        rows = self.db["positions"].rows
         return [PositionModel(**row) for row in rows]
 
     def get_order_by_foid(self, foid: str | int) -> OrderModel | None:
@@ -243,7 +249,32 @@ class TradeDB:
 
         self["trades"].insert_all([asdict(trade) for trade in trades], ignore=True)
 
+    def query_asset_by_date(self, dt: datetime.date) -> AssetModel | None:
+        """通过日期查询资产信息
 
-db = TradeDB()
+        Args:
+            dt: 查询日期
+
+        Returns:
+            AssetModel: 资产信息
+        """
+        rows = self.db["assets"].rows_where("dt = ?", (dt,), limit=1)
+        assets = list(rows)
+        if len(assets) == 0:
+            return None
+        else:
+            return AssetModel(**assets[0])
+        
+    def assets_all(self) -> list[AssetModel]:
+        """获取所有资产信息
+
+        Returns:
+            list[AssetModel]: 资产信息列表
+        """
+        rows = self.db["assets"].rows
+        return [AssetModel(**row) for row in rows]
+
+
+db: TradeDB = TradeDB()
 
 __all__ = ["db"]

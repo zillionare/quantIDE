@@ -75,6 +75,7 @@ def test_order(temp_db_file):
     assert updated_order.status_msg == "Canceled by user"
     assert updated_order.foid == str(1234)
     assert updated_order.cid == "567"
+    assert isinstance(updated_order.tm, datetime.datetime)
 
     # 04 fetch by foid
     db_order = db.get_order_by_foid(str(1234))
@@ -166,6 +167,7 @@ def test_trades_crud(temp_db_file):
     trades_by_foid = db.query_trade(foid="foid1")
     assert len(trades_by_foid) == 1  # Should return trade1
     assert trades_by_foid[0].tid == "trade1"
+    assert isinstance(trades_by_foid[0].tm, datetime.datetime)
     
     # Test query_trade with no parameters to get all trades
     all_trades = db.query_trade()
@@ -286,6 +288,7 @@ def test_get_positions(temp_db_file):
     assert len(positions) == 1
     assert positions[0].asset == "000001.SZ"
     assert positions[0].shares == 1000
+    assert isinstance(positions[0].dt, datetime.date)
 
 def test_save_order_full_params(temp_db_file):
     """Test save_order with all parameters"""
