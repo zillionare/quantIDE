@@ -32,8 +32,10 @@ for model in [OrderModel, TradeModel, AssetModel]:
 
 from dataclasses import dataclass, field, fields
 from typing import Type, TypeVar
+from enum import IntEnum
 import datetime
 import uuid
+import types
 from pyqmt.core.enums import OrderSide, BidType, OrderStatus
 
 T = TypeVar("T")
@@ -47,11 +49,17 @@ def _dataclass_to_schema(cls) -> dict:
             schema[f.name] = str
         elif f.type in (str, int, float, bool):
             schema[f.name] = f.type
-        elif getattr(f.type, "__origin__", None) is type(None) or (
-            hasattr(f.type, "__args__") and type(None) in f.type.__args__
-        ):
-            base_type = [t for t in f.type.__args__ if t is not type(None)][0]
-            schema[f.name] = base_type if base_type in (str, int, float, bool) else str
+        # 处理所有联合类型（Union[A, B] 和 A | B 语法）
+        elif (hasattr(f.type, "__origin__") and f.type.__origin__ is Union) or isinstance(f.type, types.UnionType):
+            # 提取非 None 的类型
+            non_none_types = [t for t in f.type.__args__ if t is not type(None)]
+            if non_none_types:
+                base_type = non_none_types[0]
+                schema[f.name] = base_type if base_type in (str, int, float, bool) else str
+            else:
+                schema[f.name] = str
+        elif isinstance(f.type, type) and issubclass(f.type, IntEnum):
+            schema[f.name] = int
         else:
             schema[f.name] = str
     return schema
@@ -91,24 +99,6 @@ class OrderModel:
     qtoid: str = field(default_factory=lambda: "qtide-" + uuid.uuid4().hex[:16])
     strategy: str = ""                   # 策略名称
 
-    @classmethod
-    def to_db_schema(cls)->dict:
-        schema = _dataclass_to_schema(cls)
-
-        # 修正无法自动转换的类型
-        schema["status"] = int
-        schema["bid_type"] = int
-        schema["foid"] = str
-        return schema
-    
-    def __post_init__(self):
-        if isinstance(self.status, int):
-            self.status = OrderStatus(self.status)
-        if isinstance(self.bid_type, int):
-            self.bid_type = BidType(self.bid_type)
-        if isinstance(self.side, int):
-            self.side = OrderSide(self.side)
-
 
 @db_model("trades", "tid", (["tid", "tm"], True))
 @dataclass
@@ -135,12 +125,6 @@ class TradeModel:
         schema["side"] = int
         schema["tm"] = str
         return schema
-    
-    def __post_init__(self):
-        if isinstance(self.side, int):
-            self.side = OrderSide(self.side)
-    
-    
 
 
 @db_model("positions", "asset", (["asset", "dt"], True))
@@ -152,14 +136,6 @@ class PositionModel:
     avail: float|int                      # 可用数量
     price: float                          # 持仓价格
 
-    @classmethod
-    def to_db_schema(cls)->dict:
-        schema = _dataclass_to_schema(cls)
-
-        # 修正无法自动转换的类型
-        schema["dt"] = str
-        return schema
-
 
 @db_model("assets", "dt", (["dt"], True))
 @dataclass
@@ -170,12 +146,4 @@ class AssetModel:
     frozen_cash: float
     market_value: float
     total: float
-
-    @classmethod
-    def to_db_schema(cls)->dict:
-        schema = _dataclass_to_schema(cls)
-
-        # 修正无法自动转换的类型
-        schema["dt"] = str
-        return schema
 
