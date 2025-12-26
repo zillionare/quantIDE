@@ -6,6 +6,7 @@ from pyqmt.models import OrderModel, TradeModel, PositionModel, AssetModel
 from pyqmt.core.enums import OrderSide, BidType, OrderStatus
 import datetime
 import sqlite3
+import copy
 
 @pytest.fixture
 def temp_db_file():
@@ -44,12 +45,13 @@ def test_table_creation(temp_db_file):
     assert len(qtoid_fk) == 1
 
 
-def test_order(temp_db_file):
+def test_orders_crud(temp_db_file):
     """Test order CRUD """
     db.init(temp_db_file)
     
     # 01 Test saving order
-    qtoid = db.insert_order(asset = "000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    tm = datetime.datetime.now()
+    qtoid = db.insert_order(asset = "000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=tm)
     
     # Verify it was saved
     saved_order = db.get_order(qtoid)
@@ -80,6 +82,11 @@ def test_order(temp_db_file):
     assert db_order is not None
     assert db_order.qtoid == qtoid
     assert db_order.foid == str(1234)
+
+    # 05 返回所有的订单
+    orders = db.orders_all()
+    assert len(orders) == 1
+    assert orders["tm"][0] == tm
 
 
 def test_get_order_by_foid(temp_db_file):
@@ -203,6 +210,10 @@ def test_trades_crud(temp_db_file):
     assert retrieved_trade3.asset == "000004.SZ"
     assert retrieved_trade3.shares == 300
 
+    # 返回所有的 trades
+    df = db.trades_all()
+    assert len(df) == 3
+
 
 def test_foreign_key_constraint(temp_db_file):
     """Test foreign key constraint enforcement"""
@@ -258,12 +269,12 @@ def test_foreign_key_constraint(temp_db_file):
     with pytest.raises(sqlite3.IntegrityError):
         db.insert_trades(invalid_trade)
 
-def test_get_positions(temp_db_file):
+def test_positions_crud(temp_db_file):
     """Test get_positions method to cover that code path"""
     db.init(temp_db_file)
     
-    # Insert a position record directly
-    position = PositionModel(
+    # 01 Insert single position record directly
+    pos01 = PositionModel(
         dt=datetime.date.today(),
         asset="000001.SZ",
         shares=1000,
@@ -273,7 +284,7 @@ def test_get_positions(temp_db_file):
         profit=1000.0
     )
 
-    db.upsert_positions(position)
+    db.upsert_positions(pos01)
     
     # Test get_positions
     positions = db.get_positions(datetime.date.today())
@@ -282,8 +293,10 @@ def test_get_positions(temp_db_file):
     assert positions["shares"][0] == 1000
     assert isinstance(positions["dt"][0], datetime.date)
 
-    position.asset = "000002.SZ"
-    db.upsert_positions(position)
+    # 02 update single position record
+    pos02 = copy.deepcopy(pos01)
+    pos02.asset = "000002.SZ"
+    db.upsert_positions(pos02)
     
     # Test get_positions for the new asset
     positions = db.get_positions(datetime.date.today())
@@ -291,8 +304,17 @@ def test_get_positions(temp_db_file):
     assert "000001.SZ" in positions["asset"]
     assert "000002.SZ" in positions["asset"]
 
+    # 03 get all positions
     posistions = db.positions_all()
     assert len(posistions) == 2
+
+    # 04 batch upsert
+    db.upsert_positions([pos01, pos02])
+    positions = db.positions_all()
+    assert len(positions) == 2
+    assert "000001.SZ" in positions["asset"]
+    assert "000002.SZ" in positions["asset"]
+    assert positions["dt"][0] == datetime.date.today()
 
 def test_save_order_full_params(temp_db_file):
     """Test save_order with all parameters"""

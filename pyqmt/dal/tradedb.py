@@ -110,9 +110,14 @@ class TradeDB:
         """代理其他方法调用"""
         return getattr(self.db, name)
 
-    def upsert_positions(self, position: PositionModel):
+    def upsert_positions(self, position: PositionModel|list[PositionModel]):
         """保存（插入和更新）持仓信息。"""
-        self["positions"].upsert(asdict(position), pk= PositionModel.__pk__) # type: ignore
+        if isinstance(position, PositionModel):
+            positions = [position]
+        else:
+            positions = position
+
+        self["positions"].upsert_all([asdict(pos) for pos in positions], pk= PositionModel.__pk__) # type: ignore
     
     def get_positions(self, dt: datetime.date) -> pl.DataFrame:
         """获取指定日期的持仓信息"""
