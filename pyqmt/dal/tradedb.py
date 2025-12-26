@@ -258,6 +258,8 @@ class TradeDB:
         Returns:
             AssetModel: 资产信息
         """
+        if isinstance(dt, datetime.datetime):
+            dt = dt.date()
         rows = self.db["assets"].rows_where("dt = ?", (dt,), limit=1)
         assets = list(rows)
         if len(assets) == 0:
@@ -273,6 +275,23 @@ class TradeDB:
         """
         rows = self.db["assets"].rows
         return [AssetModel(**row) for row in rows]
+
+    def save_asset(self, asset: AssetModel)->None:
+        """保存(更新)资产信息
+
+        Args:
+            asset: 资产信息
+        """
+        self["assets"].insert(asdict(asset))
+
+    def update_asset(self, dt: datetime.date, **updates):
+        """更新资产信息
+        
+        与 save_asset 不同，本方法允许单字段更新
+        """
+        if isinstance(dt, datetime.datetime):
+            dt = dt.date()
+        self["assets"].update(dt, updates) # type: ignore
 
 
 db: TradeDB = TradeDB()

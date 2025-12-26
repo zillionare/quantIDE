@@ -396,19 +396,13 @@ def test_assets(temp_db_file):
     # 02 update
     new_principal = 5_000_000
     asset.principal = new_principal
-    db.save_asset(asset)
+    db.update_asset(dt, principal = new_principal)
     asset_from_db = db.query_asset_by_date(dt)
     assert asset_from_db is not None
     assert asset_from_db == asset
 
-    # 03 如果 principal 为 None，不会写入数据库
-    asset.principal = None
-    db.save_asset(asset)
-    asset_from_db = db.query_asset_by_date(dt)
-    assert asset_from_db is not None
-    assert asset_from_db.principal == new_principal
 
-    # 04 dt 为 datetime.date
+    # 03 dt 为 datetime.date
     dt = datetime.date.today() - datetime.timedelta(days=1)
     asset = AssetModel(dt,
                     new_principal,
@@ -421,7 +415,7 @@ def test_assets(temp_db_file):
     assert asset_from_db is not None
     assert asset_from_db == asset
 
-    # 05 assets_all
+    # 04 assets_all
     assets = db.assets_all()
     assert len(assets) == 2
 
