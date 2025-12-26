@@ -375,3 +375,53 @@ def test_foreign_key_constraint_in_init_tables():
     qtoid_fk = [fk for fk in foreign_keys 
                 if fk.column == 'qtoid' and fk.other_table == 'orders' and fk.other_column == 'qtoid']
     assert len(qtoid_fk) == 1, "Foreign key constraint from trades.qtoid to orders.qtoid should exist"
+
+def test_assets(temp_db_file):
+    db = TradeDB()
+    db.init(temp_db_file)
+
+    # 01 save/query
+    dt = datetime.datetime.today()
+    asset = AssetModel(dt,
+                    1_000_000,
+                    1_000_000,
+                    0,
+                    0,
+                    1_000_000)
+    db.save_asset(asset)
+    asset_from_db = db.query_asset_by_date(dt)
+    assert asset_from_db is not None
+    assert asset_from_db == asset
+
+    # 02 update
+    new_principal = 5_000_000
+    asset.principal = new_principal
+    db.save_asset(asset)
+    asset_from_db = db.query_asset_by_date(dt)
+    assert asset_from_db is not None
+    assert asset_from_db == asset
+
+    # 03 如果 principal 为 None，不会写入数据库
+    asset.principal = None
+    db.save_asset(asset)
+    asset_from_db = db.query_asset_by_date(dt)
+    assert asset_from_db is not None
+    assert asset_from_db.principal == new_principal
+
+    # 04 dt 为 datetime.date
+    dt = datetime.date.today() - datetime.timedelta(days=1)
+    asset = AssetModel(dt,
+                    new_principal,
+                    1_000_000,
+                    0,
+                    0,
+                    1_000_000)
+    db.save_asset(asset)
+    asset_from_db = db.query_asset_by_date(dt)
+    assert asset_from_db is not None
+    assert asset_from_db == asset
+
+    # 05 assets_all
+    assets = db.assets_all()
+    assert len(assets) == 2
+

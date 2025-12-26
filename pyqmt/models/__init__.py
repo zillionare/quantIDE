@@ -171,7 +171,7 @@ class PositionModel:
 @dataclass
 class AssetModel:
     dt: datetime.date
-    principal: float
+    principal: float|None
     cash: float
     frozen_cash: float
     market_value: float
