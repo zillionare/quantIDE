@@ -176,7 +176,7 @@ class TradeDB:
         else:
             return OrderModel(**orders[0])
 
-    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame:
+    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame|None:
         """根据日期查询订单
 
         Args:
@@ -192,6 +192,9 @@ class TradeDB:
             "tm >= ? and tm < ?", (dt, dt + datetime.timedelta(days=1))
         )
         df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return None
+        
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
     def orders_all(self) -> pl.DataFrame:
@@ -240,7 +243,7 @@ class TradeDB:
 
     def query_trade(
         self, qtoid: str | None = None, foid: str | None = None
-    ) -> list[TradeModel]:
+    ) -> pl.DataFrame|None:
         """通过 qtoid, foid 或者 tid查询成交
 
             Args:
@@ -248,7 +251,7 @@ class TradeDB:
                 foid: 查询指定 foid 的成交
 
         Returns:
-            list[TradeModel]: 成交数据列表
+            成交数据框
         """
         filters = []
         params = {"qtoid": qtoid, "foid": foid}
@@ -258,16 +261,25 @@ class TradeDB:
                 filters.append(f"{param} = :{param}")
 
         if len(filters) == 0:
-            return [TradeModel(**row) for row in db["trades"].rows]
+            return (pl.DataFrame(self["trades"].rows)
+                    .with_columns(pl.col("tm").cast(pl.Datetime))
+                    )
 
         where_clause = " OR ".join(filters)
         rows = self["trades"].rows_where(where_clause, params)
-        return [TradeModel(**row) for row in rows]
+        df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return None
+        
+        return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def trades_all(self) -> pl.DataFrame:
+    def trades_all(self) -> pl.DataFrame|None:
         """获取所有成交信息"""
         rows = self["trades"].rows
         df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return None
+        
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
     def get_asset(self, dt: datetime.date) -> AssetModel | None:
@@ -288,7 +300,7 @@ class TradeDB:
         else:
             return AssetModel(**assets[0])
 
-    def assets_all(self) -> pl.DataFrame:
+    def assets_all(self) -> pl.DataFrame|None:
         """获取所有资产信息
 
         Returns:
@@ -296,6 +308,9 @@ class TradeDB:
         """
         rows = self["assets"].rows
         df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return None
+        
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
     def insert_asset(self, asset: AssetModel) -> None:

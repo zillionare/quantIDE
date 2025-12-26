@@ -377,10 +377,6 @@ class QMTBroker(AbstractBroker):
         # 资产表
         self._asset: AssetModel | None = None
 
-    def invalidate(self, _type: str):
-        if _type in ("asset", "all"):
-            self._asset = None
-
     @staticmethod
     def before_retry_sleep(rs: RetryCallState):
         """用于重试，记录日志及重连 XtTrader
@@ -436,8 +432,6 @@ class QMTBroker(AbstractBroker):
     def trade_api(self) -> XtQuantTrader:
         if self._trade_api is None:
             self.connect_trade_api()
-            # 重新连接之后，之前缓存的数据都认为是 dirty 状态
-            self.invalidate("all")
 
         return self.trade_api
 
@@ -489,7 +483,6 @@ class QMTBroker(AbstractBroker):
         response = self.trade_api.query_stock_positions(self.acc) or []
         for pos in response:
             position = as_position(pos)
-
             positions.append(position)
 
         db.upsert_positions(positions)
@@ -543,7 +536,7 @@ class QMTBroker(AbstractBroker):
         bid_time: datetime.datetime | None = None,
         strategy: str = "",
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> pl.DataFrame|None:
         """买入指令
 
         如果传入价格为0或者 None，则为市价买入。
@@ -553,10 +546,11 @@ class QMTBroker(AbstractBroker):
             price: 委托价格
             shares: 委托数量
             bit_time: 下单时间，实盘时可省略传入，测试时必须传入
+            strategy: 策略名称
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
 
         Returns:
-            成交结果。如果超时未成交(含部成），返回空列表
+            成交结果
         """
         bid_type = BidType.MARKET if price == 0 else BidType.FIXED
 
@@ -572,9 +566,16 @@ class QMTBroker(AbstractBroker):
         if shares <= 0:
             raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "无效的参数: shares <= 0")
 
-        qtoid = self.save_order(
-            asset, price, shares, OrderSide.BUY, bid_type, bid_time=bid_time
-        )
+        order = OrderModel(
+            asset=asset,
+            price=price,
+            shares=shares,
+            side=OrderSide.BUY,
+            bid_type=bid_type,
+            tm = bid_time or datetime.datetime.now(),
+            strategy=strategy
+         )
+        qtoid = db.insert_order(order)
 
         xt_order_side = as_xt_order_side(OrderSide.BUY)
         xt_bid_type = as_xt_bid_type(bid_type, price, asset)
@@ -599,21 +600,18 @@ class QMTBroker(AbstractBroker):
             logger.warning(
                 "买入{}, {}, {}, {}下单等待超时", asset, price, shares, strategy
             )
-            raise TradeError(
-                TradeErrors.ERROR_XT_ORDER_TIMEOUT,
-                f"Order {qtoid} 下单超时： {timeout}",
-            )
+            return None
 
         foid = order_response.order_id
-        self.update_order(qtoid, fid=str(foid))
+        db.update_order(qtoid, foid=str(foid))
 
         # 在 remaining_time 内，等待成交
         while remaining_time > 0:
-            trades = self.query_trades(qtoid)
+            trades = db.query_trades(qtoid)
             if trades:
                 break
             await asyncio.sleep(0.01)
             remaining_time -= 0.01
 
         # 查询成交
-        return []
+        return db.query_trade(qtoid)
