@@ -22,7 +22,7 @@ class OrderModel:
     side: OrderSide
     shares: float|int                       # 委托数量。调用者需要保证符合交易要求
     price: float
-    bid_type: BidType                       # 委托类型，比如限价单、市价单  
+    bid_type: BidType                       # 委托类型，比如限价单、市价单
     tm: datetime.datetime|None = None       # 下单时间
 
     foid: str|None = None                   # 代理(比如QMT)指定的 id，透传，一般用以查错
@@ -59,6 +59,11 @@ from pyqmt.core.enums import OrderSide, BidType, OrderStatus
 
 T = TypeVar("T")
 
+
+def new_uuid_id() -> str:
+    return "qtide-" + uuid.uuid4().hex[:16]
+
+
 def _dataclass_to_schema(cls) -> dict:
     """类方法：解析当前 dataclass 为 fastlite 兼容的 schema 字典"""
     schema = {}
@@ -69,12 +74,16 @@ def _dataclass_to_schema(cls) -> dict:
         elif f.type in (str, int, float, bool):
             schema[f.name] = f.type
         # 处理所有联合类型（Union[A, B] 和 A | B 语法）
-        elif (hasattr(f.type, "__origin__") and f.type.__origin__ is Union) or isinstance(f.type, types.UnionType):
+        elif (
+            hasattr(f.type, "__origin__") and f.type.__origin__ is Union
+        ) or isinstance(f.type, types.UnionType):
             # 提取非 None 的类型
             non_none_types = [t for t in f.type.__args__ if t is not type(None)]
             if non_none_types:
                 base_type = non_none_types[0]
-                schema[f.name] = base_type if base_type in (str, int, float, bool) else str
+                schema[f.name] = (
+                    base_type if base_type in (str, int, float, bool) else str
+                )
             else:
                 schema[f.name] = str
         elif isinstance(f.type, type) and issubclass(f.type, IntEnum):
@@ -83,65 +92,78 @@ def _dataclass_to_schema(cls) -> dict:
             schema[f.name] = str
     return schema
 
-def db_model(table_name: str, pk: str, indexes:tuple[list[str], bool]|None = None, foreign_keys: list|None = None):
-    def wrapper(cls: Type[T])->Type[T]:
+
+def db_model(
+    table_name: str,
+    pk: str,
+    indexes: tuple[list[str], bool] | None = None,
+    foreign_keys: list | None = None,
+):
+    def wrapper(cls: Type[T]) -> Type[T]:
         setattr(cls, "__table_name__", table_name)
         setattr(cls, "__pk__", pk)
-        setattr(cls, "__indexes__", indexes or []) # 例如 (["qtoid", "foid"], True)
-        setattr(cls, "__foreign_keys__", foreign_keys or []) # 例如 [("qtoid", "orders", "qtoid")]
+        setattr(cls, "__indexes__", indexes or [])  # 例如 (["qtoid", "foid"], True)
+        setattr(
+            cls, "__foreign_keys__", foreign_keys or []
+        )  # 例如 [("qtoid", "orders", "qtoid")]
 
-        if not hasattr(cls, 'to_db_schema'):
+        if not hasattr(cls, "to_db_schema"):
+
             @classmethod
             def to_db_schema(cls_inner):
                 return _dataclass_to_schema(cls_inner)
-            
+
             cls.to_db_schema = to_db_schema
         return cls
+
     return wrapper
 
 
 @db_model("orders", "qtoid", (["qtoid", "tm"], True))
 @dataclass
 class OrderModel:
-    asset: str                              # 资产代码
+    asset: str  # 资产代码
     side: OrderSide
-    shares: float|int                       # 委托数量。调用者需要保证符合交易要求
+    shares: float | int  # 委托数量。调用者需要保证符合交易要求
     price: float
-    bid_type: BidType                       # 委托类型，比如限价单、市价单  
-    tm: datetime.datetime|None = None       # 下单时间
+    bid_type: BidType  # 委托类型，比如限价单、市价单
+    tm: datetime.datetime | None = None  # 下单时间
 
-    foid: str|None = None                   # 代理(比如QMT)指定的 id，透传，一般用以查错
-    cid: str|None = None                    # 券商柜台合约 id
-    status: OrderStatus = OrderStatus.UNREPORTED # 委托状态，比如未报、待报、已报、部成等
-    status_msg: str = ""                    # 委托状态描述，比如废单原因
+    foid: str | None = None  # 代理(比如QMT)指定的 id，透传，一般用以查错
+    cid: str | None = None  # 券商柜台合约 id
+    status: OrderStatus = (
+        OrderStatus.UNREPORTED
+    )  # 委托状态，比如未报、待报、已报、部成等
+    status_msg: str = ""  # 委托状态描述，比如废单原因
 
     # 本委托 ID, pk
-    qtoid: str = field(default_factory=lambda: "qtide-" + uuid.uuid4().hex[:16])
-    strategy: str = ""                      # 策略名称
-    error: str = ""                         # 报单错误信息，包括错误码和错误信息,以:分隔
+    qtoid: str = field(default_factory=new_uuid_id)
+    strategy: str = ""  # 策略名称
+    error: str = ""  # 报单错误信息，包括错误码和错误信息,以:分隔
 
     def __post_init__(self):
         if isinstance(self.tm, str):
             self.tm = datetime.datetime.fromisoformat(self.tm)
 
 
-
-@db_model("trades", "tid", (["tid", "tm"], True), foreign_keys=[("qtoid", "orders", "qtoid")])
+@db_model(
+    "trades", "tid", (["tid", "tm"], True), foreign_keys=[("qtoid", "orders", "qtoid")]
+)
 @dataclass
 class TradeModel:
-    tid: str                            # 成交 id，pk。可使用代理（比如 qmt）返回值
-    qtoid: str                          # 对应的 Order id (quantide order id) - 外键引用 orders 表的 qtoid
-    foid: str                           # 代理（比如qmt）给出的 order id
-    asset: str                          # 资产代码    
-    shares: float|int                   # 成交数量
-    price: float                        # 成交价格
-    amount: float                       # 成交金额 = 成交数量 * 成交价格
-    tm: datetime.datetime               # 成交时间
-    side: OrderSide                     # 成交方向
+    tid: str  # 成交 id，pk。可使用代理（比如 qmt）返回值
+    qtoid: str  # 对应的 Order id (quantide order id) - 外键引用 orders 表的 qtoid
+    foid: str  # 代理（比如qmt）给出的 order id
+    asset: str  # 资产代码
+    shares: float | int  # 成交数量
+    price: float  # 成交价格
+    amount: float  # 成交金额 = 成交数量 * 成交价格
+    tm: datetime.datetime  # 成交时间
+    side: OrderSide  # 成交方向
 
-    cid: str                            # 柜台合同编号，应与同 qtoid 中的 cid 相一致
+    cid: str  # 柜台合同编号，应与同 qtoid 中的 cid 相一致
 
-    fee: float = 0                      # 本笔交易手续费
+    fee: float = 0  # 本笔交易手续费
 
     def __post_init__(self):
         if isinstance(self.tm, str):
@@ -154,15 +176,15 @@ class PositionModel:
     dt: datetime.date
     asset: str
     shares: float
-    avail: float                          # 可用数量
-    price: float                          # 持仓价格
-    profit: float                         # 盈亏比
-    mv: float                             # 市值
-    
+    avail: float  # 可用数量
+    price: float  # 持仓价格
+    profit: float  # 盈亏比
+    mv: float  # 市值
+
     def __post_init__(self):
         if isinstance(self.dt, str):
             # 处理可能包含时间的ISO格式字符串
-            if 'T' in self.dt:
+            if "T" in self.dt:
                 self.dt = datetime.datetime.fromisoformat(self.dt).date()
             else:
                 self.dt = datetime.datetime.strptime(self.dt, "%Y-%m-%d").date()
@@ -183,10 +205,9 @@ class AssetModel:
     def __post_init__(self):
         if isinstance(self.dt, str):
             # 处理可能包含时间的ISO格式字符串
-            if 'T' in self.dt:
+            if "T" in self.dt:
                 self.dt = datetime.datetime.fromisoformat(self.dt).date()
             else:
                 self.dt = datetime.datetime.strptime(self.dt, "%Y-%m-%d").date()
         elif isinstance(self.dt, datetime.datetime):
             self.dt = self.dt.date()
-

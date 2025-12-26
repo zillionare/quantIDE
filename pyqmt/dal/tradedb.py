@@ -131,40 +131,15 @@ class TradeDB:
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def insert_order(self, asset: str, price: int | float,
-        shares: int | float,
-        side: OrderSide,
-        bid_type: BidType,
-        strategy: str = "",
-        bid_time: datetime.datetime | None = None,
-        qtoid: str | None = None,
-        foid: Any | None = None)->str:
+    def insert_order(self, order: OrderModel)->str:
         """增加委托单（未提交）
 
         Args:
-            asset: 资产代码, "symbol.SZ"风格
-            price: 委托价格
-            shares: 委托数量
-            strategy: 策略名称
-            bid_time: 下单时间，实盘时可省略传入，测试
+            order: 订单
 
         Returns:
             订单ID, 用于后续查询和更新。该订单 ID 为内部 id，而柜台或者第三方的 id。
         """
-        order = OrderModel(
-            asset = asset,
-            price = price,
-            shares = shares,
-            side = side,
-            bid_type = bid_type,
-            strategy = strategy,
-            tm = bid_time or datetime.datetime.now(),
-            foid = foid
-        )
-
-        if qtoid is not None:
-            order.qtoid = qtoid
-
         self["orders"].insert(asdict(order)) # type: ignore
         return order.qtoid
     
@@ -201,6 +176,22 @@ class TradeDB:
         else:
             return OrderModel(**orders[0])
         
+    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame:
+        """根据日期查询订单
+
+        Args:
+            dt: 日期
+
+        Returns:
+            订单数据框
+        """
+        if isinstance(dt, datetime.datetime):
+            dt = dt.date()
+            
+        rows = self["orders"].rows_where("dt >= ? and dt < ?", (dt, dt + datetime.timedelta(days=1)))
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("tm").cast(pl.Datetime))
+
     def orders_all(self)->pl.DataFrame:
         """获取所有订单信息"""
         rows = self["orders"].rows
