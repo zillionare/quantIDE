@@ -78,7 +78,9 @@ def on_startup_sync():
     last_closed = tf.floor(datetime.datetime.now(), FrameType.DAY)
 
     if start > last_closed:
-        logger.warning("向haystore同步行情时，发现记录错误: 已收盘%s, 记录为%s", last_closed, start)
+        logger.warning(
+            "向haystore同步行情时，发现记录错误: 已收盘%s, 记录为%s", last_closed, start
+        )
 
     if start < last_closed:
         # 一次sync约100万条记录
@@ -86,7 +88,7 @@ def on_startup_sync():
         tasks = []
         while start < last_closed:
             end = tf.shift(start, 1_000_000 // n, FrameType.DAY)
-            if end == start: # 当索引越界时，tf.shift会返回moment
+            if end == start:  # 当索引越界时，tf.shift会返回moment
                 end = last_closed
             if end > last_closed:
                 end = last_closed
@@ -108,7 +110,11 @@ def on_startup_sync():
     last_close_day = tf.floor(datetime.datetime.now(), FrameType.DAY)
 
     if start > last_close_day:
-        logger.warning("向haystore同步行情时，发现记录错误: 已收盘%s, 记录为%s", last_close_day, start)
+        logger.warning(
+            "向haystore同步行情时，发现记录错误: 已收盘%s, 记录为%s",
+            last_close_day,
+            start,
+        )
 
     if start < last_close_day:
         # 一次sync约100万条记录
@@ -117,7 +123,7 @@ def on_startup_sync():
         while start < last_close_day:
             start_tm = tf.first_min_frame(start, frame_type)
             end_tm = tf.shift(start_tm, 1_000_000 // n, frame_type)
-            end = end_tm.date() #type: ignore
+            end = end_tm.date()  # type: ignore
             if end > last_closed:
                 end = last_closed
             tasks.append(
@@ -141,9 +147,15 @@ def sync_bars(frame_type: FrameType, start: datetime.date, end: datetime.date):
         end: 结束日期
     """
     stock_list = get_stock_list()
-    
+
     bars = get_bars(stock_list, frame_type, start, end)
-    logger.info("syncing %s securities bars from %s to %s of %s", len(set(bars.symbols)), start, end, frame_type)
+    logger.info(
+        "syncing %s securities bars from %s to %s of %s",
+        len(set(bars.symbols)),
+        start,
+        end,
+        frame_type,
+    )
 
     g.haystore.save_bars(frame_type, bars)
 
@@ -154,7 +166,9 @@ def schedule_after(after: Actor, job_func: Callable, args: Tuple[List[str], Fram
             return
 
         if event.exception:
-            logger.warning("任务%s执行失败，任务%s终止启动", after.name, job_func.__name__)
+            logger.warning(
+                "任务%s执行失败，任务%s终止启动", after.name, job_func.__name__
+            )
             return
 
         # 增加任务，立即执行

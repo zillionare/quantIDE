@@ -112,7 +112,10 @@ class DingTalkMessage:
                 )
             return r.content.decode()
 
-def ding(msg: Union[str, dict], sync:bool = False, at_all:bool = False) -> Awaitable|str|None:
+
+def ding(
+    msg: Union[str, dict], sync: bool = False, at_all: bool = False
+) -> Awaitable | str | None:
     """发送消息到钉钉机器人
 
     支持发送纯文本消息和markdown格式的文本消息。如果要发送markdown格式的消息，请通过字典传入，必须包含包含"title"和"text"两个字段。更详细信息，请见[钉钉开放平台文档](https://open.dingtalk.com/document/orgapp-server/message-type)
@@ -128,21 +131,17 @@ def ding(msg: Union[str, dict], sync:bool = False, at_all:bool = False) -> Await
         发送消息的后台任务。您可以使用此返回句柄来取消任务。
     """
     if isinstance(msg, str):
-        msg_ = {"text": {"content": msg}, "msgtype": "text", "at" :{
-            "isAtAll": at_all
-        }}
+        msg_ = {"text": {"content": msg}, "msgtype": "text", "at": {"isAtAll": at_all}}
     elif isinstance(msg, dict):
         msg_ = {
             "msgtype": "markdown",
             "markdown": {"title": msg["title"], "text": msg["text"]},
-            "at": {
-                "isAtAll": at_all
-            }
+            "at": {"isAtAll": at_all},
         }
 
     logger.warning(msg)
     if sync:
         return DingTalkMessage._send(msg_)
-    
+
     task = asyncio.create_task(DingTalkMessage._send_async(msg_))
     return task

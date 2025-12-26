@@ -63,6 +63,7 @@ def init_haystore():
                 continue
             g.haystore.client.command(sql)
 
+
 @pytest.fixture(scope="function", autouse=True)
 def setup():
     cfg4py.init(get_config_dir())

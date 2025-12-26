@@ -8,14 +8,9 @@ import cfg4py
 import numpy as np
 import pandas as pd
 from arrow import Arrow
-from coretypes import Frame, FrameType, SecurityType
 from numpy.typing import NDArray
 from xtquant import xtdata as xt
 
-from pyqmt.core.constants import EPOCH, key_price, min_level_frames
-from pyqmt.core.context import g
-from pyqmt.core.errors import XtQuantError
-from pyqmt.core.timeframe import tf
 from pyqmt.core.utils import date2str, time2minute
 
 logger = logging.getLogger(__name__)
@@ -93,7 +88,7 @@ def cache_bars(frame_type: FrameType):
     if start >= end:
         logger.info("%s is cached already.", frame_type)
         return
-    
+
     # todo: 增加重启重连功能、超时功能
     try:
         symbols = get_stock_list()
@@ -142,12 +137,16 @@ def get_bars(
     # convert to dataframe. Since py3.6, keys() and values() are all same order
     for symbol, df in data.items():
         df["symbol"] = symbol
-        
+
     df = pd.concat(data.values(), ignore_index=True)
 
     df.time = np.array(df.time, dtype="datetime64[ms]").astype(datetime.datetime)
     df.time = df["time"].dt.tz_localize("UTC").dt.tz_convert("Asia/Shanghai")
-    df.rename({"time": "frame", "amount": "money", "suspendFlag": "suspend"}, axis='columns', inplace=True)
+    df.rename(
+        {"time": "frame", "amount": "money", "suspendFlag": "suspend"},
+        axis="columns",
+        inplace=True,
+    )
     return df
 
 

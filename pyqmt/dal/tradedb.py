@@ -96,7 +96,7 @@ class TradeDB:
                 t.create_index(indexes, unique=is_unique)
 
             # 创建外键约束
-            if hasattr(model, '__foreign_keys__') and model.__foreign_keys__:
+            if hasattr(model, "__foreign_keys__") and model.__foreign_keys__:
                 for fk in model.__foreign_keys__:
                     if len(fk) == 3:  # (from_column, to_table, to_column)
                         from_col, to_table, to_col = fk
@@ -110,28 +110,28 @@ class TradeDB:
         """代理其他方法调用"""
         return getattr(self.db, name)
 
-    def upsert_positions(self, position: PositionModel|list[PositionModel]):
+    def upsert_positions(self, position: PositionModel | list[PositionModel]):
         """保存（插入和更新）持仓信息。"""
         if isinstance(position, PositionModel):
             positions = [position]
         else:
             positions = position
 
-        self["positions"].upsert_all([asdict(pos) for pos in positions], pk= PositionModel.__pk__) # type: ignore
-    
+        self["positions"].upsert_all([asdict(pos) for pos in positions], pk=PositionModel.__pk__)  # type: ignore
+
     def get_positions(self, dt: datetime.date) -> pl.DataFrame:
         """获取指定日期的持仓信息"""
         rows = self["positions"].rows_where("dt = ?", (dt,))
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
-    
-    def positions_all(self)->pl.DataFrame:
+
+    def positions_all(self) -> pl.DataFrame:
         """获取所有持仓信息"""
         rows = self["positions"].rows
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def insert_order(self, order: OrderModel)->str:
+    def insert_order(self, order: OrderModel) -> str:
         """增加委托单（未提交）
 
         Args:
@@ -140,9 +140,9 @@ class TradeDB:
         Returns:
             订单ID, 用于后续查询和更新。该订单 ID 为内部 id，而柜台或者第三方的 id。
         """
-        self["orders"].insert(asdict(order)) # type: ignore
+        self["orders"].insert(asdict(order))  # type: ignore
         return order.qtoid
-    
+
     def get_order_by_foid(self, foid: str | int) -> OrderModel | None:
         """根据 foid 获取订单
 
@@ -175,7 +175,7 @@ class TradeDB:
             return None
         else:
             return OrderModel(**orders[0])
-        
+
     def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame:
         """根据日期查询订单
 
@@ -187,28 +187,29 @@ class TradeDB:
         """
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
-            
-        rows = self["orders"].rows_where("dt >= ? and dt < ?", (dt, dt + datetime.timedelta(days=1)))
+
+        rows = self["orders"].rows_where(
+            "tm >= ? and tm < ?", (dt, dt + datetime.timedelta(days=1))
+        )
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def orders_all(self)->pl.DataFrame:
+    def orders_all(self) -> pl.DataFrame:
         """获取所有订单信息"""
         rows = self["orders"].rows
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def update_order(self, qtoid: str, **updates)->None:
+    def update_order(self, qtoid: str, **updates) -> None:
         """更新订单信息
 
         Args:
             oid: 订单ID
             kwupdatesargs: 更新的字段
         """
-        self["orders"].update(qtoid, updates) # type: ignore
+        self["orders"].update(qtoid, updates)  # type: ignore
 
-
-    def insert_trades(self, trades: list[TradeModel]|TradeModel)->None:
+    def insert_trades(self, trades: list[TradeModel] | TradeModel) -> None:
         """保存成交信息
 
         Args:
@@ -236,6 +237,7 @@ class TradeDB:
             return None
         else:
             return TradeModel(**trades[0])
+
     def query_trade(
         self, qtoid: str | None = None, foid: str | None = None
     ) -> list[TradeModel]:
@@ -249,10 +251,7 @@ class TradeDB:
             list[TradeModel]: 成交数据列表
         """
         filters = []
-        params = {
-            "qtoid": qtoid,
-            "foid": foid
-        }
+        params = {"qtoid": qtoid, "foid": foid}
 
         for param in params:
             if params[param]:
@@ -265,7 +264,7 @@ class TradeDB:
         rows = self["trades"].rows_where(where_clause, params)
         return [TradeModel(**row) for row in rows]
 
-    def trades_all(self)->pl.DataFrame:
+    def trades_all(self) -> pl.DataFrame:
         """获取所有成交信息"""
         rows = self["trades"].rows
         df = pl.DataFrame(rows)
@@ -299,7 +298,7 @@ class TradeDB:
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def insert_asset(self, asset: AssetModel)->None:
+    def insert_asset(self, asset: AssetModel) -> None:
         """保存(更新)资产信息
 
         Args:
@@ -309,12 +308,12 @@ class TradeDB:
 
     def update_asset(self, dt: datetime.date, **updates):
         """更新资产信息
-        
+
         与 save_asset 不同，本方法允许单字段更新
         """
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
-        self["assets"].update(dt, updates) # type: ignore
+        self["assets"].update(dt, updates)  # type: ignore
 
 
 db: TradeDB = TradeDB()

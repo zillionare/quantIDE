@@ -1,7 +1,10 @@
 from fasthtml.common import *
 from monsterui.all import *
 
-def header_component(logo: str, brand:str, nav_items: list[tuple], user: str|None = None):
+
+def header_component(
+    logo: str, brand: str, nav_items: list[tuple], user: str | None = None
+):
     """创建包含 logo, brand, 导航栏和用户菜单的 Header 组件。
 
     Args:
@@ -20,16 +23,20 @@ def header_component(logo: str, brand:str, nav_items: list[tuple], user: str|Non
             A(
                 title,
                 href=url,
-                cls="text-white hover:text-gray-300 px-3 py-2 rounded-md text-sm font-medium"
+                cls="text-white hover:text-gray-300 px-3 py-2 rounded-md text-sm font-medium",
             )
         )
-    
+
     # 用户菜单
-    user_menu = Div() if not user else Div(
-        P(f"欢迎, {user}", cls="text-white mr-4"),
-        A("退出", href="/auth/logout", cls="text-white hover:text-gray-300")
+    user_menu = (
+        Div()
+        if not user
+        else Div(
+            P(f"欢迎, {user}", cls="text-white mr-4"),
+            A("退出", href="/auth/logout", cls="text-white hover:text-gray-300"),
+        )
     )
-    
+
     return Header(
         Div(
             # Logo 和品牌名称
@@ -37,19 +44,13 @@ def header_component(logo: str, brand:str, nav_items: list[tuple], user: str|Non
                 Img(src=logo, alt=brand, cls="h-8 w-auto"),
                 Span(brand, cls="text-white text-xl font-bold ml-2"),
                 href="/home",
-                cls="flex items-center"
+                cls="flex items-center",
             ),
-            
             # 导航菜单
-            Nav(
-                *nav_links,
-                cls="hidden md:flex space-x-4"
-            ),
-            
+            Nav(*nav_links, cls="hidden md:flex space-x-4"),
             # 用户菜单
             user_menu,
-            
-            cls="container mx-auto flex items-center justify-between px-4 py-3"
+            cls="container mx-auto flex items-center justify-between px-4 py-3",
         ),
-        cls="bg-blue-600 shadow-md"
+        cls="bg-blue-600 shadow-md",
     )

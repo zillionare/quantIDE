@@ -3,17 +3,18 @@ from dataclasses import dataclass
 import bcrypt
 from datetime import datetime
 
+
 @dataclass
 class User:
-    id: int|None = None
-    username: str|None = None
-    email: str|None = None
-    password: str|None = None
+    id: int | None = None
+    username: str | None = None
+    email: str | None = None
+    password: str | None = None
     role: str = "user"
     created_at: str = ""
     last_login: str = ""
     active: bool = True
-    
+
     # Define primary key for fastlite
     pk = "id"
 
@@ -22,11 +23,11 @@ class User:
         """Hash a password using bcrypt"""
         try:
             if not password:
-                raise ValueError("Password cannot be empty")          
+                raise ValueError("Password cannot be empty")
             # Use bcrypt directly instead of passlib to avoid version issues
             salt = bcrypt.gensalt()
-            hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-            return hashed.decode('utf-8')
+            hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+            return hashed.decode("utf-8")
         except Exception as e:
             print(f"Error hashing password: {e}")
             raise
@@ -34,19 +35,19 @@ class User:
     @classmethod
     def is_hashed(cls, pwd: str) -> bool:
         """Check if password is already hashed (bcrypt hashes start with $2b$)"""
-        return pwd and pwd.startswith('$2b$') and len(pwd) == 60
-        
+        return pwd and pwd.startswith("$2b$") and len(pwd) == 60
+
     @classmethod
     def verify_password(cls, pwd: str, hashed: str) -> bool:
         """Verify password against hash"""
         try:
-            if not pwd or not hashed: 
+            if not pwd or not hashed:
                 return False
-            return bcrypt.checkpw(pwd.encode('utf-8'), hashed.encode('utf-8'))
+            return bcrypt.checkpw(pwd.encode("utf-8"), hashed.encode("utf-8"))
         except Exception as e:
             print(f"Error verifying password: {e}")
             return False
-    
+
     def __post_init__(self):
         """Initialize timestamps and hash password if needed"""
         # Hash password if not already hashed
@@ -60,11 +61,12 @@ class User:
             self.created_at = now
         if not self.last_login:
             self.last_login = now
-    
+
 
 @dataclass
 class Session:
     """Pure Session model"""
+
     id: str
     user_id: int
     data: dict
@@ -72,4 +74,4 @@ class Session:
     created_at: str
 
     # Define primary key for fastlite
-    pk = 'id'
+    pk = "id"

@@ -16,16 +16,16 @@ from .database import AuthDatabase
 from .repository import UserRepository
 
 __all__ = [
-    'AuthManager', 
-    'User', 
-    'Session', 
-    'AuthBeforeware',
-    'AuthDatabase',
-    'UserRepository'
+    "AuthManager",
+    "User",
+    "Session",
+    "AuthBeforeware",
+    "AuthDatabase",
+    "UserRepository",
 ]
 
 # Convenience imports for common usage patterns
 from .manager import AuthManager as Auth  # Shorter alias
 
 # Version info tuple
-VERSION = tuple(map(int, __version__.split('.')))
+VERSION = tuple(map(int, __version__.split(".")))

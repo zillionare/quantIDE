@@ -29,7 +29,7 @@ class Chores:
         """
         sql = "select start, stop from bars_cache_status where frame_type = ?"
         with self.con.cursor() as cursor:
-            return cursor.execute(sql, (frame_type.value, )).fetchone()
+            return cursor.execute(sql, (frame_type.value,)).fetchone()
 
     def calc_bars_cache_start(self, frame_type: FrameType) -> datetime.date:
         """获取并计算下载行情数据时，最早的日期

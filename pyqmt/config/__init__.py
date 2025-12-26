@@ -15,7 +15,7 @@ from .schema import Config
 import cfg4py
 
 
-def get_config_dir()->str:
+def get_config_dir() -> str:
     server_role = os.environ.get(cfg4py.envar)
 
     if server_role == "DEV":
@@ -36,9 +36,9 @@ def endpoint():
     return f"{prefix}/v{major}.{minor}"
 
 
-def init_config(config_dir: str|Path|None=None):
+def init_config(config_dir: str | Path | None = None):
     config_dir = config_dir or get_config_dir()
-    cfg =cfg4py.init(str(config_dir))
+    cfg = cfg4py.init(str(config_dir))
 
     return cfg4py.get_instance()
 

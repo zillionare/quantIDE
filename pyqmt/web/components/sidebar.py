@@ -1,13 +1,16 @@
 from fasthtml.common import *
 from monsterui.all import *
 
-def sidebar_component(menu_items: list[dict]|None=None,):
+
+def sidebar_component(
+    menu_items: list[dict] | None = None,
+):
     """创建侧边栏导航菜单
-    
+
     Args:
         menu_items: 侧边栏的菜单项。
         active_section: 当前激活的菜单项，用于高亮显示。
-        
+
     Returns:
         A Sidebar component with navigation
     """
@@ -22,18 +25,26 @@ def sidebar_component(menu_items: list[dict]|None=None,):
                 child_active = "font-bold" if j == 0 else ""
                 children_links.append(
                     Li(
-                        A(child["title"], href=child["url"], cls=f"text-gray-600 hover:text-blue-600 {child_active}"),
-                        cls="ml-4 py-1"
+                        A(
+                            child["title"],
+                            href=child["url"],
+                            cls=f"text-gray-600 hover:text-blue-600 {child_active}",
+                        ),
+                        cls="ml-4 py-1",
                     )
                 )
-            
+
             # 父级菜单项
             parent_active = "font-bold" if i == 0 else ""
             menu_links.append(
                 Li(
-                    A(item["title"], href=item["url"], cls=f"text-gray-800 hover:text-blue-600 {parent_active}"),
+                    A(
+                        item["title"],
+                        href=item["url"],
+                        cls=f"text-gray-800 hover:text-blue-600 {parent_active}",
+                    ),
                     Ul(*children_links, cls="pl-4 mt-1"),
-                    cls="py-2"
+                    cls="py-2",
                 )
             )
         else:
@@ -41,18 +52,16 @@ def sidebar_component(menu_items: list[dict]|None=None,):
             active_class = "font-bold" if i == 0 else ""
             menu_links.append(
                 Li(
-                    A(item["title"], href=item["url"], cls=f"text-gray-800 hover:text-blue-600 {active_class}"),
-                    cls="py-2"
+                    A(
+                        item["title"],
+                        href=item["url"],
+                        cls=f"text-gray-800 hover:text-blue-600 {active_class}",
+                    ),
+                    cls="py-2",
                 )
             )
-    
+
     return Aside(
-        Nav(
-            Ul(
-                *menu_links,
-                cls="space-y-1"
-            ),
-            cls="p-4"
-        ),
-        cls="w-64 bg-gray-100 min-h-screen border-r border-gray-200"
+        Nav(Ul(*menu_links, cls="space-y-1"), cls="p-4"),
+        cls="w-64 bg-gray-100 min-h-screen border-r border-gray-200",
     )

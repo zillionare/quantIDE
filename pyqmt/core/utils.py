@@ -4,6 +4,7 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+
 def handle_xt_error(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):

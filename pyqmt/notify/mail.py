@@ -8,11 +8,18 @@ from typing import Awaitable, List
 import aiosmtplib
 import aiosmtplib.errors
 import cfg4py
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+
 def mail_notify(
     subject: str = "Quantide 交易通知",
-    body: str|None = None,
-    msg: EmailMessage|None = None,
+    body: str | None = None,
+    msg: EmailMessage | None = None,
     html=False,
     receivers=None,
 ) -> Awaitable:
@@ -67,22 +74,23 @@ def mail_notify(
     )
 
 
-@retry(retry=retry_if_exception_type(aiosmtplib.errors.SMTPConnectError),
-       stop=stop_after_attempt(5), 
-       wait=wait_exponential(multiplier=1, min=4, max=10)
+@retry(
+    retry=retry_if_exception_type(aiosmtplib.errors.SMTPConnectError),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
 )
 def send_mail(
     sender: str,
     receivers: List[str],
     password: str,
-    msg: EmailMessage|None = None,
-    host: str|None = None,
+    msg: EmailMessage | None = None,
+    host: str | None = None,
     port: int = 25,
-    cc: List[str]|None = None,
-    bcc: List[str] |None= None,
-    subject: str|None = None,
-    body: str|None = None,
-    username: str|None = None,
+    cc: List[str] | None = None,
+    bcc: List[str] | None = None,
+    subject: str | None = None,
+    body: str | None = None,
+    username: str | None = None,
 ) -> Awaitable:
     """发送邮件通知。
 
@@ -146,7 +154,10 @@ def send_mail(
 
 
 def compose(
-    subject: str, plain_txt: str|None = None, html: str|None = None, attachment: str|None = None
+    subject: str,
+    plain_txt: str | None = None,
+    html: str | None = None,
+    attachment: str | None = None,
 ) -> EmailMessage:
     """编写MIME邮件。
 
