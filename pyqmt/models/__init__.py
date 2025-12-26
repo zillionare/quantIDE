@@ -117,7 +117,8 @@ class OrderModel:
 
     # 本委托 ID, pk
     qtoid: str = field(default_factory=lambda: "qtide-" + uuid.uuid4().hex[:16])
-    strategy: str = ""                   # 策略名称
+    strategy: str = ""                      # 策略名称
+    error: str = ""                         # 报单错误信息，包括错误码和错误信息,以:分隔
 
     def __post_init__(self):
         if isinstance(self.tm, str):
@@ -152,9 +153,11 @@ class TradeModel:
 class PositionModel:
     dt: datetime.date
     asset: str
-    shares: float|int
-    avail: float|int                      # 可用数量
+    shares: float
+    avail: float                          # 可用数量
     price: float                          # 持仓价格
+    profit: float                         # 盈亏比
+    mv: float                             # 市值
     
     def __post_init__(self):
         if isinstance(self.dt, str):
@@ -171,7 +174,7 @@ class PositionModel:
 @dataclass
 class AssetModel:
     dt: datetime.date
-    principal: float|None
+    principal: float
     cash: float
     frozen_cash: float
     market_value: float

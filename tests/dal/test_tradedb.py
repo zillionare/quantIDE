@@ -1,7 +1,7 @@
 import pytest
 import tempfile
 from pathlib import Path
-from pyqmt.dal.tradedb import TradeDB
+from pyqmt.dal.tradedb import db
 from pyqmt.models import OrderModel, TradeModel, PositionModel, AssetModel
 from pyqmt.core.enums import OrderSide, BidType, OrderStatus
 import datetime
@@ -18,7 +18,6 @@ def temp_db_file():
     
 def test_table_creation(temp_db_file):
     """Test that all model tables are created during initialization"""
-    db = TradeDB()
     db.init(temp_db_file)
     
     # Check that tables exist
@@ -47,11 +46,10 @@ def test_table_creation(temp_db_file):
 
 def test_order(temp_db_file):
     """Test order CRUD """
-    db = TradeDB()
     db.init(temp_db_file)
     
     # 01 Test saving order
-    qtoid = db.save_order(asset = "000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    qtoid = db.insert_order(asset = "000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
     
     # Verify it was saved
     saved_order = db.get_order(qtoid)
@@ -86,11 +84,10 @@ def test_order(temp_db_file):
 
 def test_get_order_by_foid(temp_db_file):
     """Test getting order by external foid"""
-    db = TradeDB()
     db.init(temp_db_file)
     
     # Save the order
-    db.save_order(asset="000001.SZ",
+    db.insert_order(asset="000001.SZ",
                   price=10.5,
                   shares=100,
                   side=1,
@@ -109,11 +106,11 @@ def test_get_order_by_foid(temp_db_file):
 
 def test_trades_crud(temp_db_file):
     """Test trades CRUD operations with self-contained workflow"""
-    db = TradeDB()
+
     db.init(temp_db_file)
     
     # First create an order that we'll reference in the trade
-    qtoid = db.save_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    qtoid = db.insert_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
     
     # Create and save multiple trade records
     trade1 = TradeModel(
@@ -143,7 +140,7 @@ def test_trades_crud(temp_db_file):
     )
     
     # Test save_trades with multiple trades (batch insert)
-    db.save_trades([trade1, trade2])
+    db.insert_trades([trade1, trade2])
     
     # Test get_trade to retrieve a single trade by tid
     retrieved_trade = db.get_trade("trade1")
@@ -191,7 +188,7 @@ def test_trades_crud(temp_db_file):
     )
     
     # Save single trade
-    db.save_trades(trade3)
+    db.insert_trades(trade3)
     
     # Verify single trade was added
     all_trades = db.query_trade()
@@ -209,11 +206,11 @@ def test_trades_crud(temp_db_file):
 
 def test_foreign_key_constraint(temp_db_file):
     """Test foreign key constraint enforcement"""
-    db = TradeDB()
+
     db.init(temp_db_file)
     
     # Create an order first
-    qtoid = db.save_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
+    qtoid = db.insert_order(asset="000001.SZ", price=10.5, shares=100, side=OrderSide.BUY, bid_type=BidType.MARKET, bid_time=datetime.datetime.now())
     
     # Create a trade that references the order - this should succeed
     valid_trade = TradeModel(
@@ -230,7 +227,7 @@ def test_foreign_key_constraint(temp_db_file):
     )
     
     # This should succeed since qtoid references an existing order
-    db.save_trades(valid_trade)
+    db.insert_trades(valid_trade)
     
     # Verify the trade was saved
     retrieved_trade = db.get_trade("valid_trade")
@@ -259,12 +256,10 @@ def test_foreign_key_constraint(temp_db_file):
     
     # Attempt to save the invalid trade - this should raise an exception due to foreign key constraint
     with pytest.raises(sqlite3.IntegrityError):
-        db.save_trades(invalid_trade)
+        db.insert_trades(invalid_trade)
 
 def test_get_positions(temp_db_file):
     """Test get_positions method to cover that code path"""
-    db = TradeDB()
-
     db.init(temp_db_file)
     
     # Insert a position record directly
@@ -273,31 +268,40 @@ def test_get_positions(temp_db_file):
         asset="000001.SZ",
         shares=1000,
         avail=800,
-        price=10.5
+        price=10.5,
+        mv=10500.0,
+        profit=1000.0
     )
-    db["positions"].insert({
-        'dt': str(position.dt),
-        'asset': position.asset,
-        'shares': position.shares,
-        'avail': position.avail,
-        'price': position.price
-    })
+
+    db.upsert_positions(position)
     
     # Test get_positions
     positions = db.get_positions(datetime.date.today())
     assert len(positions) == 1
-    assert positions[0].asset == "000001.SZ"
-    assert positions[0].shares == 1000
-    assert isinstance(positions[0].dt, datetime.date)
+    assert positions["asset"][0] == "000001.SZ"
+    assert positions["shares"][0] == 1000
+    assert isinstance(positions["dt"][0], datetime.date)
+
+    position.asset = "000002.SZ"
+    db.upsert_positions(position)
+    
+    # Test get_positions for the new asset
+    positions = db.get_positions(datetime.date.today())
+    assert len(positions) == 2
+    assert "000001.SZ" in positions["asset"]
+    assert "000002.SZ" in positions["asset"]
+
+    posistions = db.positions_all()
+    assert len(posistions) == 2
 
 def test_save_order_full_params(temp_db_file):
     """Test save_order with all parameters"""
-    db = TradeDB()
+
 
     db.init(temp_db_file)
         
     # Test save_order with all parameters
-    qtoid = db.save_order(
+    qtoid = db.insert_order(
         asset="000001.SZ",
         price=10.5,
         shares=100,
@@ -319,13 +323,13 @@ def test_save_order_full_params(temp_db_file):
 
 def test_update_order_method(temp_db_file):
     """Test update_order method directly"""
-    db = TradeDB()
+
     
     # Create a temporary database file
     db.init(temp_db_file)
     
     # Create an order first
-    qtoid = db.save_order(
+    qtoid = db.insert_order(
         asset="000001.SZ",
         price=10.5,
         shares=100,
@@ -346,7 +350,7 @@ def test_update_order_method(temp_db_file):
 
 def test_proxy_methods(temp_db_file):
     """Test __getitem__ and __getattr__ proxy methods"""
-    db = TradeDB()
+
     db.init(temp_db_file)
     
     # Test __getitem__ proxy
@@ -363,7 +367,7 @@ def test_proxy_methods(temp_db_file):
 
 def test_foreign_key_constraint_in_init_tables():
     """Test that foreign keys are properly created in _init_tables"""
-    db = TradeDB()
+
     
     db.init(temp_db_file)
     
@@ -377,7 +381,7 @@ def test_foreign_key_constraint_in_init_tables():
     assert len(qtoid_fk) == 1, "Foreign key constraint from trades.qtoid to orders.qtoid should exist"
 
 def test_assets(temp_db_file):
-    db = TradeDB()
+
     db.init(temp_db_file)
 
     # 01 save/query
@@ -388,8 +392,8 @@ def test_assets(temp_db_file):
                     0,
                     0,
                     1_000_000)
-    db.save_asset(asset)
-    asset_from_db = db.query_asset_by_date(dt)
+    db.insert_asset(asset)
+    asset_from_db = db.get_asset(dt)
     assert asset_from_db is not None
     assert asset_from_db == asset
 
@@ -397,7 +401,7 @@ def test_assets(temp_db_file):
     new_principal = 5_000_000
     asset.principal = new_principal
     db.update_asset(dt, principal = new_principal)
-    asset_from_db = db.query_asset_by_date(dt)
+    asset_from_db = db.get_asset(dt)
     assert asset_from_db is not None
     assert asset_from_db == asset
 
@@ -410,8 +414,8 @@ def test_assets(temp_db_file):
                     0,
                     0,
                     1_000_000)
-    db.save_asset(asset)
-    asset_from_db = db.query_asset_by_date(dt)
+    db.insert_asset(asset)
+    asset_from_db = db.get_asset(dt)
     assert asset_from_db is not None
     assert asset_from_db == asset
 

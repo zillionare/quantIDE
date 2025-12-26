@@ -11,12 +11,19 @@ db["orders"].insert(order)
 ```
 
 所有读写操作都代理给 sqlite_utils 库的 Database 对象。
+
+## API惯例
+
+get_表明通过主键查询
+get_*_by_*表明通过某个字段查询
+*_all 表明查询所有数据
 """
 
 import threading
 from typing import Any
 import datetime
 import sqlite3
+import polars as pl
 import sqlite_utils as su
 from dataclasses import asdict
 from pyqmt.core.enums import OrderSide
@@ -103,50 +110,23 @@ class TradeDB:
         """代理其他方法调用"""
         return getattr(self.db, name)
 
-    def get_positions(self, dt: datetime.date) -> list[PositionModel]:
-        """获取指定日期的持仓信息"""
-        rows = self.db["positions"].rows_where("dt = ?", (dt,))
-        return [PositionModel(**row) for row in rows]
+    def upsert_positions(self, position: PositionModel):
+        """保存（插入和更新）持仓信息。"""
+        self["positions"].upsert(asdict(position), pk= PositionModel.__pk__) # type: ignore
     
-    def positions_all(self)->list[PositionModel]:
+    def get_positions(self, dt: datetime.date) -> pl.DataFrame:
+        """获取指定日期的持仓信息"""
+        rows = self["positions"].rows_where("dt = ?", (dt,))
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("dt").cast(pl.Date))
+    
+    def positions_all(self)->pl.DataFrame:
         """获取所有持仓信息"""
-        rows = self.db["positions"].rows
-        return [PositionModel(**row) for row in rows]
+        rows = self["positions"].rows
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def get_order_by_foid(self, foid: str | int) -> OrderModel | None:
-        """根据 foid 获取订单
-
-        foid 是外部接口（比如 qmt 给出的订单 ID），而 qtoid 是本系统收到委托时创建的 id。
-        Args:
-            foid: 订单 id
-
-        Returns:
-            订单 id
-        """
-        rows = self.db["orders"].rows_where("foid = ?", (str(foid),), limit=1)
-        orders = list(rows)
-        if len(orders) == 0:
-            return None
-        else:
-            return OrderModel(**orders[0])
-
-    def get_order(self, qtoid: str) -> OrderModel | None:
-        """根据 qtoid 获取订单
-
-        Args:
-            qtoid: 订单 id
-
-        Returns:
-            订单
-        """
-        rows = self.db["orders"].rows_where("qtoid = ?", (qtoid,), limit=1)
-        orders = list(rows)
-        if len(orders) == 0:
-            return None
-        else:
-            return OrderModel(**orders[0])
-
-    def save_order(self, asset: str, price: int | float,
+    def insert_order(self, asset: str, price: int | float,
         shares: int | float,
         side: OrderSide,
         bid_type: BidType,
@@ -154,7 +134,7 @@ class TradeDB:
         bid_time: datetime.datetime | None = None,
         qtoid: str | None = None,
         foid: Any | None = None)->str:
-        """保存委托单（未提交）
+        """增加委托单（未提交）
 
         Args:
             asset: 资产代码, "symbol.SZ"风格
@@ -180,8 +160,47 @@ class TradeDB:
         if qtoid is not None:
             order.qtoid = qtoid
 
-        db["orders"].insert(asdict(order)) # type: ignore
+        self["orders"].insert(asdict(order)) # type: ignore
         return order.qtoid
+    
+    def get_order_by_foid(self, foid: str | int) -> OrderModel | None:
+        """根据 foid 获取订单
+
+        foid 是外部接口（比如 qmt 给出的订单 ID），而 qtoid 是本系统收到委托时创建的 id。
+        Args:
+            foid: 订单 id
+
+        Returns:
+            订单 id
+        """
+        rows = self["orders"].rows_where("foid = ?", (str(foid),), limit=1)
+        orders = list(rows)
+        if len(orders) == 0:
+            return None
+        else:
+            return OrderModel(**orders[0])
+
+    def get_order(self, qtoid: str) -> OrderModel | None:
+        """根据 qtoid 获取订单
+
+        Args:
+            qtoid: 订单 id
+
+        Returns:
+            订单
+        """
+        rows = self["orders"].rows_where("qtoid = ?", (qtoid,), limit=1)
+        orders = list(rows)
+        if len(orders) == 0:
+            return None
+        else:
+            return OrderModel(**orders[0])
+        
+    def orders_all(self)->pl.DataFrame:
+        """获取所有订单信息"""
+        rows = self["orders"].rows
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
     def update_order(self, qtoid: str, **updates)->None:
         """更新订单信息
@@ -192,6 +211,20 @@ class TradeDB:
         """
         self["orders"].update(qtoid, updates) # type: ignore
 
+
+    def insert_trades(self, trades: list[TradeModel]|TradeModel)->None:
+        """保存成交信息
+
+        Args:
+            trade: 成交信息
+        """
+        if isinstance(trades, TradeModel):
+            trades = [trades]
+        else:
+            trades = trades
+
+        self["trades"].insert_all([asdict(trade) for trade in trades], ignore=True)
+
     def get_trade(self, tid: str) -> TradeModel | None:
         """根据 tid 获取成交
 
@@ -201,7 +234,7 @@ class TradeDB:
         Returns:
             成交
         """
-        rows = self.db["trades"].rows_where("tid = ?", (tid,), limit=1)
+        rows = self["trades"].rows_where("tid = ?", (tid,), limit=1)
         trades = list(rows)
         if len(trades) == 0:
             return None
@@ -235,22 +268,15 @@ class TradeDB:
         where_clause = " OR ".join(filters)
         rows = self["trades"].rows_where(where_clause, params)
         return [TradeModel(**row) for row in rows]
-    
-    def save_trades(self, trades: list[TradeModel]|TradeModel)->None:
-        """保存成交信息
 
-        Args:
-            trade: 成交信息
-        """
-        if isinstance(trades, TradeModel):
-            trades = [trades]
-        else:
-            trades = trades
+    def trades_all(self)->pl.DataFrame:
+        """获取所有成交信息"""
+        rows = self["trades"].rows
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-        self["trades"].insert_all([asdict(trade) for trade in trades], ignore=True)
-
-    def query_asset_by_date(self, dt: datetime.date) -> AssetModel | None:
-        """通过日期查询资产信息
+    def get_asset(self, dt: datetime.date) -> AssetModel | None:
+        """通过日期(主键）查询资产信息
 
         Args:
             dt: 查询日期
@@ -260,23 +286,24 @@ class TradeDB:
         """
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
-        rows = self.db["assets"].rows_where("dt = ?", (dt,), limit=1)
+        rows = self["assets"].rows_where("dt = ?", (dt,), limit=1)
         assets = list(rows)
         if len(assets) == 0:
             return None
         else:
             return AssetModel(**assets[0])
-        
-    def assets_all(self) -> list[AssetModel]:
+
+    def assets_all(self) -> pl.DataFrame:
         """获取所有资产信息
 
         Returns:
             list[AssetModel]: 资产信息列表
         """
-        rows = self.db["assets"].rows
-        return [AssetModel(**row) for row in rows]
+        rows = self["assets"].rows
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def save_asset(self, asset: AssetModel)->None:
+    def insert_asset(self, asset: AssetModel)->None:
         """保存(更新)资产信息
 
         Args:
