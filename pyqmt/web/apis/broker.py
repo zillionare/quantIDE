@@ -1,9 +1,12 @@
 import datetime
+
 from fasthtml.common import *
 from starlette.responses import Response
-from pyqmt.service.base_broker import Broker
+
 from pyqmt.config import cfg
 from pyqmt.core.errors import TradeError
+from pyqmt.models import AssetModel
+from pyqmt.service.base_broker import Broker
 
 app, rt = fast_app()
 
@@ -15,9 +18,9 @@ import pkg_resources
 
 ver = pkg_resources.get_distribution("quantide-broker").parsed_version
 
-
 @rt("status")
 async def get(request):
+    """获取当前服务状态"""
     return {"status": "ok", "listen": request.url, "version": ver.base_version}
 
 
@@ -321,6 +324,19 @@ async def get_assets(request):
         (broker._assets["date"] >= start) & (broker._assets["date"] <= end)
     ).flatten()
     return response.raw(pickle.dumps(broker._assets[filter]))
+
+
+@rt("asset_overview", methods=["GET"])
+async def asset_overview(request):
+    broker = request.app.state.broker
+    asset = broker.asset
+
+    pnl = asset.total - asset.principal
+    ppnl = pnl / asset.principal if asset.principal else 0.0
+    data = asdict(asset)
+    data["pnl"] = pnl
+    data["pnl_pct"] = ppnl
+    return data
 
 
 @rt("save_backtest", methods=["POST"])

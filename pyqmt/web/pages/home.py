@@ -1,5 +1,7 @@
 from fasthtml.common import *
 from monsterui.all import *
+
+from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
 
 home_app, rt = fast_app()
@@ -9,31 +11,56 @@ def AccountTabs():
     return Div(Ul(Li(A("账户1", cls="active", href="#")), cls="uk-tab"), cls="mb-4")
 
 
-def AssetSummary():
-    # 使用渐变背景的资产摘要 (中国红风格)
+def AssetSummary(asset_overview: dict | None = None):
     metric_cls = "flex flex-col items-center justify-center p-4 text-white"
     val_cls = "text-xl font-bold"
     label_cls = "text-xs opacity-80"
 
+    asset_overview = asset_overview or {}
+
+    total = asset_overview.get("total")
+    cash = asset_overview.get("cash")
+    frozen_cash = asset_overview.get("frozen_cash")
+    market_value = asset_overview.get("market_value")
+    pnl = asset_overview.get("pnl")
+    pnl_pct = asset_overview.get("pnl_pct")
+
+    total_text = f"{total:,.2f}" if total is not None else "0.00"
+    cash_text = f"{cash:,.2f}" if cash is not None else "0.00"
+    frozen_cash_text = f"{frozen_cash:,.2f}" if frozen_cash is not None else "0.00"
+    market_value_text = (
+        f"{market_value:,.2f}" if market_value is not None else "0.00"
+    )
+    pnl_text = f"{pnl:,.2f}" if pnl is not None else "0.00"
+    pnl_pct_text = (
+        f"{pnl_pct * 100:.2f}%" if pnl_pct is not None else "0.00%"
+    )
+
     return Div(
         Div(
+            Div(P(total_text, cls=val_cls), P("总资产", cls=label_cls), cls=metric_cls),
             Div(
-                P("20,055.84", cls=val_cls), P("总资产", cls=label_cls), cls=metric_cls
-            ),
-            Div(
-                P("20,055.84", cls=val_cls),
+                P(cash_text, cls=val_cls),
                 P("可用金额", cls=label_cls),
                 cls=metric_cls,
             ),
-            Div(P("0.00", cls=val_cls), P("冻结金额", cls=label_cls), cls=metric_cls),
-            Div(P("0.00", cls=val_cls), P("总市值", cls=label_cls), cls=metric_cls),
             Div(
-                P("0.00", cls="text-xl font-bold text-yellow-300"),
+                P(frozen_cash_text, cls=val_cls),
+                P("冻结金额", cls=label_cls),
+                cls=metric_cls,
+            ),
+            Div(
+                P(market_value_text, cls=val_cls),
+                P("总市值", cls=label_cls),
+                cls=metric_cls,
+            ),
+            Div(
+                P(pnl_text, cls="text-xl font-bold text-yellow-300"),
                 P("盈亏", cls=label_cls),
                 cls=metric_cls,
             ),
             Div(
-                P("0.00%", cls="text-xl font-bold text-yellow-300"),
+                P(pnl_pct_text, cls="text-xl font-bold text-yellow-300"),
                 P("盈亏比例", cls=label_cls),
                 cls=metric_cls,
             ),
@@ -151,10 +178,10 @@ def TradePanel():
     )
 
 
-def main_block():
+def main_block(asset_overview: dict | None = None):
     return Div(
         AccountTabs(),
-        AssetSummary(),
+        AssetSummary(asset_overview),
         Div(
             Div(PositionInfo(), cls="w-3/4 pr-4"),
             Div(TradePanel(), cls="w-1/4"),
@@ -165,14 +192,20 @@ def main_block():
 
 
 @rt("/", methods="get")
-def index(session):
-    """home page"""
-    # 创建布局实例
+def index(req, session):
     layout = MainLayout(
         title="交易",
         user=session.get("auth"),
     )
 
-    layout.main_block = main_block
+    asset_overview = None
+    broker = getattr(req.app.state, "broker", None)
+    if broker is not None and hasattr(broker, "asset"):
+        try:
+            asset_overview = build_asset_overview(broker.asset)
+        except Exception:
+            asset_overview = None
+
+    layout.main_block = lambda: main_block(asset_overview)
 
     return layout.render()
