@@ -5,7 +5,10 @@ Main application entry point for the PyQMT system.
 This file sets up the FastHTML application with MonsterUI styling.
 """
 
+from pathlib import Path
+
 import cfg4py
+from fastapi.staticfiles import StaticFiles
 from fasthtml.common import *
 from monsterui.all import *
 
@@ -43,6 +46,9 @@ def init():
             Mount("/", home_app)
         ],
     )
+
+    static_dir = Path(__file__).resolve().parent / "web" / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     if broker is not None:
         app.add_middleware(BrokerMiddleware, broker=broker)
