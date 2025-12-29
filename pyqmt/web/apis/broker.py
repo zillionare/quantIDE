@@ -18,6 +18,20 @@ import pkg_resources
 
 ver = pkg_resources.get_distribution("zillionare-pyqmt").parsed_version
 
+
+def build_asset_overview(asset: AssetModel) -> dict:
+    pnl = asset.total - asset.principal
+    ppnl = pnl / asset.principal if asset.principal else 0.0
+    return {
+        "total": asset.total,
+        "cash": asset.cash,
+        "frozen_cash": asset.frozen_cash,
+        "market_value": asset.market_value,
+        "pnl": pnl,
+        "pnl_pct": ppnl,
+    }
+
+
 @rt("/status")
 async def get(request):
     """获取当前服务状态"""
@@ -50,7 +64,7 @@ async def _(req):
         - principal, float
 
     """
-    broker = req.app.state.broker
+        broker = req.scope.get("broker")
     return broker.start_backtest()
 
 
@@ -63,14 +77,14 @@ async def _(req):
     # todo: 增加持久化操作
 
     """
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     return broker.stop_backtest()
 
 
 @rt("/accounts", methods=["GET"])
 async def list_accounts(req):
     """只在回测模式下有效？"""
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     return broker.list_accounts()
 
 
@@ -83,7 +97,7 @@ async def buy(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
 
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
@@ -99,7 +113,7 @@ async def buy_percent(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -118,7 +132,7 @@ async def buy_amount(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -134,7 +148,7 @@ async def sell(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -149,7 +163,7 @@ async def sell_percent(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -168,7 +182,7 @@ async def sell_amount(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -177,7 +191,7 @@ async def sell_amount(
 
 @rt("/positions", methods=["GET"])
 async def positions(req, asset: str, date: datetime.date | None = None):
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     return broker.get_position(asset, date)
 
 
@@ -207,7 +221,7 @@ async def account_info(req, asset: str, date: datetime.date | None = None):
         - positions: 当前持仓，dtype为[backtest.trade.datatypes.position_dtype][]的numpy structured array
     """
 
-    broker = req.app.state.broker
+    broker = req.scope.get("broker")
     return broker.get_account_info(asset, date)
 
 
@@ -237,7 +251,8 @@ async def metrics(request):
     if end:
         end = arrow.get(end).date()
 
-    metrics = await request.ctx.broker.metrics(start, end, baseline)
+    broker = req.scope.get("broker")
+    metrics = await broker.metrics(start, end, baseline)
     return response.raw(pickle.dumps(metrics))
 
 
@@ -256,7 +271,7 @@ async def bills(request):
     """
     results = {}
 
-    broker: Broker = request.ctx.broker
+    broker = req.scope.get("broker")
 
     if not broker._bt_stopped:
         raise TradeError("call `stop_backtest` first")
@@ -280,12 +295,16 @@ async def delete_accounts(request):
     accounts = request.app.ctx.accounts
 
     if account_to_delete is None:
-        if request.ctx.broker.account_name == "admin":
+        broker = request.scope.get("broker")
+        if err:
+            return err
+        if broker.account_name == "admin":
             accounts.delete_accounts()
         else:
             return response.text("admin account required", status=403)
 
-    if account_to_delete == request.ctx.broker.account_name:
+    broker = req.scope.get("broker")
+    if account_to_delete == broker.account_name:
         accounts.delete_accounts(account_to_delete)
 
 
@@ -306,7 +325,7 @@ async def get_assets(request):
         Response: 从`start`到`end`期间的账户资产信息，结果以binary方式返回,参考[backtest.trade.datatypes.rich_assets_dtype][]
 
     """
-    broker: Broker = request.ctx.broker
+    broker = req.scope.get("broker")
 
     start = request.args.get("start")
     if start:
@@ -328,15 +347,8 @@ async def get_assets(request):
 
 @rt("/asset_overview", methods=["GET"])
 async def asset_overview(request):
-    broker = request.app.state.broker
-    asset = broker.asset
-
-    pnl = asset.total - asset.principal
-    ppnl = pnl / asset.principal if asset.principal else 0.0
-    data = asdict(asset)
-    data["pnl"] = pnl
-    data["pnl_pct"] = ppnl
-    return data
+    broker = req.scope.get("broker")
+    return build_asset_overview(broker.asset)
 
 
 @rt("/save_backtest", methods=["POST"])

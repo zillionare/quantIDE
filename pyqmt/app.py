@@ -5,16 +5,18 @@ Main application entry point for the PyQMT system.
 This file sets up the FastHTML application with MonsterUI styling.
 """
 
+import cfg4py
 from fasthtml.common import *
 from monsterui.all import *
-import cfg4py
 
-from pyqmt.web.pages.login import login_app
-from pyqmt.web.pages.home import home_app
-from pyqmt.web.auth.manager import AuthManager
 from pyqmt.config import cfg, get_config_dir
 from pyqmt.dal.tradedb import db
 from pyqmt.service.qmt_broker import QMTBroker
+from pyqmt.web.apis.broker import app as broker_api_app
+from pyqmt.web.auth.manager import AuthManager
+from pyqmt.web.middleware import BrokerMiddleware
+from pyqmt.web.pages.home import home_app
+from pyqmt.web.pages.login import login_app
 
 
 def init():
@@ -22,6 +24,10 @@ def init():
 
     # 初始化交易数据库
     db.init(cfg.db.path)
+
+    broker = None
+    if cfg.broker == "qmt":
+        broker = QMTBroker(cfg)
 
     # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})
@@ -33,14 +39,13 @@ def init():
         routes=[
             Mount("/login", login_app),
             Mount("/home", home_app),
+            Mount("/broker", broker_api_app),
             Mount("/", home_app)
         ],
     )
 
-    # mount broker
-    if cfg.broker == "qmt":
-        broker = QMTBroker(cfg)
-        app.state.broker = broker
+    if broker is not None:
+        app.add_middleware(BrokerMiddleware, broker=broker)
 
     # 初始化认证系统并注册路由
     auth.initialize(app, prefix="/auth")

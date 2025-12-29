@@ -1,8 +1,8 @@
 from fasthtml.common import *
 from monsterui.all import *
 
+from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
-from dataclasses import asdict
 
 home_app, rt = fast_app()
 
@@ -199,20 +199,10 @@ def index(req, session):
     )
 
     asset_overview = None
-    
-    # 直接从主应用实例获取 broker
-    broker = getattr(main_app.state, "broker", None)
-    
+    broker = req.scope.get("broker")
     if broker is not None and hasattr(broker, "asset"):
         try:
-            # 与 /asset_overview 路由中相同的逻辑
-            asset = broker.asset
-            pnl = asset.total - asset.principal
-            ppnl = pnl / asset.principal if asset.principal else 0.0
-            data = asdict(asset)
-            data["pnl"] = pnl
-            data["pnl_pct"] = ppnl
-            asset_overview = data
+            asset_overview = build_asset_overview(broker.asset)
         except Exception:
             asset_overview = None
 
