@@ -16,9 +16,9 @@ import arrow
 import numpy as np
 import pkg_resources
 
-ver = pkg_resources.get_distribution("quantide-broker").parsed_version
+ver = pkg_resources.get_distribution("zillionare-pyqmt").parsed_version
 
-@rt("status")
+@rt("/status")
 async def get(request):
     """获取当前服务状态"""
     return {"status": "ok", "listen": request.url, "version": ver.base_version}
@@ -54,7 +54,7 @@ async def _(req):
     return broker.start_backtest()
 
 
-@rt("stop_backtest", methods=["POST"])
+@rt("/stop_backtest", methods=["POST"])
 async def _(req):
     """结束回测
 
@@ -67,14 +67,14 @@ async def _(req):
     return broker.stop_backtest()
 
 
-@rt("accounts", methods=["GET"])
+@rt("/accounts", methods=["GET"])
 async def list_accounts(req):
     """只在回测模式下有效？"""
     broker = req.app.state.broker
     return broker.list_accounts()
 
 
-@rt("buy", methods=["POST"])
+@rt("/buy", methods=["POST"])
 async def buy(
     req,
     asset: str,
@@ -91,7 +91,7 @@ async def buy(
     return broker.buy(asset, price, shares, bid_time, timeout)
 
 
-@rt("buy_percent", methods=["POST"])
+@rt("/buy_percent", methods=["POST"])
 async def buy_percent(
     req,
     asset: str,
@@ -109,11 +109,11 @@ async def buy_percent(
     return broker.buy_percent(asset, percent, bid_time, timeout)
 
 
-@rt("buy_money", methods=["POST"])
-async def buy_money(
+@rt("/buy_amount", methods=["POST"])
+async def buy_amount(
     req,
     asset: str,
-    money: int | float,
+    amount: int | float,
     price: int | float | None = None,
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
@@ -122,10 +122,10 @@ async def buy_money(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.buy_money(asset, money, price, bid_time, timeout)
+    return broker.buy_amount(asset, amount, price, bid_time, timeout)
 
 
-@rt("sell", methods=["POST"])
+@rt("/sell", methods=["POST"])
 async def sell(
     req,
     asset: str,
@@ -141,7 +141,7 @@ async def sell(
     return broker.sell(asset, price, shares, bid_time, timeout)
 
 
-@rt("sell_percent", methods=["POST"])
+@rt("/sell_percent", methods=["POST"])
 async def sell_percent(
     req,
     asset: str,
@@ -159,11 +159,11 @@ async def sell_percent(
     return broker.sell_percent(asset, percent, bid_time, timeout)
 
 
-@rt("sell_money", methods=["POST"])
-async def sell_money(
+@rt("/sell_amount", methods=["POST"])
+async def sell_amount(
     req,
     asset: str,
-    money: int | float,
+    amount: int | float,
     price: int | float | None = None,
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
@@ -172,16 +172,16 @@ async def sell_money(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.sell_money(asset, money, price, bid_time, timeout)
+    return broker.sell_amount(asset, amount, price, bid_time, timeout)
 
 
-@rt("positions", methods=["GET"])
+@rt("/positions", methods=["GET"])
 async def positions(req, asset: str, date: datetime.date | None = None):
     broker = req.app.state.broker
     return broker.get_position(asset, date)
 
 
-@rt("account_info", methods=["GET"])
+@rt("/account_info", methods=["GET"])
 async def account_info(req, asset: str, date: datetime.date | None = None):
     """获取账户信息
 
@@ -211,7 +211,7 @@ async def account_info(req, asset: str, date: datetime.date | None = None):
     return broker.get_account_info(asset, date)
 
 
-@rt("metrics", methods=["GET"])
+@rt("/metrics", methods=["GET"])
 async def metrics(request):
     """获取回测的评估指标信息
 
@@ -241,7 +241,7 @@ async def metrics(request):
     return response.raw(pickle.dumps(metrics))
 
 
-@rt("bills", methods=["GET"])
+@rt("/bills", methods=["GET"])
 async def bills(request):
     """获取交易记录
 
@@ -265,7 +265,7 @@ async def bills(request):
     return response.json(jsonify(results))
 
 
-@rt("accounts", methods=["DELETE"])
+@rt("/accounts", methods=["DELETE"])
 async def delete_accounts(request):
     """删除账户
 
@@ -289,7 +289,7 @@ async def delete_accounts(request):
         accounts.delete_accounts(account_to_delete)
 
 
-@rt("assets", methods=["GET"])
+@rt("/assets", methods=["GET"])
 async def get_assets(request):
     """获取账户资产信息
 
@@ -326,7 +326,7 @@ async def get_assets(request):
     return response.raw(pickle.dumps(broker._assets[filter]))
 
 
-@rt("asset_overview", methods=["GET"])
+@rt("/asset_overview", methods=["GET"])
 async def asset_overview(request):
     broker = request.app.state.broker
     asset = broker.asset
@@ -339,7 +339,7 @@ async def asset_overview(request):
     return data
 
 
-@rt("save_backtest", methods=["POST"])
+@rt("/save_backtest", methods=["POST"])
 async def save_backtest(request):
     """在回测结束后，保存回测相关参数及数据。
 
@@ -379,7 +379,7 @@ async def save_backtest(request):
     return response.text(name)
 
 
-@rt("load_backtest", methods=["GET"])
+@rt("/load_backtest", methods=["GET"])
 async def load_backtest(request):
     """通过名字获取回测状态
 

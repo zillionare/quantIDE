@@ -68,7 +68,7 @@ class Broker(metaclass=ABCMeta):
     async def buy_amount(
         self,
         asset: str,
-        money: int | float,
+        amount: int | float,
         price: int | float | None = None,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
@@ -77,7 +77,7 @@ class Broker(metaclass=ABCMeta):
 
         Args:
             asset: 资产代码, "symbol.SZ"风格
-            money: 买入金额
+            amount: 买入金额
             price: 如果委托价格为 None，则以市价买入
             bid_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
@@ -137,7 +137,7 @@ class Broker(metaclass=ABCMeta):
     async def sell_amount(
         self,
         asset: str,
-        money: int | float,
+        amount: int | float,
         price: int | float | None = None,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
@@ -148,7 +148,7 @@ class Broker(metaclass=ABCMeta):
 
         Args:
             asset: 资产代码, "symbol.SZ"风格
-            money: 卖出金额
+            amount: 卖出金额
             price: 如果委托价格为 None，则以市价卖出
             bid_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
