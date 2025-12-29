@@ -22,6 +22,7 @@ qmt:
   account_type: STOCK
   name: 账户1
   path: "c:\\apps\\qmt\\userdata_mini"
+  principal: 20000
 
 notify:
   dingtalk:

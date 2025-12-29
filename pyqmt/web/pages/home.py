@@ -1,6 +1,7 @@
 from fasthtml.common import *
 from monsterui.all import *
 
+from loguru import logger
 from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
 
@@ -8,7 +9,7 @@ home_app, rt = fast_app()
 
 
 def AccountTabs():
-    return Div(Ul(Li(A("账户1", cls="active", href="#")), cls="uk-tab"), cls="mb-4")
+    return Div(Ul(Li(A("我的资产", cls="active", href="#")), cls="uk-tab"), cls="mb-4")
 
 
 def AssetSummary(asset_overview: dict | None = None):
@@ -203,7 +204,8 @@ def index(req, session):
     if broker is not None and hasattr(broker, "asset"):
         try:
             asset_overview = build_asset_overview(broker.asset)
-        except Exception:
+        except Exception as e:
+            logger.exception(e)
             asset_overview = None
 
     layout.main_block = lambda: main_block(asset_overview)

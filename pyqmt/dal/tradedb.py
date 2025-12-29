@@ -320,6 +320,7 @@ class TradeDB:
         Args:
             asset: 资产信息
         """
+        assert asset.principal is not None, "资产信息中本金不能为空"
         self["assets"].insert(asdict(asset))
 
     def update_asset(self, dt: datetime.date, **updates):

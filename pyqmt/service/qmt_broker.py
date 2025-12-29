@@ -40,12 +40,21 @@ from pyqmt.config import cfg
 from pyqmt.service.abstract_broker import AbstractBroker
 from pyqmt.core.enums import BidType, OrderSide, OrderStatus
 from pyqmt.models import OrderModel, TradeModel, PositionModel, AssetModel
-from pyqmt.core.errors import TradeErrors, XtTradeConnectError, TradeError
+from pyqmt.core.errors import TradeErrors, XtTradeConnectError, TradeError, XtQuantTradeError
 from pyqmt.dal.tradedb import db
 from pyqmt.models import new_uuid_id
 
 
 # helpers
+def as_asset(xt_asset: XtAsset, principal: float) -> AssetModel:
+    return AssetModel(
+        total = xt_asset.total_asset,
+        cash = xt_asset.cash,
+        market_value = xt_asset.market_value,
+        frozen_cash = xt_asset.frozen_cash,
+        dt = datetime.date.today(),
+        principal=principal
+    )
 def as_position(xt_position: XtPosition) -> PositionModel:
     return PositionModel(
         dt=datetime.date.today(),
@@ -363,8 +372,10 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
 class QMTBroker(AbstractBroker):
     def __init__(self, cfg):
         # 账号必须是字符串类型
+        super().__init__()
         self.account_id = str(cfg.qmt.account_id)
         self.account_type = cfg.qmt.account_type
+        self._principal = cfg.qmt.principal
 
         assert Path(cfg.qmt.path).exists(), "qmt安装路径不存在"
 
@@ -427,7 +438,6 @@ class QMTBroker(AbstractBroker):
         if self._asset is None:
             self._asset = self.query_asset_info()
 
-        assert self._asset is not None
         return self._asset
 
     @property
@@ -435,7 +445,10 @@ class QMTBroker(AbstractBroker):
         if self._trade_api is None:
             self.connect_trade_api()
 
-        return self.trade_api
+        if self._trade_api is None:
+            raise XtTradeConnectError(TradeErrors.ERROR_UNKNOWN, "交易API未连接")
+        
+        return self._trade_api
 
     def connect_trade_api(self):
         """初始化或重新连接TradeAPI"""
@@ -469,9 +482,14 @@ class QMTBroker(AbstractBroker):
         before_sleep=before_retry_sleep,
         retry_error_callback=on_final_failure,
     )
-    def query_asset_info(self) -> AssetModel | None:
+    def query_asset_info(self) -> AssetModel:
         """查询最新的资产信息"""
-        return self.trade_api.query_stock_asset(self.acc)
+        response = self.trade_api.query_stock_asset(self.acc)
+
+        if response is None:
+            raise XtQuantTradeError(TradeErrors.ERROR_UNKNOWN, "查询资产信息失败")
+        
+        return as_asset(response, self._principal)
 
     @retry(
         stop=stop_after_attempt(3),

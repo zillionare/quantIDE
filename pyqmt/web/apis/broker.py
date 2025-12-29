@@ -64,7 +64,7 @@ async def _(req):
         - principal, float
 
     """
-        broker = req.scope.get("broker")
+    broker = req.scope.get("broker")
     return broker.start_backtest()
 
 
