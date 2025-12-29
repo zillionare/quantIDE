@@ -13,7 +13,7 @@ def AccountTabs():
 
 
 def AssetSummary(asset_overview: dict | None = None):
-    metric_cls = "flex flex-col items-center justify-center p-4 text-white"
+    metric_cls = "flex flex-col items-center justify-center p-4 text-red-400"
     val_cls = "text-xl font-bold"
     label_cls = "text-xs opacity-80"
 
@@ -174,8 +174,7 @@ def TradePanel():
                 cls="uk-button-default w-full bg-white text-red-700 font-bold border-none hover:bg-gray-100",
             ),
         ),
-        cls="p-6 rounded-xl shadow-xl text-white h-full",
-        style="background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);",
+        cls="p-6 rounded-xl shadow-xl h-full"
     )
 
 
