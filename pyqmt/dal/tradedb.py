@@ -24,6 +24,7 @@ from typing import Any
 import datetime
 import sqlite3
 import polars as pl
+from pathlib import Path
 import sqlite_utils as su
 from dataclasses import asdict
 from pyqmt.core.enums import OrderSide
@@ -44,9 +45,9 @@ class TradeDB:
             return
 
         # 初始化数据库连接
-        self.db_path = db_path
+        self.db_path = str(Path(db_path).expanduser())
 
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(self.db_path)
         db = su.Database(conn)
 
         # 启用 WAL 模式提高并发读性能
@@ -88,19 +89,19 @@ class TradeDB:
             pk = model.__pk__
 
             t: su.db.Table = db[table]  # type: ignore
-            t.create(model.to_db_schema(), pk=pk)
+            t.create(model.to_db_schema(), pk=pk, if_not_exists=True)
 
             # 创建索引
             if model.__indexes__ is not None:
                 indexes, is_unique = model.__indexes__
-                t.create_index(indexes, unique=is_unique)
+                t.create_index(indexes, unique=is_unique, if_not_exists=True)
 
             # 创建外键约束
             if hasattr(model, "__foreign_keys__") and model.__foreign_keys__:
                 for fk in model.__foreign_keys__:
                     if len(fk) == 3:  # (from_column, to_table, to_column)
                         from_col, to_table, to_col = fk
-                        t.add_foreign_key(from_col, to_table, to_col)
+                        t.add_foreign_key(from_col, to_table, to_col, ignore=True)
 
     def __getitem__(self, table_name) -> su.db.Table:
         """代理获取表对象"""

@@ -7,6 +7,7 @@ import datetime
 from abc import ABCMeta, abstractmethod
 from pyqmt.core.enums import OrderSide, BidType
 from pyqmt.models import PositionModel, TradeModel, OrderModel
+import polars as pl
 
 
 class Broker(metaclass=ABCMeta):
@@ -25,7 +26,7 @@ class Broker(metaclass=ABCMeta):
         bid_time: datetime.datetime | None = None,
         strategy: str = "",
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> pl.DataFrame | None:
         """买入指令
 
         如果传入价格为0, 则为市价买入。
@@ -49,7 +50,7 @@ class Broker(metaclass=ABCMeta):
         percent: float,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> pl.DataFrame|None:
         """买入指令按比例买入
 
         Args:
@@ -64,7 +65,7 @@ class Broker(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    async def buy_money(
+    async def buy_amount(
         self,
         asset: str,
         money: int | float,
@@ -133,7 +134,7 @@ class Broker(metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    async def sell_money(
+    async def sell_amount(
         self,
         asset: str,
         money: int | float,

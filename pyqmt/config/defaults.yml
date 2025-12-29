@@ -18,8 +18,8 @@ apikeys:
 
 broker: qmt
 qmt:
-  account: "8881457417"
-  type: 1001
+  account_id: "8881457417"
+  account_type: STOCK
   name: 账户1
   path: "c:\\apps\\qmt\\userdata_mini"
 
@@ -34,5 +34,5 @@ notify:
     mail_server: smtp.exmail.qq.com
 
 db:
-  path: ":memory:"
+  path: ${path: ~/pyqmt/tradedb.db}
 

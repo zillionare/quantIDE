@@ -14,6 +14,7 @@ from pyqmt.web.pages.home import home_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.config import cfg, get_config_dir
 from pyqmt.dal.tradedb import db
+from pyqmt.service.qmt_broker import QMTBroker
 
 
 def init():
@@ -32,22 +33,21 @@ def init():
         routes=[
             Mount("/login", login_app),
             Mount("/home", home_app),
+            Mount("/", home_app)
         ],
     )
 
     # mount broker
     if cfg.broker == "qmt":
-        broker = QMTBroker()
+        broker = QMTBroker(cfg)
         app.state.broker = broker
 
     # 初始化认证系统并注册路由
     auth.initialize(app, prefix="/auth")
 
+    return app
 
-@rt("/", methods="get")
-def home():
-    return RedirectResponse("/home", status_code=303)
-
+app = init()
 
 if __name__ == "__main__":
     serve()
