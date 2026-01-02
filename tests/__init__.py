@@ -2,6 +2,7 @@
 
 import datetime
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -19,7 +20,9 @@ from pyqmt.data.sqlite import SQLiteDB
 @pytest.fixture(scope="session")
 def cfg():
     """Initialize cfg before running tests."""
-    cfg = cfg4py.init(get_config_dir(), False)
+    tests = Path(__file__).parent
+    cfg = cfg4py.init(str(tests/"assets"))
+    cfg.epoch = datetime.date(2024, 1, 1)
     yield cfg
 
 
@@ -54,7 +57,13 @@ def clean_failed_tasks(db):
 
 @pytest.fixture(scope="session")
 def asset_dir():
-    return Path(__file__).parent / "assets"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = Path(__file__).parent / "assets"
+        dst = Path(tmpdir) / "assets"
+        shutil.copytree(src, dst)
+
+        yield dst
+        dst.unlink()
 
 
 @pytest.fixture(scope="session")

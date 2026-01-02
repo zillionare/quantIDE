@@ -8,7 +8,6 @@ from loguru import logger
 
 from pyqmt.config import cfg
 from pyqmt.core.singleton import singleton
-from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.fetchers import fetch_stock_list
 
 
@@ -151,6 +150,8 @@ class StockList:
 
     def is_st(self, asset: str|list[str], date: datetime.date) -> bool:
         """在指定日期个股是否为 st。"""
+        from pyqmt.data.models.daily_bars import daily_bars
+
         record = daily_bars.get_bars_in_range(date, date, asset)
         if len(record):
             return record.item(0, "st") == True
@@ -167,6 +168,8 @@ class StockList:
         Returns:
             List[str]: 所有上市股票的代码列表
         """
+        from pyqmt.data.models.daily_bars import daily_bars
+
         if not exclude_st:
             filters = [pl.col("delist_date").is_null() | (pl.col("delist_date") > date)]
             filters.append(pl.col("list_date") <= date)

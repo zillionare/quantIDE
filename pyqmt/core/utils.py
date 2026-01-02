@@ -4,19 +4,6 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
-
-def handle_xt_error(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.warning("calling %s with %s, %s cause exception", args, kwargs)
-            logger.exception(e)
-
-    return wrapper
-
-
 def str2date(dt: str) -> datetime.date:
     if len(dt) != 8:
         raise ValueError(f"input date should be at 8 length, got {dt}")

@@ -182,7 +182,8 @@ class ParquetStorage:
                 .to_series()
             )
         df = self._dates.to_frame("date")
-        df.write_parquet(self._dates_file_path())
+        if len(df):
+            df.write_parquet(self._dates_file_path())
 
     def _read_partition(
         self, start: Any = None, end: Any = None, keep_partition_col: bool = False
