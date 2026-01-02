@@ -1,4 +1,5 @@
 import datetime
+from pathlib import Path
 
 import polars as pl
 from loguru import logger
@@ -23,7 +24,7 @@ class DailyBars:
             raise RuntimeError("daily bars store 未初始化")
         return self._store
 
-    def connect(self, store_path: str, calendar_store_path: str) -> None:
+    def connect(self, store_path: str|Path, calendar_store_path: str|Path) -> None:
         if self._store is not None:
             logger.warning("重加载 daily bars store")
 

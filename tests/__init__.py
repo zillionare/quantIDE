@@ -63,7 +63,10 @@ def asset_dir():
         shutil.copytree(src, dst)
 
         yield dst
-        dst.unlink()
+        try:
+            dst.unlink()
+        except PermissionError:
+            pass
 
 
 @pytest.fixture(scope="session")

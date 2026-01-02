@@ -1,5 +1,9 @@
 from pathlib import Path
-
+# 延迟导入，避免在包初始化时触发循环依赖
+from pyqmt.data.models.calendar import calendar
+from pyqmt.data.models.daily_bars import daily_bars
+from pyqmt.data.models.stocks import stock_list
+from pyqmt.data.sqlite import db
 
 def init_data(home: str | Path) -> None:
     """初始化数据层对象：stocklist、calendar、daily_bars，并进行模块级导出。
@@ -20,10 +24,10 @@ def init_data(home: str | Path) -> None:
     daily_bars_path.mkdir(parents=True, exist_ok=True)
 
     # 延迟导入，避免在包初始化时触发循环依赖
-    from pyqmt.data.models.calendar import calendar
-    from pyqmt.data.models.daily_bars import daily_bars
-    from pyqmt.data.models.stocks import stock_list
-    from pyqmt.data.sqlite import db
+    # from pyqmt.data.models.calendar import calendar
+    # from pyqmt.data.models.daily_bars import daily_bars
+    # from pyqmt.data.models.stocks import stock_list
+    # from pyqmt.data.sqlite import db
 
     calendar.load(calendar_path)
     stock_list.load(stocklist_path)
