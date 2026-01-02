@@ -1,0 +1,39 @@
+server:
+  key: quantide
+  host: "0.0.0.0"
+  port: 8000
+  prefix: '/zillionare-qmt'
+
+users:
+  - name: admin
+    password: admin-password
+  - name: trader
+    password: trader-password
+
+apikeys:
+  timeout: 300
+  clients:
+    - client: client1
+      key: key1
+
+broker: qmt
+qmt:
+  account_id: "8881457417"
+  account_type: STOCK
+  name: 账户1
+  path: "c:\\apps\\qmt\\userdata_mini"
+  principal: 20000
+
+notify:
+  dingtalk:
+    access_token: dingtalk-access-token
+    secret: dingtalk-secret
+    keyword: dingtalk-keyword
+  mail:
+    mail_to: nonexist@quantide.cn
+    mail_from: nonexist@quantide.cn
+    mail_server: smtp.exmail.qq.com
+
+db:
+  path: ${path: ~/pyqmt/tradedb.db}
+

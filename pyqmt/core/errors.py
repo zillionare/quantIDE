@@ -1,5 +1,6 @@
-from typing import Optional
 from enum import IntEnum
+from typing import Optional, Protocol
+
 import bidict
 
 
