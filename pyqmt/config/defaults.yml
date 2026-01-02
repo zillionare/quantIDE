@@ -35,5 +35,4 @@ notify:
     mail_server: smtp.exmail.qq.com
 
 db:
-  path: ${path: ~/pyqmt/tradedb.db}
-
+  path: ${path: ~/pyqmt/sqlitedb.db}

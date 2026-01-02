@@ -1,25 +1,28 @@
 import datetime
 
-from fasthtml.common import *
-from starlette.responses import Response
+from fasthtml.common import fast_app
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from pyqmt.config import cfg
-from pyqmt.core.errors import TradeError
-from pyqmt.models import AssetModel
+from pyqmt.core.errors import TradeError, TradeErrors
+from pyqmt.data.sqlite import Asset
 from pyqmt.service.base_broker import Broker
 
 app, rt = fast_app()
 
 import pickle
+from importlib.metadata import PackageNotFoundError, version
 
 import arrow
 import numpy as np
-import pkg_resources
 
-ver = pkg_resources.get_distribution("zillionare-pyqmt").parsed_version
+try:
+    ver = version("zillionare-pyqmt")
+except PackageNotFoundError:
+    ver = "0.0.0"
 
 
-def build_asset_overview(asset: AssetModel) -> dict:
+def build_asset_overview(asset: Asset) -> dict:
     pnl = asset.total - asset.principal
     ppnl = pnl / asset.principal if asset.principal else 0.0
     return {
@@ -33,13 +36,13 @@ def build_asset_overview(asset: AssetModel) -> dict:
 
 
 @rt("/status")
-async def get(request):
+async def status(request):
     """获取当前服务状态"""
-    return {"status": "ok", "listen": request.url, "version": ver.base_version}
+    return {"status": "ok", "listen": request.url, "version": ver}
 
 
 @rt("/start_backtest", methods=["POST"])
-async def _(req):
+async def start_backtest(req):
     """启动回测
 
     启动回测时，将为接下来的回测创建一个新的账户。
@@ -65,11 +68,12 @@ async def _(req):
 
     """
     broker = req.scope.get("broker")
-    return broker.start_backtest()
+    params = req.json or {}
+    return broker.start_backtest(params)
 
 
 @rt("/stop_backtest", methods=["POST"])
-async def _(req):
+async def stop_backtest(req):
     """结束回测
 
     结束回测后，账户将被冻结，此后将不允许进行任何操作
@@ -102,7 +106,13 @@ async def buy(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.buy(asset, price, shares, bid_time, timeout)
+    return await broker.buy(
+        asset=asset,
+        shares=shares,
+        price=float(price),
+        bid_time=bid_time,
+        timeout=timeout,
+    )
 
 
 @rt("/buy_percent", methods=["POST"])
@@ -120,7 +130,7 @@ async def buy_percent(
     if not 0 < percent <= 1.0:
         return Response("percent must be between 0 and 1.0", status_code=400)
 
-    return broker.buy_percent(asset, percent, bid_time, timeout)
+    return await broker.buy_percent(asset, percent, bid_time, timeout)
 
 
 @rt("/buy_amount", methods=["POST"])
@@ -136,7 +146,7 @@ async def buy_amount(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.buy_amount(asset, amount, price, bid_time, timeout)
+    return await broker.buy_amount(asset, amount, price, bid_time, timeout)
 
 
 @rt("/sell", methods=["POST"])
@@ -152,7 +162,13 @@ async def sell(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.sell(asset, price, shares, bid_time, timeout)
+    return await broker.sell(
+        asset=asset,
+        shares=shares,
+        price=float(price),
+        bid_time=bid_time,
+        timeout=timeout,
+    )
 
 
 @rt("/sell_percent", methods=["POST"])
@@ -170,7 +186,7 @@ async def sell_percent(
     if not 0 < percent <= 1.0:
         return Response("percent must be between 0 and 1.0", status_code=400)
 
-    return broker.sell_percent(asset, percent, bid_time, timeout)
+    return await broker.sell_percent(asset, percent, bid_time, timeout)
 
 
 @rt("/sell_amount", methods=["POST"])
@@ -186,7 +202,7 @@ async def sell_amount(
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
-    return broker.sell_amount(asset, amount, price, bid_time, timeout)
+    return await broker.sell_amount(asset, amount, price, bid_time, timeout)
 
 
 @rt("/positions", methods=["GET"])
@@ -251,9 +267,9 @@ async def metrics(request):
     if end:
         end = arrow.get(end).date()
 
-    broker = req.scope.get("broker")
+    broker = request.scope.get("broker")
     metrics = await broker.metrics(start, end, baseline)
-    return response.raw(pickle.dumps(metrics))
+    return Response(pickle.dumps(metrics), media_type="application/octet-stream")
 
 
 @rt("/bills", methods=["GET"])
@@ -271,13 +287,13 @@ async def bills(request):
     """
     results = {}
 
-    broker = req.scope.get("broker")
+    broker = request.scope.get("broker")
 
     if not broker._bt_stopped:
-        raise TradeError("call `stop_backtest` first")
+        raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "call `stop_backtest` first")
 
     results = broker.bills()
-    return response.json(jsonify(results))
+    return JSONResponse(results)
 
 
 @rt("/accounts", methods=["DELETE"])
@@ -296,14 +312,12 @@ async def delete_accounts(request):
 
     if account_to_delete is None:
         broker = request.scope.get("broker")
-        if err:
-            return err
         if broker.account_name == "admin":
             accounts.delete_accounts()
         else:
-            return response.text("admin account required", status=403)
+            return PlainTextResponse("admin account required", status_code=403)
 
-    broker = req.scope.get("broker")
+    broker = request.scope.get("broker")
     if account_to_delete == broker.account_name:
         accounts.delete_accounts(account_to_delete)
 
@@ -325,7 +339,7 @@ async def get_assets(request):
         Response: 从`start`到`end`期间的账户资产信息，结果以binary方式返回,参考[backtest.trade.datatypes.rich_assets_dtype][]
 
     """
-    broker = req.scope.get("broker")
+    broker = request.scope.get("broker")
 
     start = request.args.get("start")
     if start:
@@ -342,12 +356,12 @@ async def get_assets(request):
     filter = np.argwhere(
         (broker._assets["date"] >= start) & (broker._assets["date"] <= end)
     ).flatten()
-    return response.raw(pickle.dumps(broker._assets[filter]))
+    return Response(pickle.dumps(broker._assets[filter]), media_type="application/octet-stream")
 
 
 @rt("/asset_overview", methods=["GET"])
 async def asset_overview(request):
-    broker = req.scope.get("broker")
+    broker = request.scope.get("broker")
     return build_asset_overview(broker.asset)
 
 
@@ -375,7 +389,7 @@ async def save_backtest(request):
     """
     params = request.json or {}
     if "name_prefix" not in params:
-        raise BadParamsError("name_prefix must be specified")
+        raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "name_prefix must be specified")
 
     name_prefix = params["name_prefix"]
     strategy_params = params.get("params")
@@ -388,7 +402,7 @@ async def save_backtest(request):
     name = await accounts.save_backtest(
         name_prefix, strategy_params, token, baseline, desc
     )
-    return response.text(name)
+    return PlainTextResponse(name)
 
 
 @rt("/load_backtest", methods=["GET"])
@@ -402,9 +416,9 @@ async def load_backtest(request):
     """
     name = request.args.get("name", None)
     if name is None:
-        raise BadParamsError("name of the backtest is required")
+        raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "name of the backtest is required")
 
     token = request.token
     accounts = request.app.ctx.accounts
 
-    return response.json(jsonify(accounts.load_backtest(name, token)))
+    return JSONResponse(accounts.load_backtest(name, token))

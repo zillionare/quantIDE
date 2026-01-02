@@ -13,8 +13,7 @@ from fasthtml.common import *
 from monsterui.all import *
 
 from pyqmt.config import cfg, get_config_dir
-from pyqmt.dal.tradedb import db
-from pyqmt.service.qmt_broker import QMTBroker
+from pyqmt.data.sqlite import db
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerMiddleware
@@ -30,7 +29,17 @@ def init():
 
     broker = None
     if cfg.broker == "qmt":
+        from pyqmt.service.qmt_broker import QMTBroker
+
         broker = QMTBroker(cfg)
+    elif cfg.broker == "backtest":
+        from pyqmt.service.backtest_broker import BacktestBroker
+
+        broker = BacktestBroker(cfg)
+    elif cfg.broker == "simulation":
+        from pyqmt.service.simulation_broker import SimulationBroker
+
+        broker = SimulationBroker(cfg)
 
     # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})

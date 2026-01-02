@@ -34,4 +34,4 @@ def init_data(home: str | Path) -> None:
 
     daily_bars.connect(str(daily_bars_path), str(calendar_path))
 
-    db.connect(db_path)
+    db.init(db_path)

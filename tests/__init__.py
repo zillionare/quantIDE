@@ -14,7 +14,7 @@ import pytest
 from numpy.lib.stride_tricks import as_strided
 
 from pyqmt.config import get_config_dir
-from pyqmt.data.sqlite import SQLiteDB
+from pyqmt.data.sqlite import db
 
 
 @pytest.fixture(scope="session")
@@ -34,9 +34,9 @@ def db():
 
     try:
         # 初始化数据库
-        _db = SQLiteDB()
-        _db.connect(test_db_path)
-        yield _db
+        db._initialized = False
+        db.init(test_db_path)
+        yield db
 
     finally:
         try:

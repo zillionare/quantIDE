@@ -5,9 +5,11 @@
 
 import datetime
 from abc import ABCMeta, abstractmethod
-from pyqmt.core.enums import OrderSide, BidType
-from pyqmt.models import PositionModel, TradeModel, OrderModel
+
 import polars as pl
+
+from pyqmt.core.enums import BidType, OrderSide
+from pyqmt.data.sqlite import Trade
 
 
 class Broker(metaclass=ABCMeta):
@@ -72,7 +74,7 @@ class Broker(metaclass=ABCMeta):
         price: int | float | None = None,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> list[Trade]:
         """买入指令按金额买入
 
         Args:
@@ -95,7 +97,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> list[Trade]:
         """卖出指令
 
         如果传入价格为0, 则为市价卖出。
@@ -119,7 +121,7 @@ class Broker(metaclass=ABCMeta):
         percent: float,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> list[Trade]:
         """卖出指令按比例卖出
 
         Args:
@@ -141,7 +143,7 @@ class Broker(metaclass=ABCMeta):
         price: int | float | None = None,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> list[TradeModel]:
+    ) -> list[Trade]:
         """卖出指令按金额卖出
 
         因为取整（手）的关系，实际卖出金额将可能超过约定金额，以保证回笼足够的现金。
@@ -187,7 +189,7 @@ class Broker(metaclass=ABCMeta):
         price: float,
         target_pct: float,
         bid_type: BidType = BidType.MARKET,
-    ) -> list[TradeModel]:
+    ) -> list[Trade]:
         """将`asset`的仓位调整到占比`target_pct`
 
         如果当前仓位大于 target_pct，则卖出；
