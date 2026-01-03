@@ -11,6 +11,7 @@ from pyqmt.core.errors import TradeError, TradeErrors
 from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.sqlite import Asset, Order, Position, Trade, db, new_uuid_id
 from pyqmt.service.abstract_broker import AbstractBroker
+from pyqmt.service.datafeed import QuoteEvent
 
 
 @dataclass(frozen=True)
@@ -31,11 +32,12 @@ class BacktestBroker(AbstractBroker):
         self._bt_stopped: bool = True
 
         self._task: asyncio.Task | None = None
-        self._pending: list[_PendingOrder] = []
+        self._pending: dict[str, list[str]] = {}
         self._positions: dict[str, Position] = {}
         self._assets: np.ndarray = np.array([], dtype=self._assets_dtype())
         self._last_day: datetime.date | None = None
         self._daily_match_price: str = "close"
+        self._quotes: dict[str, QuoteEvent] = {}
 
     @staticmethod
     def _assets_dtype() -> np.dtype:
@@ -85,7 +87,7 @@ class BacktestBroker(AbstractBroker):
 
         if self._task and not self._task.done():
             self._task.cancel()
-        self._task = asyncio.create_task(self._run())
+        self._task = None
 
         return {
             "account_name": self.account_name,
@@ -293,76 +295,155 @@ class BacktestBroker(AbstractBroker):
         db.update_order(order.qtoid, status=OrderStatus.SUCCEEDED)
         return trade
 
-    async def _run(self) -> None:
-        dt = self.bt_start
-        while not self._bt_stopped and dt <= self.bt_end:
-            if self._last_day is None or dt != self._last_day:
-                self._refresh_t1(dt)
-                self._last_day = dt
+    def on_day_open(self, date: datetime.date) -> dict:
+        if self._bt_stopped:
+            return {"status": "error", "message": "backtest not started"}
+        prev = date - datetime.timedelta(days=1)
+        self._refresh_t1(date)
+        self._update_asset_eod(prev)
+        self._last_day = date
+        return {"status": "ok", "date": date.isoformat()}
 
-            pending_today = [p for p in self._pending if p.dt <= dt]
-            rest = [p for p in self._pending if p.dt > dt]
-            self._pending = rest
-
-            for item in pending_today:
-                order = db.get_order(item.qtoid)
+    def on_day_close(self, date: datetime.date) -> dict:
+        if self._bt_stopped:
+            return {"status": "error", "message": "backtest not started"}
+        self._update_asset_eod(date)
+        # 收盘时将未完成订单统一废单
+        for asset, q in list(self._pending.items()):
+            for qtoid in list(q):
+                order = db.get_order(qtoid)
                 if order is None:
-                    self.awake(item.qtoid, None)
                     continue
-                if not self._can_trade_on_day(dt):
-                    db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="out of range")
-                    self.awake(order.qtoid, None)
+                if order.status in (OrderStatus.SUCCEEDED, OrderStatus.PART_SUCC):
                     continue
+                db.update_order(qtoid, status=OrderStatus.JUNK, status_msg="expired at close")
+                q.remove(qtoid)
+                self.awake(qtoid, None)
+            if not q:
+                self._pending.pop(asset, None)
+        self._last_day = date
+        return {"status": "ok", "date": date.isoformat()}
 
-                bar = self._get_bar(dt, order.asset)
-                if bar is None:
-                    db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="no bar")
-                    self.awake(order.qtoid, None)
-                    continue
-
-                try:
-                    self._check_daily_limit_relaxed(order.side, bar)
-                    px = self._match_price(order, bar)
-                    if px is None:
-                        self._pending.append(_PendingOrder(qtoid=order.qtoid, dt=dt + datetime.timedelta(days=1)))
+    def on_quote(self, event: QuoteEvent) -> None:
+        self._quotes[event.asset] = event
+        pending = list(self._pending.get(event.asset, []))
+        for qtoid in pending:
+            order = db.get_order(qtoid)
+            if order is None:
+                self._pending[event.asset].remove(qtoid)
+                if not self._pending[event.asset]:
+                    self._pending.pop(event.asset, None)
+                self.awake(qtoid, None)
+                continue
+            if order.asset != event.asset:
+                self._pending[event.asset].remove(qtoid)
+                self._pending.setdefault(order.asset, []).append(qtoid)
+                continue
+            if event.tm and order.tm and event.tm < order.tm:
+                continue
+            up = event.up_limit
+            down = event.down_limit
+            px = float(event.last_price)
+            try:
+                self._check_limit_strict(order.side, px, up, down)
+                match_px = px
+                if order.bid_type == BidType.FIXED and order.price is not None:
+                    price = float(order.price)
+                    if abs(price - px) > 1e-8:
                         continue
-
-                    if order.side == OrderSide.BUY:
-                        shares = self._normalize_buy_shares(order.shares)
-                        shares = self._ensure_cash_for_buy(px, shares)
-                        if shares <= 0:
-                            db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="insufficient cash")
-                            self.awake(order.qtoid, None)
-                            continue
-                        if shares != int(order.shares):
-                            db.update_order(order.qtoid, shares=shares)
-                        self._apply_buy(dt, order, px, shares)
-                        self.awake(order.qtoid, True)
+                    match_px = price
+                total = int(float(order.shares))
+                shares = (total // 100) * 100
+                if shares <= 0:
+                    continue
+                amount = match_px * shares
+                fee = self._calc_fee(amount)
+                if order.side == OrderSide.BUY:
+                    shares = min(shares, self._ensure_cash_for_buy(match_px, shares))
+                    if shares <= 0:
+                        db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="insufficient cash")
+                        self._pending[event.asset].remove(qtoid)
+                        self.awake(qtoid, None)
+                        continue
+                    self._cash -= amount + fee
+                    prev = self._positions.get(order.asset)
+                    if prev is None:
+                        pos = Position(
+                            dt=(event.tm or datetime.datetime.now()).date(),
+                            asset=order.asset,
+                            shares=float(shares),
+                            avail=0.0,
+                            price=float(match_px),
+                            profit=0.0,
+                            mv=float(match_px) * float(shares),
+                        )
                     else:
-                        pos = self._positions.get(order.asset)
-                        if pos is None or pos.avail <= 0:
-                            db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="no position")
-                            self.awake(order.qtoid, None)
-                            continue
-                        shares = self._normalize_sell_shares(pos.avail, order.shares)
-                        shares = min(int(pos.avail), shares)
-                        if shares <= 0:
-                            db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="not available")
-                            self.awake(order.qtoid, None)
-                            continue
-                        if shares != int(order.shares):
-                            db.update_order(order.qtoid, shares=shares)
-                        self._apply_sell(dt, order, px, shares)
-                        self.awake(order.qtoid, True)
-                except TradeError as e:
-                    db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg=str(e))
-                    self.awake(order.qtoid, None)
+                        new_shares = float(prev.shares) + float(shares)
+                        new_avg = (float(prev.price) * float(prev.shares) + float(amount)) / new_shares
+                        pos = Position(
+                            dt=(event.tm or datetime.datetime.now()).date(),
+                            asset=order.asset,
+                            shares=new_shares,
+                            avail=float(prev.avail),
+                            price=float(new_avg),
+                            profit=0.0,
+                            mv=new_shares * float(match_px),
+                        )
+                    self._positions[order.asset] = pos
+                    db.upsert_positions(pos)
+                else:
+                    pos = self._positions.get(order.asset)
+                    if pos is None or float(pos.avail) <= 0:
+                        db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="no position")
+                        self._pending[event.asset].remove(qtoid)
+                        self.awake(qtoid, None)
+                        continue
+                    shares = min(shares, int(float(pos.avail)))
+                    shares = (int(shares) // 100) * 100
+                    if shares <= 0:
+                        continue
+                    self._cash += amount - fee
+                    remain = float(pos.shares) - float(shares)
+                    avail = float(pos.avail) - float(shares)
+                    if remain <= 0:
+                        self._positions.pop(order.asset, None)
+                    else:
+                        self._positions[order.asset] = Position(
+                            dt=(event.tm or datetime.datetime.now()).date(),
+                            asset=order.asset,
+                            shares=remain,
+                            avail=max(0.0, avail),
+                            price=float(pos.price),
+                            profit=0.0,
+                            mv=remain * float(match_px),
+                        )
+                        db.upsert_positions(self._positions[order.asset])
 
-            self._update_asset_eod(dt)
-            dt = dt + datetime.timedelta(days=1)
-            await asyncio.sleep(0)
-
-        self._bt_stopped = True
+                trade = Trade(
+                    tid=new_uuid_id(),
+                    qtoid=order.qtoid,
+                    foid=order.foid or order.qtoid,
+                    asset=order.asset,
+                    shares=int(shares),
+                    price=float(match_px),
+                    amount=float(match_px) * float(shares),
+                    tm=event.tm or datetime.datetime.now(),
+                    side=order.side,
+                    cid=order.cid or "",
+                    fee=float(fee),
+                )
+                db.insert_trades(trade)
+                db.update_order(order.qtoid, status=OrderStatus.SUCCEEDED)
+                self._pending[event.asset].remove(qtoid)
+                if not self._pending.get(event.asset):
+                    self._pending.pop(event.asset, None)
+                self.awake(qtoid, True)
+            except TradeError as e:
+                db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg=str(e))
+                self._pending[event.asset].remove(qtoid)
+                if not self._pending.get(event.asset):
+                    self._pending.pop(event.asset, None)
+                self.awake(qtoid, None)
 
     async def buy(
         self,
@@ -378,6 +459,7 @@ class BacktestBroker(AbstractBroker):
         if self._bt_stopped:
             raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "backtest not started")
 
+        self.catch_up_to(bid_time.date())
         s = self._normalize_buy_shares(shares)
         bid_type = BidType.MARKET if price == 0 else BidType.FIXED
         order = Order(
@@ -390,11 +472,7 @@ class BacktestBroker(AbstractBroker):
             strategy=strategy,
         )
         qtoid = db.insert_order(order)
-        self._pending.append(_PendingOrder(qtoid=qtoid, dt=bid_time.date()))
-
-        done, _ = await self.wait(qtoid, timeout)
-        if not done:
-            return None
+        self._pending.setdefault(asset, []).append(qtoid)
         return db.query_trade(qtoid=qtoid)
 
     async def buy_percent(
@@ -429,6 +507,7 @@ class BacktestBroker(AbstractBroker):
         if self._bt_stopped:
             raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "backtest not started")
 
+        self.catch_up_to(bid_time.date())
         pos = self._positions.get(asset)
         if pos is None:
             raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "no position")
@@ -443,11 +522,7 @@ class BacktestBroker(AbstractBroker):
             tm=bid_time,
         )
         qtoid = db.insert_order(order)
-        self._pending.append(_PendingOrder(qtoid=qtoid, dt=bid_time.date()))
-
-        done, _ = await self.wait(qtoid, timeout)
-        if not done:
-            return []
+        self._pending.setdefault(asset, []).append(qtoid)
         trades = db.query_trade(qtoid=qtoid)
         if trades is None:
             return []

@@ -17,6 +17,7 @@ class AbstractBroker(Broker):
     def __init__(self):
         super().__init__()
         self._asset: Asset | None = None
+        self._last_snapshot_day: datetime.date | None = None
 
         # 超时等待队列，用来实现带超时的交易
         self._pending_txs: dict[Any, Any] = {}
@@ -74,6 +75,82 @@ class AbstractBroker(Broker):
         self.on_sync_asset(
             total_asset=self._cash, cash=self._cash, frozen_cash=0, market_value=0
         )
+
+    def market_value(self, dt: datetime.date) -> float:
+        mv = 0.0
+        # 子类应维护 self._positions: dict[str, Position]
+        positions = getattr(self, "_positions", {})
+        quotes = getattr(self, "_quotes", {})
+        for asset, pos in positions.items():
+            q = quotes.get(asset)
+            px = float(getattr(q, "last_price", pos.price))
+            mv += float(pos.shares) * float(px)
+        return float(mv)
+
+    def snapshot_positions(self, dt: datetime.date) -> None:
+        positions = getattr(self, "_positions", {})
+        quotes = getattr(self, "_quotes", {})
+        for asset, pos in list(positions.items()):
+            q = quotes.get(asset)
+            px = float(getattr(q, "last_price", pos.price))
+            positions[asset] = type(pos)(
+                dt=dt,
+                asset=asset,
+                shares=float(pos.shares),
+                avail=float(getattr(pos, "avail", pos.shares)),
+                price=float(px),
+                profit=0.0,
+                mv=float(px) * float(pos.shares),
+            )
+        if positions:
+            db.upsert_positions(list(positions.values()))
+
+    def snapshot_asset(self, dt: datetime.date) -> None:
+        mv = self.market_value(dt)
+        total = float(self._cash) + float(mv)
+        self.on_sync_asset(
+            total_asset=total,
+            cash=float(self._cash),
+            frozen_cash=0.0,
+            market_value=float(mv),
+            dt=dt,
+        )
+
+    def on_day_open(self, date: datetime.date) -> dict:
+        positions = getattr(self, "_positions", {})
+        for asset, pos in list(positions.items()):
+            positions[asset] = type(pos)(
+                dt=date,
+                asset=asset,
+                shares=float(pos.shares),
+                avail=float(pos.shares),
+                price=float(pos.price),
+                profit=0.0,
+                mv=float(pos.price) * float(pos.shares),
+            )
+        if positions:
+            db.upsert_positions(list(positions.values()))
+        prev = date - datetime.timedelta(days=1)
+        self.snapshot_positions(prev)
+        self.snapshot_asset(prev)
+        self._last_snapshot_day = date
+        return {"status": "ok", "date": date.isoformat()}
+
+    def on_day_close(self, date: datetime.date) -> dict:
+        self.snapshot_positions(date)
+        self.snapshot_asset(date)
+        self._last_snapshot_day = date
+        return {"status": "ok", "date": date.isoformat()}
+
+    def catch_up_to(self, target_date: datetime.date) -> None:
+        start = self._last_snapshot_day
+        if start is None:
+            # 以目标日前一天作为快照起点
+            start = target_date - datetime.timedelta(days=1)
+        d = start
+        while d < target_date:
+            d = d + datetime.timedelta(days=1)
+            self.on_day_open(d)
 
     def _calc_fee(self, amount: float) -> float:
         if amount <= 0:

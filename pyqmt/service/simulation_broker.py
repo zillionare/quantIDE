@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,9 @@ from pyqmt.service.abstract_broker import AbstractBroker
 class QuoteEvent:
     asset: str
     last_price: float
+    volume: float | None = None
+    low: float | None = None
+    high: float | None = None
     up_limit: float | None = None
     down_limit: float | None = None
     tm: datetime.datetime | None = None
@@ -27,9 +31,20 @@ class SimulationBroker(AbstractBroker):
         self._cfg = cfg
         self._init_account(principal=float(getattr(cfg, "principal", 1_000_000)))
         self._positions: dict[str, Position] = {}
-        self._pending: list[str] = []
+        self._pending: dict[str, list[str]] = defaultdict(list)
         self._quotes: dict[str, QuoteEvent] = {}
         self._task: asyncio.Task | None = None
+
+    def _remove_pending(self, asset: str, qtoid: str) -> None:
+        q = self._pending.get(asset)
+        if not q:
+            return
+        try:
+            q.remove(qtoid)
+        except ValueError:
+            return
+        if len(q) == 0:
+            self._pending.pop(asset, None)
 
     def _market_value(self) -> float:
         mv = 0.0
@@ -44,6 +59,41 @@ class SimulationBroker(AbstractBroker):
         mv = self._market_value()
         total = float(self._cash) + mv
         self.on_sync_asset(total_asset=total, cash=float(self._cash), frozen_cash=0.0, market_value=mv, dt=dt)
+
+    def on_day_open(self, date: datetime.date) -> dict:
+        prev = date - datetime.timedelta(days=1)
+        # 刷新 T+1 可用量
+        for asset, pos in list(self._positions.items()):
+            self._positions[asset] = Position(
+                dt=date,
+                asset=asset,
+                shares=float(pos.shares),
+                avail=float(pos.shares),
+                price=float(pos.price),
+                profit=0.0,
+                mv=float(pos.price) * float(pos.shares),
+            )
+        if self._positions:
+            db.upsert_positions(list(self._positions.values()))
+        # 结转上一交易日快照
+        self._sync_asset(datetime.datetime.combine(prev, datetime.time(15, 0, 0)))
+        return {"status": "ok", "date": date.isoformat()}
+
+    def on_day_close(self, date: datetime.date) -> dict:
+        # 生成当日快照
+        self._sync_asset(datetime.datetime.combine(date, datetime.time(15, 0, 0)))
+        # 将未完成订单统一废单
+        for asset, q in list(self._pending.items()):
+            for qtoid in list(q):
+                order = db.get_order(qtoid)
+                if order is None:
+                    continue
+                if order.status in (OrderStatus.SUCCEEDED, OrderStatus.PART_SUCC):
+                    continue
+                db.update_order(qtoid, status=OrderStatus.JUNK, status_msg="expired at close")
+                self._remove_pending(asset, qtoid)
+                self.awake(qtoid, None)
+        return {"status": "ok", "date": date.isoformat()}
 
     def _ensure_task(self) -> None:
         if self._task and not self._task.done():
@@ -61,6 +111,9 @@ class SimulationBroker(AbstractBroker):
                 qe = QuoteEvent(
                     asset=str(event.get("asset")),
                     last_price=float(event.get("lastPrice") or event.get("last_price")),
+                    volume=event.get("volume"),
+                    low=event.get("low"),
+                    high=event.get("high"),
                     up_limit=event.get("up_limit"),
                     down_limit=event.get("down_limit"),
                     tm=event.get("tm"),
@@ -73,32 +126,61 @@ class SimulationBroker(AbstractBroker):
 
     def on_quote(self, event: QuoteEvent) -> None:
         self._quotes[event.asset] = event
-        pending = list(self._pending)
+        pending = list(self._pending.get(event.asset, []))
         for qtoid in pending:
             order = db.get_order(qtoid)
-            if order is None or order.asset != event.asset:
+            if order is None:
+                self._remove_pending(event.asset, qtoid)
+                self.awake(qtoid, None)
+                continue
+            if order.asset != event.asset:
+                self._remove_pending(event.asset, qtoid)
+                self._pending[order.asset].append(qtoid)
+                continue
+            if event.tm and order.tm and event.tm < order.tm:
                 continue
             px = float(event.last_price)
             try:
                 self._check_limit_strict(order.side, px, event.up_limit, event.down_limit)
+                if order.bid_type == BidType.FIXED and order.price is not None:
+                    price = float(order.price)
+                    if abs(price - px) > 1e-8:
+                        continue
+                    px = price
             except TradeError as e:
                 db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg=str(e))
-                self._pending.remove(qtoid)
+                self._remove_pending(event.asset, qtoid)
                 self.awake(qtoid, None)
                 continue
 
+            filled = int(float(getattr(order, "filled", 0.0) or 0.0))
+            total = int(float(order.shares))
+            remaining = max(0, total - filled)
+            if remaining <= 0:
+                db.update_order(order.qtoid, status=OrderStatus.SUCCEEDED)
+                self._remove_pending(event.asset, qtoid)
+                self.awake(qtoid, True)
+                continue
+
+            available = int(float(event.volume)) if event.volume is not None else remaining
+            available = max(0, (available // 100) * 100)
+            if available <= 0:
+                continue
+
+            shares = min(remaining, available)
+            shares = (shares // 100) * 100
+            if shares <= 0:
+                continue
+
+            amount = px * shares
+            fee = self._calc_fee(amount)
+
             if order.side == OrderSide.BUY:
-                shares = self._normalize_buy_shares(order.shares)
-                shares = min(shares, self._max_affordable_buy_shares(px))
+                cash_cap = self._max_affordable_buy_shares(px)
+                shares = min(shares, int(cash_cap))
+                shares = (shares // 100) * 100
                 if shares <= 0:
-                    db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="insufficient cash")
-                    self._pending.remove(qtoid)
-                    self.awake(qtoid, None)
                     continue
-                if int(order.shares) != int(shares):
-                    db.update_order(order.qtoid, shares=int(shares))
-                amount = px * shares
-                fee = self._calc_fee(amount)
                 self._cash -= amount + fee
                 prev = self._positions.get(order.asset)
                 if prev is None:
@@ -107,34 +189,35 @@ class SimulationBroker(AbstractBroker):
                         asset=order.asset,
                         shares=float(shares),
                         avail=0.0,
-                        price=px,
+                        price=float(px),
                         profit=0.0,
-                        mv=px * shares,
+                        mv=float(px) * float(shares),
                     )
                 else:
+                    new_shares = float(prev.shares) + float(shares)
+                    new_avg = (float(prev.price) * float(prev.shares) + float(amount)) / new_shares
                     pos = Position(
                         dt=(event.tm or datetime.datetime.now()).date(),
                         asset=order.asset,
-                        shares=float(prev.shares) + float(shares),
+                        shares=new_shares,
                         avail=float(prev.avail),
-                        price=float(prev.price),
+                        price=float(new_avg),
                         profit=0.0,
-                        mv=(float(prev.shares) + float(shares)) * px,
+                        mv=new_shares * float(px),
                     )
                 self._positions[order.asset] = pos
                 db.upsert_positions(pos)
             else:
                 pos = self._positions.get(order.asset)
-                if pos is None or pos.avail <= 0:
+                if pos is None or float(pos.avail) <= 0:
                     db.update_order(order.qtoid, status=OrderStatus.JUNK, status_msg="no position")
-                    self._pending.remove(qtoid)
+                    self._remove_pending(event.asset, qtoid)
                     self.awake(qtoid, None)
                     continue
-                shares = self._normalize_sell_shares(pos.avail, order.shares)
-                if int(order.shares) != int(shares):
-                    db.update_order(order.qtoid, shares=int(shares))
-                amount = px * shares
-                fee = self._calc_fee(amount)
+                shares = min(shares, int(float(pos.avail)))
+                shares = (shares // 100) * 100
+                if shares <= 0:
+                    continue
                 self._cash += amount - fee
                 remain = float(pos.shares) - float(shares)
                 avail = float(pos.avail) - float(shares)
@@ -148,7 +231,7 @@ class SimulationBroker(AbstractBroker):
                         avail=max(0.0, avail),
                         price=float(pos.price),
                         profit=0.0,
-                        mv=remain * px,
+                        mv=remain * float(px),
                     )
                     db.upsert_positions(self._positions[order.asset])
 
@@ -158,18 +241,21 @@ class SimulationBroker(AbstractBroker):
                 foid=order.foid or order.qtoid,
                 asset=order.asset,
                 shares=float(shares),
-                price=px,
-                amount=px * float(shares),
+                price=float(px),
+                amount=float(amount),
                 tm=event.tm or datetime.datetime.now(),
                 side=order.side,
                 cid=order.cid or "",
                 fee=float(fee),
             )
             db.insert_trades(trade)
-            db.update_order(order.qtoid, status=OrderStatus.SUCCEEDED)
+            new_filled = filled + int(shares)
+            status = OrderStatus.SUCCEEDED if new_filled >= total else OrderStatus.PART_SUCC
+            db.update_order(order.qtoid, filled=float(new_filled), status=status)
             self._sync_asset(event.tm)
-            self._pending.remove(qtoid)
-            self.awake(qtoid, True)
+            if status == OrderStatus.SUCCEEDED:
+                self._remove_pending(event.asset, qtoid)
+                self.awake(qtoid, True)
 
     async def buy(
         self,
@@ -194,7 +280,7 @@ class SimulationBroker(AbstractBroker):
             strategy=strategy,
         )
         qtoid = db.insert_order(order)
-        self._pending.append(qtoid)
+        self._pending[asset].append(qtoid)
         done, _ = await self.wait(qtoid, timeout)
         if not done:
             return None
@@ -243,7 +329,7 @@ class SimulationBroker(AbstractBroker):
             tm=datetime.datetime.now(),
         )
         qtoid = db.insert_order(order)
-        self._pending.append(qtoid)
+        self._pending[asset].append(qtoid)
         done, _ = await self.wait(qtoid, timeout)
         if not done:
             return []

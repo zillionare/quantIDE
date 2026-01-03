@@ -108,6 +108,7 @@ class Order(Entity):
     shares: float | int  # 委托数量。调用者需要保证符合交易要求
     price: float | None
     bid_type: BidType  # 委托类型，比如限价单、市价单
+    filled: float = 0.0
     tm: datetime.datetime | None = None  # 下单时间
 
     foid: str | None = None  # 代理(比如QMT)指定的 id，透传，一般用以查错

@@ -132,3 +132,110 @@
    - mock 行情源（每秒 lastPrice）
    - 撮合引擎（按实时规则）
 4. 将 `cfg.broker` 扩展为 `qmt/backtest/simulation`，应用启动时注入对应 broker
+
+## 事件与时序（DataFeed–Broker 协调）
+
+### Backtest（SimClock + ParquetFeed）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client/Strategy
+    participant B as Broker (Backtest)
+    participant DF as DataFeed (Parquet + SimClock)
+    participant MH as MsgHub (md:bar/md:quote)
+    participant DB as SQLiteDB
+
+    C->>B: start_backtest(params)
+    B-->>C: {status: ok}
+
+    C->>B: buy(asset, price, shares, bid_time=t0)
+    B->>DB: insert Order(qtoid, tm=t0)
+    B->>DF: advance_to(t0)
+    DF->>MH: QuoteEvent(open, low/high, up/down, volume, tm=max(t0, 09:30@t0_date))
+    B->>MH: subscribe md:bar:1d/md:quote
+    MH-->>B: QuoteEvent(open,...)
+    alt event.tm >= order.tm && 价格在 low~high && 未触及涨/跌停
+        B->>DB: insert Trade / upsert Position
+        B->>DB: update Order (filled/status=PART_SUCC|SUCCEEDED)
+        B-->>C: 成交结果
+    else 不满足匹配
+        B-->>C: None/[]（等待收盘事件）
+    end
+
+    DF->>MH: QuoteEvent(close, low/high, up/down, tm=15:00)
+    MH-->>B: QuoteEvent(close,...)
+    B: on_quote 作为最后匹配尝试
+
+    DF->>MH: DayOpenEvent(date=t1)
+    MH-->>B: DayOpenEvent
+    B: on_day_open 刷新T+1
+    B->>DB: snapshot_positions(dt=t0)
+    B->>DB: snapshot_asset(dt=t0, total=cash+mv(close@t0))
+```
+
+### Simulation（SystemClock + 每秒 QuoteEvent）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client/Strategy
+    participant B as Broker (Simulation)
+    participant DF as DataFeed (SystemClock/Mock)
+    participant MH as MsgHub
+    participant DB as SQLiteDB
+
+    C->>B: buy(asset, price, shares, bid_time=t0)
+    B->>DB: insert Order(qtoid, tm=t0)
+    B: pending_by_asset[asset].append(qtoid)
+
+    loop 每秒
+        DF->>MH: QuoteEvent(last_price, volume, up/down, tm=now)
+        MH-->>B: QuoteEvent(...)
+        B: 仅遍历 pending_by_asset[event.asset]
+        alt event.tm >= order.tm 且校验通过
+            B: fill_cap = min(remaining, volume, 现金/可用)（整手）
+            B->>DB: insert Trade / upsert Position
+            B->>DB: update Order(filled/status)
+            opt SUCCEEDED
+                B: 从 pending 移除并 awake(qtoid)
+            end
+        else 跳过或继续等待
+        end
+    end
+
+    DF->>MH: DayCloseEvent(date)
+    MH-->>B: DayCloseEvent
+    B: 未完全成交订单统一 JUNK 并移除/唤醒
+    B->>DB: snapshot_positions(snapshot dt)
+    B->>DB: snapshot_asset(snapshot dt)
+```
+
+### 统一撮合（on_quote）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Broker
+    participant DB as SQLiteDB
+
+    B->>B: on_quote(event)
+    B: 获取 pending_by_asset[event.asset]
+    loop 对每个订单
+        alt event.tm < order.tm
+            B: 跳过（时间门槛）
+        else 校验涨/跌停与限价区间
+            B: 计算 fill_cap（整手；BUY受现金，SELL受avail）
+            B->>DB: insert Trade
+            B->>DB: upsert Position
+            B->>DB: update Order(filled/status)
+            opt status=SUCCEEDED
+                B: 移除 pending 并 awake(qtoid)
+            end
+        end
+    end
+```
+
+### 验证步骤
+- Backtest：t0 买入→发布开盘事件撮合→t1 开盘结转 t0 快照→t1 卖出→t2 开盘结转 t1 快照→查询 assets/positions 与收益
+- Simulation：t0 买入→每秒部分成交→收盘统一废单→查询持仓与收益
