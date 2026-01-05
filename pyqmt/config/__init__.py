@@ -6,13 +6,15 @@ Author: Aaron-Yang [code@jieyu.ai]
 Contributors:
 
 """
+import datetime
 import os
 from importlib.metadata import version
 from pathlib import Path
-import pytz
-from .schema import Config
 
 import cfg4py
+import pytz
+
+from .schema import Config
 
 
 def get_config_dir() -> str:
@@ -38,10 +40,12 @@ def endpoint():
 
 def init_config(config_dir: str | Path | None = None):
     config_dir = config_dir or get_config_dir()
-    cfg = cfg4py.init(str(config_dir))
+    cfg4py.init(str(config_dir))
 
-    return cfg4py.get_instance()
 
+    cfg_ = cfg4py.get_instance()
+    if not hasattr(cfg_, "epoch"):
+        cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
 
 cfg: Config = cfg4py.get_instance()
 

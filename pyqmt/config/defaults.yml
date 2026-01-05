@@ -16,7 +16,15 @@ apikeys:
     - client: client1
       key: key1
 
-broker: qmt
+broker: backtest
+brokers:
+  - kind: backtest
+    id: backtest
+    default: true
+  - kind: simulation
+    id: sim1
+  - kind: simulation
+    id: sim2
 qmt:
   account_id: "8881457417"
   account_type: STOCK
@@ -34,5 +42,5 @@ notify:
     mail_from: nonexist@quantide.cn
     mail_server: smtp.exmail.qq.com
 
-db:
-  path: ${path: ~/pyqmt/sqlitedb.db}
+home: ${path: ~/pyqmt}
+epoch: 2005-01-01
