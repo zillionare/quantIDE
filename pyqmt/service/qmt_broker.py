@@ -25,49 +25,19 @@ import polars as pl
 from loguru import logger
 from tenacity import RetryCallState, retry, stop_after_attempt, wait_fixed
 
-xtconstant = None
-XtQuantTrader = object  # type: ignore[misc,assignment]
-XtQuantTraderCallback = object  # type: ignore[misc,assignment]
-StockAccount = object  # type: ignore[misc,assignment]
-XtAsset = object  # type: ignore[misc,assignment]
-XtCancelError = object  # type: ignore[misc,assignment]
-XtOrder = object  # type: ignore[misc,assignment]
-XtOrderError = object  # type: ignore[misc,assignment]
-XtOrderResponse = object  # type: ignore[misc,assignment]
-XtPosition = object  # type: ignore[misc,assignment]
-XtTrade = object  # type: ignore[misc,assignment]
 
-if TYPE_CHECKING:
-    from xtquant.xttrader import XtQuantTrader as XtQuantTrader  # noqa: F401
-    from xtquant.xttrader import (  # noqa: F401
-        XtQuantTraderCallback as XtQuantTraderCallback,
-    )
-    from xtquant.xttype import StockAccount as StockAccount  # noqa: F401
-    from xtquant.xttype import XtAsset as XtAsset  # noqa: F401
-    from xtquant.xttype import XtCancelError as XtCancelError  # noqa: F401
-    from xtquant.xttype import XtOrder as XtOrder  # noqa: F401
-    from xtquant.xttype import XtOrderError as XtOrderError  # noqa: F401
-    from xtquant.xttype import XtOrderResponse as XtOrderResponse  # noqa: F401
-    from xtquant.xttype import XtPosition as XtPosition  # noqa: F401
-    from xtquant.xttype import XtTrade as XtTrade  # noqa: F401
-else:
-    try:
-        xtconstant = importlib.import_module("xtquant.xtconstant")
-        xttrader = importlib.import_module("xtquant.xttrader")
-        xttype = importlib.import_module("xtquant.xttype")
+from xtquant.xttrader import XtQuantTrader
+from xtquant.xttrader import XtQuantTraderCallback
+from xtquant.xttype import StockAccount
+from xtquant.xttype import XtAsset
+from xtquant.xttype import XtCancelError
+from xtquant.xttype import XtOrder
+from xtquant.xttype import XtOrderError
+from xtquant.xttype import XtOrderResponse
+from xtquant.xttype import XtPosition
+from xtquant.xttype import XtTrade
+from xtquant import xtconstant
 
-        XtQuantTrader = getattr(xttrader, "XtQuantTrader")
-        XtQuantTraderCallback = getattr(xttrader, "XtQuantTraderCallback")
-        StockAccount = getattr(xttype, "StockAccount")
-        XtAsset = getattr(xttype, "XtAsset")
-        XtCancelError = getattr(xttype, "XtCancelError")
-        XtOrder = getattr(xttype, "XtOrder")
-        XtOrderError = getattr(xttype, "XtOrderError")
-        XtOrderResponse = getattr(xttype, "XtOrderResponse")
-        XtPosition = getattr(xttype, "XtPosition")
-        XtTrade = getattr(xttype, "XtTrade")
-    except ImportError:
-        pass
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BidType, OrderSide, OrderStatus
@@ -83,8 +53,9 @@ from pyqmt.service.abstract_broker import AbstractBroker
 
 
 # helpers
-def as_asset(xt_asset: XtAsset, principal: float) -> Asset:
+def as_asset(xt_asset: XtAsset, principal: float, portfolio_id: str) -> Asset:
     return Asset(
+        portfolio_id=portfolio_id,
         total=xt_asset.total_asset,
         cash=xt_asset.cash,
         market_value=xt_asset.market_value,
@@ -92,8 +63,9 @@ def as_asset(xt_asset: XtAsset, principal: float) -> Asset:
         dt=datetime.date.today(),
         principal=principal
     )
-def as_position(xt_position: XtPosition) -> Position:
+def as_position(xt_position: XtPosition, portfolio_id: str) -> Position:
     return Position(
+        portfolio_id=portfolio_id,
         dt=datetime.date.today(),
         asset=xt_position.stock_code,
         shares=xt_position.volume,
@@ -177,9 +149,10 @@ def as_order_status(xt_order_status: int) -> OrderStatus:
         return OrderStatus.UNKNOWN
 
 
-def as_order(xt_order: XtOrder) -> Order:
+def as_order(xt_order: XtOrder, portfolio_id: str) -> Order:
     """将XtQuant的订单转换成通用的订单模型"""
     model = Order(
+        portfolio_id=portfolio_id,
         qtoid=xt_order.order_remark,
         shares=xt_order.order_volume,
         price=xt_order.price,
@@ -233,9 +206,10 @@ def as_xt_order_params(order: Order, acc: StockAccount) -> dict:
     )
 
 
-def as_trade(xt_trade: XtTrade) -> Trade:
+def as_trade(xt_trade: XtTrade, portfolio_id: str) -> Trade:
     """将XtQuant的成交转换成通用的成交模型"""
     model = Trade(
+        portfolio_id=portfolio_id,
         tid=xt_trade.traded_id,
         qtoid=xt_trade.order_remark,
         foid=xt_trade.order_id,
@@ -286,7 +260,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
             xt_order: XtOrder对象
         """
         logger.info(f"on order callback: {order.stock_code} {order.order_status}")
-        _order = as_order(order)
+        _order = as_order(order, self.broker.portfolio_id)
 
         params = {}
 
@@ -321,7 +295,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :return:
         """
         logger.info(trade.account_id, trade.stock_code, trade.order_id)
-        _trade = as_trade(trade)
+        _trade = as_trade(trade, self.broker.portfolio_id)
         db.insert_trades(_trade)
 
     def on_stock_position(self, position: XtPosition):
@@ -331,7 +305,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :return:
         """
         logger.info(f"on position callback {position}")
-        _position = as_position(position)
+        _position = as_position(position, self.broker.portfolio_id)
         db.upsert_positions(_position)
 
     def on_order_error(self, order_error: XtOrderError):
@@ -407,18 +381,16 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
 
 
 class QMTBroker(AbstractBroker):
-    def __init__(self, cfg):
-        # 账号必须是字符串类型
-        super().__init__()
+    def __init__(self, account_id: str, portfolio_id: str = "qmt"):
+        super().__init__(portfolio_id=portfolio_id)
         if xtconstant is None:
             raise ImportError("xtquant is required for QMTBroker")
-        self.account_id = str(cfg.qmt.account_id)
-        self.account_type = cfg.qmt.account_type
-        self._principal = cfg.qmt.principal
+        self.account_id = account_id
+        self.account_type = "stock"
 
         assert Path(cfg.qmt.path).exists(), "qmt安装路径不存在"
 
-        self.acc = StockAccount(self.account_id, self.account_type)
+        self.acc = StockAccount(self.account_id, self.account_type) # type: ignore
         self.path = cfg.qmt.path
 
         # xt接口需要的区分不同账号的session_id，同一个账号可以多次登录
@@ -528,7 +500,7 @@ class QMTBroker(AbstractBroker):
         if response is None:
             raise XtQuantTradeError(TradeErrors.ERROR_UNKNOWN, "查询资产信息失败")
 
-        return as_asset(response, self._principal)
+        return as_asset(response, self._principal, self.portfolio_id)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -541,7 +513,7 @@ class QMTBroker(AbstractBroker):
         positions = []
         response = self.trade_api.query_stock_positions(self.acc) or []
         for pos in response:
-            position = as_position(pos)
+            position = as_position(pos, self.portfolio_id)
             positions.append(position)
 
         db.upsert_positions(positions)
@@ -568,7 +540,7 @@ class QMTBroker(AbstractBroker):
         response = self.trade_api.query_stock_orders(self.acc, cancelable_only) or []
 
         for order in response:
-            order_ = as_order(order)
+            order_ = as_order(order, self.portfolio_id)
 
             if order_.qtoid == "":
                 order_.qtoid = order.order_remark or new_uuid_id()
@@ -621,6 +593,7 @@ class QMTBroker(AbstractBroker):
         shares = self._normalize_buy_shares(shares)
 
         order = Order(
+            portfolio_id=self.portfolio_id,
             asset=asset,
             price=price,
             shares=shares,

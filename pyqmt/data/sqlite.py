@@ -41,6 +41,7 @@ import threading
 import types
 import uuid
 from dataclasses import asdict, dataclass, field, fields
+from loguru import logger
 from enum import IntEnum
 from pathlib import Path
 from typing import ClassVar, List, Tuple, TypeVar, Union, get_args, get_origin
@@ -63,7 +64,7 @@ class Entity:
     """模型基类，提供数据库操作方法， 提供转换为数据库 schema 字典的方法"""
 
     __table_name__: ClassVar[str]
-    __pk__: ClassVar[str]
+    __pk__: ClassVar[Union[str, List[str]]]
     __indexes__: ClassVar[Tuple[List[str], bool]]
 
 
@@ -103,11 +104,12 @@ class Order(Entity):
     __pk__ = "qtoid"
     __indexes__ = (["qtoid", "tm"], True)
 
+    portfolio_id: str
     asset: str  # 资产代码
     side: OrderSide
     shares: float | int  # 委托数量。调用者需要保证符合交易要求
-    price: float | None
     bid_type: BidType  # 委托类型，比如限价单、市价单
+    price: float = 0
     filled: float = 0.0
     tm: datetime.datetime | None = None  # 下单时间
 
@@ -134,6 +136,7 @@ class Trade(Entity):
     __indexes__ = (["tid", "tm"], True)
     __foreign_keys__ = [("qtoid", "orders", "qtoid")]
 
+    portfolio_id: str
     tid: str  # 成交 id，pk。可使用代理（比如 qmt）返回值
     qtoid: str  # 对应的 Order id (quantide order id) - 外键引用 orders 表的 qtoid
     foid: str  # 代理（比如qmt）给出的 order id
@@ -155,9 +158,10 @@ class Trade(Entity):
 @dataclass
 class Position(Entity):
     __table_name__ = "positions"
-    __pk__ = "asset"
-    __indexes__ = (["asset", "dt"], True)
+    __pk__ = ["portfolio_id", "dt", "asset"]
+    __indexes__ = (["portfolio_id", "asset", "dt"], False)
 
+    portfolio_id: str
     dt: datetime.date
     asset: str
     shares: float
@@ -180,9 +184,10 @@ class Position(Entity):
 @dataclass
 class Asset(Entity):
     __table_name__ = "assets"
-    __pk__ = "dt"
-    __indexes__ = (["dt"], True)
+    __pk__ = ["portfolio_id", "dt"]
+    __indexes__ = (["portfolio_id", "dt"], True)
 
+    portfolio_id: str
     dt: datetime.date
     principal: float
     cash: float
@@ -262,7 +267,12 @@ class SQLiteDB:
             pk = e.__pk__
 
             t: su.db.Table = db[table]  # type: ignore
-            t.create(e.to_db_schema(), pk=pk, if_not_exists=True)
+            schema = e.to_db_schema()
+            t.create(schema, pk=pk, if_not_exists=True)
+            for col, typ in schema.items():
+                if col not in t.columns_dict:
+                    # todo: use transform API?
+                    t.add_column(col, typ)
 
             # 创建索引
             if e.__indexes__ is not None:
@@ -293,16 +303,57 @@ class SQLiteDB:
 
         self["positions"].upsert_all([asdict(pos) for pos in positions], pk=Position.__pk__)  # type: ignore
 
-    def get_positions(self, dt: datetime.date) -> pl.DataFrame:
-        """获取指定日期的持仓信息"""
-        rows = self["positions"].rows_where("dt = ?", (dt,))
-        df = pl.DataFrame(rows)
-        return df.with_columns(pl.col("dt").cast(pl.Date))
+    def get_positions(
+        self, dt: datetime.date | None = None, portfolio_id: str | None = None
+    ) -> pl.DataFrame:
+        """获取持仓信息
 
-    def positions_all(self) -> pl.DataFrame:
+        可用以获取
+
+        Args:
+            dt: 指定日期，如果为 None，则取最新持仓
+            portfolio_id: 指定组合 ID，如果为 None 则不限制组合
+        """
+        if dt is None:
+            rows = self["positions"].rows_where(
+                "portfolio_id = ? AND dt = (SELECT MAX(dt) FROM positions WHERE portfolio_id = ?)",
+                (portfolio_id, portfolio_id)
+            )
+            return pl.DataFrame(rows)
+
+        return self.query_positions(portfolio_id=portfolio_id, start=dt, end=dt)
+
+    def positions_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有持仓信息"""
-        rows = self["positions"].rows
+        return self.query_positions(portfolio_id=portfolio_id)
+
+    def query_positions(
+        self,
+        portfolio_id: str | None = None,
+        start: datetime.date | None = None,
+        end: datetime.date | None = None,
+    ) -> pl.DataFrame:
+        """根据 portfolio_id 和时间范围查询持仓信息"""
+        where_clauses = []
+        params = []
+
+        if portfolio_id:
+            where_clauses.append("portfolio_id = ?")
+            params.append(portfolio_id)
+        if start:
+            where_clauses.append("dt >= ?")
+            params.append(start)
+        if end:
+            where_clauses.append("dt <= ?")
+            params.append(end)
+
+        where = " AND ".join(where_clauses) if where_clauses else None
+
+        rows = self["positions"].rows_where(where, params)
         df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return pl.DataFrame()
+
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
     def insert_order(self, order: Order) -> str:
@@ -375,7 +426,9 @@ class SQLiteDB:
         """获取所有订单信息"""
         rows = self["orders"].rows
         df = pl.DataFrame(rows)
-        return df.with_columns(pl.col("tm").cast(pl.Datetime))
+        if "tm" in df.columns:
+            return df.with_columns(pl.col("tm").cast(pl.Datetime))
+        return df
 
     def update_order(self, qtoid: str, **updates) -> None:
         """更新订单信息
@@ -456,54 +509,109 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def get_asset(self, dt: datetime.date) -> Asset | None:
-        """通过日期(主键）查询资产信息
+    def get_asset(
+        self, dt: datetime.date | None = None, portfolio_id: str | None = None
+    ) -> Asset | None:
+        """获取指定日期和组合的资产信息
 
         Args:
-            dt: 查询日期
-
-        Returns:
-            AssetModel: 资产信息
+            dt: 查询日期，如果为 None 则获取最新一条
+            portfolio_id: 组合 ID，如果为 None 则不限制组合
         """
+        if dt is None:
+            return self._get_latest_asset(portfolio_id)
+
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
-        rows = self["assets"].rows_where("dt = ?", (dt,), limit=1)
+
+        where = "dt = ?"
+        params: list[Any] = [dt]
+        if portfolio_id:
+            where += " AND portfolio_id = ?"
+            params.append(portfolio_id)
+
+        rows = self["assets"].rows_where(where, params, limit=1)
         assets = list(rows)
         if len(assets) == 0:
             return None
         else:
             return Asset(**assets[0])
 
-    def assets_all(self) -> pl.DataFrame|None:
+    def _get_latest_asset(self, portfolio_id: str | None = None) -> Asset | None:
+        """获取最新资产信息
+
+        Args:
+            portfolio_id: 组合(策略）ID，如果为 None 则不限制组合
+        """
+        where = None
+        params = []
+        if portfolio_id:
+            where = "portfolio_id = ?"
+            params = [portfolio_id]
+
+        rows = self["assets"].rows_where(where, params, limit=1, order_by="dt DESC")
+        assets = list(rows)
+        if len(assets) == 0:
+            return None
+        else:
+            return Asset(**assets[0])
+
+    def assets_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有资产信息
 
         Returns:
-            list[AssetModel]: 资产信息列表
+            pl.DataFrame: 资产信息 DataFrame
         """
-        rows = self["assets"].rows
+        return self.query_assets(portfolio_id)
+
+    def query_assets(
+        self,
+        portfolio_id: str | None = None,
+        start: datetime.date | None = None,
+        end: datetime.date | None = None,
+    ) -> pl.DataFrame:
+        """根据 portfolio_id 和时间范围查询资产信息"""
+        where_clauses = []
+        params = []
+
+        if portfolio_id:
+            where_clauses.append("portfolio_id = ?")
+            params.append(portfolio_id)
+        if start:
+            where_clauses.append("dt >= ?")
+            params.append(start)
+        if end:
+            where_clauses.append("dt <= ?")
+            params.append(end)
+
+        where = " AND ".join(where_clauses) if where_clauses else None
+
+        rows = self["assets"].rows_where(where, params)
         df = pl.DataFrame(rows)
         if len(df) == 0:
-            return None
+            return pl.DataFrame()
 
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def insert_asset(self, asset: Asset) -> None:
+    def upsert_asset(self, asset: Asset) -> None:
         """保存(更新)资产信息
 
         Args:
             asset: 资产信息
         """
         assert asset.principal is not None, "资产信息中本金不能为空"
-        self["assets"].insert(asdict(asset))
+        self["assets"].upsert(asdict(asset), pk=Asset.__pk__)  # type: ignore
 
-    def update_asset(self, dt: datetime.date, **updates):
+    def update_asset(self, dt: datetime.date, portfolio_id: str, **updates):
         """更新资产信息
 
         与 save_asset 不同，本方法允许单字段更新
         """
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
-        self["assets"].update(dt, updates)  # type: ignore
+        row = {"portfolio_id": portfolio_id, "dt": dt, **updates}
+        self["assets"].upsert(row, pk=Asset.__pk__)  # type: ignore
+
 
 
 db: SQLiteDB = SQLiteDB()

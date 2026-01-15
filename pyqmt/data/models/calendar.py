@@ -8,7 +8,6 @@ from typing import List, Union
 
 import arrow
 import numpy as np
-from numpy import ndarray
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -16,6 +15,7 @@ import pyarrow.parquet as pq
 import pytz
 from arrow import Arrow
 from loguru import logger
+from numpy import ndarray
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import FrameType
@@ -66,6 +66,12 @@ class Calendar:
     @property
     def epoch(self) -> datetime.date:
         """日历的起始日期"""
+        if self._data is None or len(self._data) == 0:
+            try:
+                epoch = getattr(cfg, "epoch", "2005-01-01")
+                return datetime.datetime.strptime(epoch, "%Y-%m-%d").date()
+            except Exception:
+                return datetime.date(2005, 1, 1)
         dates = self._data.column("date")
         return dates[0].as_py()
 
@@ -101,6 +107,7 @@ class Calendar:
         """
         calendar_data.to_parquet(self.path)
 
+
     def load(self, path: str | Path) -> "Calendar":
         """加载日历数据，并构建日/周/月帧。
 
@@ -131,12 +138,9 @@ class Calendar:
     def update(self) -> None:
         """更新日历数据并重建帧
         """
-        if self._data is None or len(self._data) == 0:
-            epoch = arrow.get(str(cfg.epoch)).date()
-        else:
-            epoch = self.epoch
 
-        df = fetch_calendar(epoch)
+
+        df = fetch_calendar(self.epoch)
         self._data = pa.Table.from_pandas(df)
         self.save(df)
         self.day_frames, self.week_frames, self.month_frames = self._build_frames_arrow(
@@ -852,7 +856,7 @@ class Calendar:
 
     def get_frames(
         self, start: Frame, end: Frame, frame_type: FrameType
-    ) -> List[int]:
+    ) -> List[datetime.date|datetime.datetime]:
         """取[start, end]间所有类型为frame_type的frames
 
         调用本函数前，请先通过`floor`或者`ceiling`将时间帧对齐到`frame_type`的边界值
