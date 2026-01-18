@@ -14,7 +14,7 @@
   ],
 
   "ignore": [
-    "src/oldstuff"
+    "pyarrow"
   ],
 
   "reportMissingImports": true,
