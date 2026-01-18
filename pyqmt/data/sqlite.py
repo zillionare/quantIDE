@@ -41,13 +41,13 @@ import threading
 import types
 import uuid
 from dataclasses import asdict, dataclass, field, fields
-from loguru import logger
 from enum import IntEnum
 from pathlib import Path
-from typing import ClassVar, List, Tuple, TypeVar, Union, get_args, get_origin
+from typing import ClassVar, List, Literal, Tuple, TypeVar, Union, get_args, get_origin
 
 import polars as pl
 import sqlite_utils as su
+from loguru import logger
 
 from pyqmt.core.enums import BidType, OrderSide, OrderStatus
 from pyqmt.core.singleton import singleton
@@ -216,11 +216,12 @@ class SQLiteDB:
 
     def init(self, db_path: str|Path):
         next_path = str(Path(db_path).expanduser())
-        if self._initialized and self.db_path == next_path:
+        if self._initialized and self.db_path == next_path and next_path != ":memory:":
             return
-        if self._initialized and self.db_path != next_path:
-            self._thread_local = threading.local()
-            self._initialized = False
+
+        # 强制重置连接，特别是对于 :memory: 或者路径改变的情况
+        self._thread_local = threading.local()
+        self._initialized = False
 
         # 初始化数据库连接
         self.db_path = next_path
@@ -308,20 +309,27 @@ class SQLiteDB:
     ) -> pl.DataFrame:
         """获取持仓信息
 
-        可用以获取
-
         Args:
-            dt: 指定日期，如果为 None，则取最新持仓
+            dt: 指定日期，如果为 None 则获取最新一个日期的持仓
             portfolio_id: 指定组合 ID，如果为 None 则不限制组合
         """
-        if dt is None:
-            rows = self["positions"].rows_where(
-                "portfolio_id = ? AND dt = (SELECT MAX(dt) FROM positions WHERE portfolio_id = ?)",
-                (portfolio_id, portfolio_id)
-            )
-            return pl.DataFrame(rows)
+        if dt is not None:
+            return self.query_positions(portfolio_id=portfolio_id, start=dt, end=dt)
 
-        return self.query_positions(portfolio_id=portfolio_id, start=dt, end=dt)
+        # dt 为 None 时，使用子查询一次性获取最新日期的所有持仓
+        if portfolio_id:
+            where = "portfolio_id = ? AND dt = (SELECT MAX(dt) FROM positions WHERE portfolio_id = ?)"
+            params = [portfolio_id, portfolio_id]
+        else:
+            where = "dt = (SELECT MAX(dt) FROM positions)"
+            params = []
+
+        rows = self["positions"].rows_where(where, params)
+        df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return pl.DataFrame()
+
+        return df.with_columns(pl.col("dt").cast(pl.Date))
 
     def positions_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有持仓信息"""
@@ -422,9 +430,12 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def orders_all(self) -> pl.DataFrame:
+    def orders_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有订单信息"""
-        rows = self["orders"].rows
+        if portfolio_id:
+            rows = self["orders"].rows_where("portfolio_id = ?", (portfolio_id,))
+        else:
+            rows = self["orders"].rows
         df = pl.DataFrame(rows)
         if "tm" in df.columns:
             return df.with_columns(pl.col("tm").cast(pl.Datetime))
@@ -500,9 +511,13 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def trades_all(self) -> pl.DataFrame|None:
+    def trades_all(self, portfolio_id: str | None = None) -> pl.DataFrame | None:
         """获取所有成交信息"""
-        rows = self["trades"].rows
+        if portfolio_id:
+            rows = self["trades"].rows_where("portfolio_id = ?", (portfolio_id,))
+        else:
+            rows = self["trades"].rows
+
         df = pl.DataFrame(rows)
         if len(df) == 0:
             return None
@@ -593,14 +608,21 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def upsert_asset(self, asset: Asset) -> None:
+    def upsert_asset(self, asset: Asset | list[Asset]) -> None:
         """保存(更新)资产信息
 
         Args:
-            asset: 资产信息
+            asset: 资产信息或资产信息列表
         """
-        assert asset.principal is not None, "资产信息中本金不能为空"
-        self["assets"].upsert(asdict(asset), pk=Asset.__pk__)  # type: ignore
+        if isinstance(asset, Asset):
+            assert asset.principal is not None, "资产信息中本金不能为空"
+            self["assets"].upsert(asdict(asset), pk=Asset.__pk__)  # type: ignore
+        else:
+            dicts = []
+            for a in asset:
+                assert a.principal is not None, "资产信息中本金不能为空"
+                dicts.append(asdict(a))
+            self["assets"].upsert_all(dicts, pk=Asset.__pk__)  # type: ignore
 
     def update_asset(self, dt: datetime.date, portfolio_id: str, **updates):
         """更新资产信息
@@ -616,4 +638,4 @@ class SQLiteDB:
 
 db: SQLiteDB = SQLiteDB()
 
-__all__ = ["db"]
+__all__ = ["db", "new_uuid_id", "Asset", "Position", "Order", "Trade"]

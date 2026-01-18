@@ -158,3 +158,13 @@ class FrameType(Enum):
             return self.to_int() > other.to_int()
 
         return NotImplemented
+
+class BrokerKind(Enum):
+    """broker 类型"""
+    BACKTEST = "bt"
+    SIMULATION = "sim"
+    QMT = "qmt"
+
+class Topics(Enum):
+    """消息主题"""
+    QUOTES_ALL = "quotes.all"
