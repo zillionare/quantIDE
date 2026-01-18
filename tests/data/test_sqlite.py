@@ -11,8 +11,8 @@ from typing import List, Optional, Union
 import polars as pl
 import pytest
 
-from pyqmt.core.enums import BidType, OrderSide, OrderStatus
-from pyqmt.data.sqlite import Asset, Entity, Order, Position, Trade, db
+from pyqmt.core.enums import BidType, BrokerKind, OrderSide, OrderStatus
+from pyqmt.data.sqlite import Asset, Entity, Order, Portfolio, Position, Trade, db
 
 
 @pytest.fixture(scope="function")
@@ -59,6 +59,47 @@ def test_table_creation(setup):
     ]
     assert len(qtoid_fk) == 1
 
+
+def test_portfolio_crud(setup):
+    """Test portfolio CRUD"""
+    # 01 Test saving portfolio
+    portfolio_id = "test_p"
+    start_date = datetime.date(2024, 1, 1)
+    portfolio = Portfolio(
+        portfolio_id=portfolio_id,
+        kind=BrokerKind.BACKTEST,
+        start=start_date,
+        name="Test Portfolio",
+        info="Testing...",
+        status=True
+    )
+    db.insert_portfolio(portfolio)
+
+    # Verify it was saved
+    saved = db.get_portfolio(portfolio_id)
+    assert saved is not None
+    assert saved.portfolio_id == portfolio_id
+    assert saved.kind == BrokerKind.BACKTEST
+    assert saved.name == "Test Portfolio"
+    assert saved.start == start_date
+
+    # 02 Test update_portfolio with variable fields
+    db.update_portfolio(
+        portfolio_id,
+        name="Updated Name",
+        info="Updated Info",
+        status=False
+    )
+
+    # Verify update
+    updated = db.get_portfolio(portfolio_id)
+    assert updated is not None
+    assert updated.name == "Updated Name"
+    assert updated.info == "Updated Info"
+    assert updated.status is False
+    # Ensure other fields are intact
+    assert updated.kind == BrokerKind.BACKTEST
+    assert updated.start == start_date
 
 def test_orders_crud(setup):
     """Test order CRUD"""

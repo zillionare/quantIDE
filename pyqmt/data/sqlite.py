@@ -41,7 +41,7 @@ import threading
 import types
 import uuid
 from dataclasses import asdict, dataclass, field, fields
-from enum import IntEnum
+from enum import Enum, IntEnum
 from pathlib import Path
 from typing import ClassVar, List, Literal, Tuple, TypeVar, Union, get_args, get_origin
 
@@ -49,7 +49,7 @@ import polars as pl
 import sqlite_utils as su
 from loguru import logger
 
-from pyqmt.core.enums import BidType, OrderSide, OrderStatus
+from pyqmt.core.enums import BidType, BrokerKind, OrderSide, OrderStatus
 from pyqmt.core.singleton import singleton
 
 T = TypeVar("T")
@@ -97,6 +97,14 @@ class Entity:
             else:
                 schema[f.name] = str
         return schema
+
+    def to_dict(self) -> dict:
+        """将 dataclass 转换为字典，处理 Enum 类型"""
+        d = asdict(self)
+        for k, v in d.items():
+            if isinstance(v, Enum):
+                d[k] = v.value
+        return d
 
 @dataclass
 class Order(Entity):
@@ -205,6 +213,32 @@ class Asset(Entity):
         elif isinstance(self.dt, datetime.datetime):
             self.dt = self.dt.date()
 
+@dataclass
+class Portfolio(Entity):
+    __table_name__ = "portfolios"
+    __pk__ = "portfolio_id"
+    __indexes__ = (["portfolio_id"], True)
+
+    portfolio_id: str
+    kind: BrokerKind
+    start: datetime.date
+    name: str = ""
+    info: str = ""
+    end: datetime.date|None = None
+    status: bool = True
+
+    def __post_init__(self):
+        if isinstance(self.start, str):
+            self.start = datetime.datetime.strptime(self.start, "%Y-%m-%d").date()
+
+        if self.end is not None and isinstance(self.end, str):
+            self.end = datetime.datetime.strptime(self.end, "%Y-%m-%d").date()
+
+        if isinstance(self.kind, str):
+            self.kind = BrokerKind(self.kind)
+
+        if not isinstance(self.status, bool):
+            self.status = bool(self.status)
 
 @singleton
 class SQLiteDB:
@@ -263,7 +297,7 @@ class SQLiteDB:
 
         在 sqlite_utils 中，创建表结构并非必须；但会导致sqlite-utils 无法准确判断类型。
         """
-        for e in [Order, Trade, Asset, Position]:
+        for e in [Order, Trade, Asset, Position, Portfolio]:
             table = e.__table_name__
             pk = e.__pk__
 
@@ -295,14 +329,18 @@ class SQLiteDB:
         """代理其他方法调用"""
         return getattr(self.db, name)
 
-    def upsert_positions(self, position: Position | list[Position]):
-        """保存（插入和更新）持仓信息。"""
-        if isinstance(position, Position):
-            positions = [position]
-        else:
-            positions = position
+    def upsert_positions(self, positions: list[Position] | Position) -> None:
+        """保存(更新)持仓信息
 
-        self["positions"].upsert_all([asdict(pos) for pos in positions], pk=Position.__pk__)  # type: ignore
+        Args:
+            positions: 持仓信息或持仓信息列表
+        """
+        if isinstance(positions, Position):
+            self["positions"].upsert(positions.to_dict(), pk=Position.__pk__)  # type: ignore
+        else:
+            self["positions"].upsert_all(
+                [p.to_dict() for p in positions], pk=Position.__pk__
+            )  # type: ignore
 
     def get_positions(
         self, dt: datetime.date | None = None, portfolio_id: str | None = None
@@ -373,7 +411,7 @@ class SQLiteDB:
         Returns:
             订单ID, 用于后续查询和更新。该订单 ID 为内部 id，而柜台或者第三方的 id。
         """
-        self["orders"].insert(asdict(order))  # type: ignore
+        self["orders"].insert(order.to_dict(), pk=Order.__pk__)  # type: ignore
         return order.qtoid
 
     def get_order_by_foid(self, foid: str | int) -> Order | None:
@@ -461,7 +499,7 @@ class SQLiteDB:
         else:
             trades = trades
 
-        self["trades"].insert_all([asdict(trade) for trade in trades], ignore=True)  # type: ignore
+        self["trades"].insert_all([trade.to_dict() for trade in trades], ignore=True)  # type: ignore
 
     def get_trade(self, tid: str) -> Trade | None:
         """根据 tid 获取成交
@@ -616,12 +654,12 @@ class SQLiteDB:
         """
         if isinstance(asset, Asset):
             assert asset.principal is not None, "资产信息中本金不能为空"
-            self["assets"].upsert(asdict(asset), pk=Asset.__pk__)  # type: ignore
+            self["assets"].upsert(asset.to_dict(), pk=Asset.__pk__)  # type: ignore
         else:
             dicts = []
             for a in asset:
                 assert a.principal is not None, "资产信息中本金不能为空"
-                dicts.append(asdict(a))
+                dicts.append(a.to_dict())
             self["assets"].upsert_all(dicts, pk=Asset.__pk__)  # type: ignore
 
     def update_asset(self, dt: datetime.date, portfolio_id: str, **updates):
@@ -634,6 +672,30 @@ class SQLiteDB:
         row = {"portfolio_id": portfolio_id, "dt": dt, **updates}
         self["assets"].upsert(row, pk=Asset.__pk__)  # type: ignore
 
+    def insert_portfolio(self, portfolio: Portfolio) -> None:
+        """插入组合信息"""
+        self["portfolios"].insert(portfolio.to_dict(), pk=Portfolio.__pk__)  # type: ignore
+
+    def get_portfolio(self, portfolio_id: str)-> Portfolio | None:
+        """获取组合信息"""
+        rows = list(self["portfolios"].rows_where("portfolio_id = ?", (portfolio_id,)))
+        if len(rows) == 0:
+            return None
+        else:
+            return Portfolio(**rows[0])
+
+    def portfolios_all(self)->pl.DataFrame:
+        """获取所有组合信息"""
+        return pl.DataFrame(self["portfolios"].rows)
+
+    def update_portfolio(self, portfolio_id: str, **updates) -> None:
+        """更新组合信息
+
+        Args:
+            portfolio_id: 组合ID
+            **updates: 要更新的字段及其值
+        """
+        self["portfolios"].update(portfolio_id, updates)
 
 
 db: SQLiteDB = SQLiteDB()
