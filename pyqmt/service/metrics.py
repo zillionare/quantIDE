@@ -28,7 +28,10 @@ def bills(portfolio_id: str):
         "assets": assets,
     }
 
-def metrics(portfolio_id: str, baseline_returns: pl.DataFrame | None = None) -> pd.DataFrame:
+
+def metrics(
+    portfolio_id: str, baseline_returns: pl.DataFrame | None = None
+) -> pd.DataFrame:
     """通过quantstats 计算组合评估指标
 
     baseline_returns 应该有 dt 列和returns 列。如果它的 `dt` 范围超出 portfolio_id 对应的 `dt` 范围，则将进行时间对齐；但如果 baseline_returns 的日期范围不足，则将抛出异常。
@@ -59,7 +62,10 @@ def metrics(portfolio_id: str, baseline_returns: pl.DataFrame | None = None) -> 
         benchmark = bench_df["returns"]
 
         # 检查日期范围：基准必须覆盖策略的运行范围
-        if benchmark.index.min() > returns.index.min() or benchmark.index.max() < returns.index.max():
+        if (
+            benchmark.index.min() > returns.index.min()
+            or benchmark.index.max() < returns.index.max()
+        ):
             raise ValueError(
                 f"baseline_returns range ({benchmark.index.min()} to {benchmark.index.max()}) "
                 f"is insufficient for returns range ({returns.index.min()} to {returns.index.max()})"

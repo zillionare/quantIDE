@@ -1,6 +1,7 @@
 # auth/database.py
-from fasthtml.common import database
 from pathlib import Path
+
+from fasthtml.common import database
 
 
 class AuthDatabase:
@@ -19,10 +20,10 @@ class AuthDatabase:
         self.audit_log = None  # Optional security audit
 
     def initialize_auth_tables(self):
-        from .models import User, Session
-
         # Force User to be fully processed as a dataclass
         import dataclasses
+
+        from .models import Session, User
 
         if not dataclasses.is_dataclass(User):
             raise Exception("User is not a proper dataclass!")

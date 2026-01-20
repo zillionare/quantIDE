@@ -1,5 +1,6 @@
-from typing import Protocol, Iterable, Union
 import datetime
+from typing import Iterable, Protocol, Union
+
 import pandas as pd
 import polars as pl
 
@@ -23,6 +24,7 @@ class FetchDataCallback(Protocol):
             tuple[pd.DataFrame | pl.DataFrame | pl.LazyFrame, list[list]]: 返回的数据帧及错误信息
         """
         ...
+
 
 class ErrorHandler(Protocol):
     """数据获取中的错误处理接口"""

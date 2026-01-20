@@ -13,11 +13,10 @@ import polars as pl
 from loguru import logger
 
 from pyqmt.config import cfg
-from pyqmt.core.message import msg_hub
 from pyqmt.core.enums import FrameType
+from pyqmt.core.message import msg_hub
 from pyqmt.data.models.calendar import Calendar
-from pyqmt.data.protocols import FetchDataCallback
-from pyqmt.data.protocols import ErrorHandler
+from pyqmt.data.protocols import ErrorHandler, FetchDataCallback
 
 
 class ParquetStorage:
@@ -322,8 +321,11 @@ class ParquetStorage:
 
         if len(missing_dates) == 0:
             try:
-                msg_hub.publish("fetch_data_progress", {"msg": "本地数据已最新，无需更新"})
-                msg_hub.publish("fetch_data_progress", None)
+                msg_hub.publish(
+                    topic="fetch_data_progress",
+                    msg_content={"msg": "本地数据已最新，无需更新"},
+                )
+                msg_hub.publish(topic="fetch_data_progress", msg_content=None)
             except Exception:
                 pass
             return
@@ -353,7 +355,7 @@ class ParquetStorage:
             )
 
         try:
-            msg_hub.publish("fetch_data_progress", None)
+            msg_hub.publish(topic="fetch_data_progress", msg_content=None)
         except Exception:
             pass
 

@@ -13,10 +13,11 @@ from fasthtml.common import *
 from monsterui.all import *
 
 from pyqmt.config import cfg, get_config_dir
-from pyqmt.data.sqlite import db
+from pyqmt.core.errors import BaseTradeError
+from pyqmt.data import init_data
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
-from pyqmt.web.middleware import BrokerMiddleware
+from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.login import login_app
 
@@ -25,21 +26,7 @@ def init():
     cfg4py.init(get_config_dir())
 
     # 初始化交易数据库
-    db.init(cfg.db.path)
-
-    broker = None
-    if cfg.broker == "qmt":
-        from pyqmt.service.qmt_broker import QMTBroker
-
-        broker = QMTBroker(cfg)
-    elif cfg.broker == "backtest":
-        from pyqmt.service.backtest_broker import BacktestBroker
-
-        broker = BacktestBroker(cfg)
-    elif cfg.broker == "simulation":
-        from pyqmt.service.simulation_broker import SimulationBroker
-
-        broker = SimulationBroker(cfg)
+    init_data(cfg.home)  # type: ignore
 
     # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})
@@ -48,24 +35,26 @@ def init():
     app, rt = fast_app(
         hdrs=Theme.blue.headers(),
         before=auth.create_beforeware(),
+        exception_handlers={
+            Exception: exception_handler,
+            BaseTradeError: exception_handler,
+        },
         routes=[
             Mount("/login", login_app),
             Mount("/home", home_app),
             Mount("/broker", broker_api_app),
-            Mount("/", home_app)
+            Mount("/", home_app),
         ],
     )
 
     static_dir = Path(__file__).resolve().parent / "web" / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    if broker is not None:
-        app.add_middleware(BrokerMiddleware, broker=broker)
-
     # 初始化认证系统并注册路由
     auth.initialize(app, prefix="/auth")
 
     return app
+
 
 app = init()
 

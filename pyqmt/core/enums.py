@@ -13,6 +13,7 @@ class BidType(IntEnum):
     | 4     | PEER_FIRST | 对方最优价 (Best price on counterparty side)    |
     | 255   | UNKNOWN    | 未知 (Unknown)                                 |
     """
+
     FIXED = 0  # 指定价格下单
     LATEST = 1  # 最新价，兼顾成交速度与价格可控，有可能部成
     MARKET = 2  # 市价单，5档转撤
@@ -31,6 +32,7 @@ class OrderSide(IntEnum):
     | 0     | XDXR  | 分红配股 (Dividend & allotment) |
     | 255   | UNKNOWN | 未知 (Unknown)       |
     """
+
     BUY = 1
     SELL = -1
     XDXR = 0
@@ -61,6 +63,7 @@ class OrderStatus(IntEnum):
     | 57    | JUNK            | 无效订单 (Invalid order)      |
     | 255   | UNKNOWN         | 未知 (Unknown)                |
     """
+
     UNREPORTED = 48  # 未报
     WAIT_REPORTING = 49  # 待报
     REPORTED = 50  # 已报
@@ -72,6 +75,7 @@ class OrderStatus(IntEnum):
     SUCCEEDED = 56  # 已成交
     JUNK = 57  # 无效订单
     UNKNOWN = 255  # 未知
+
 
 class FrameType(Enum):
     """对证券交易中K线周期的封装。提供了以下对应周期:
@@ -159,12 +163,16 @@ class FrameType(Enum):
 
         return NotImplemented
 
+
 class BrokerKind(Enum):
     """broker 类型"""
+
     BACKTEST = "bt"
     SIMULATION = "sim"
     QMT = "qmt"
 
+
 class Topics(Enum):
     """消息主题"""
+
     QUOTES_ALL = "quotes.all"

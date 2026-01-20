@@ -1,4 +1,3 @@
-
 import logging
 import threading
 import time
@@ -59,14 +58,13 @@ class LiveQuote:
         self._is_running = True
         logger.info(f"LiveQuote service started in {self._mode} mode")
 
-
     def _start_redis_subscription(self):
         """从 Redis 订阅全推数据"""
         if self._redis_client is None:
             raise RuntimeError("Redis client is not configured")
 
         def redis_listener():
-            pubsub = self._redis_client.pubsub() #type: ignore
+            pubsub = self._redis_client.pubsub()  # type: ignore
 
             # 订阅全推行情频道
             channel = Topics.QUOTES_ALL.value

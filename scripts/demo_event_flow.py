@@ -13,8 +13,8 @@ async def publish_quotes(asset: str, base_tm: datetime.datetime, price: float, v
     for i, v in enumerate(volumes):
         tm = base_tm + datetime.timedelta(seconds=i)
         msg_hub.publish(
-            "md:quote:1s",
-            {
+            topic="md:quote:1s",
+            msg_content={
                 "asset": asset,
                 "last_price": price,
                 "volume": v,

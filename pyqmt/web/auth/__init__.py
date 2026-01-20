@@ -9,10 +9,10 @@ __version__ = "0.1.2"
 __author__ = "John Richmond"
 __email__ = "confusedjohn46@gmail.com"
 
-from .manager import AuthManager
-from .models import User, Session
-from .middleware import AuthBeforeware
 from .database import AuthDatabase
+from .manager import AuthManager
+from .middleware import AuthBeforeware
+from .models import Session, User
 from .repository import UserRepository
 
 __all__ = [

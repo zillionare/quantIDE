@@ -51,6 +51,7 @@ MessageHub 模块：进程内异步消息中心
    - 系统退出时可调用 `msg_hub.stop()` 安全停止分发后台线程。
 
 """
+
 import datetime
 import threading
 from queue import Empty, Full, Queue
@@ -152,9 +153,7 @@ class MessageHub:
         try:
             queue.put_nowait(msg_content)
         except Full:
-            logger.warning(
-                "Pull queue for topic {} is full. Discarding oldest.", topic
-            )
+            logger.warning("Pull queue for topic {} is full. Discarding oldest.", topic)
             try:
                 queue.get_nowait()
                 queue.put_nowait(msg_content)
@@ -189,6 +188,4 @@ class MessageHub:
 
 msg_hub = MessageHub()
 
-__all__ = [
-    "msg_hub"
-]
+__all__ = ["msg_hub"]

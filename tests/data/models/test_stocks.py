@@ -15,11 +15,15 @@ from pyqmt.data import daily_bars
 from pyqmt.data import stock_list
 from pyqmt.config import cfg
 
+
 @pytest.fixture
 def setup(asset_dir: Path):
-    cfg.epoch = datetime.date(2024, 1, 1) # type: ignore
+    cfg.epoch = datetime.date(2024, 1, 1)  # type: ignore
     stock_list.load(asset_dir / "stock_list.parquet")
-    daily_bars.connect(asset_dir / "2024_bars_ext_cols.parquet", asset_dir / "calendar.parquet")
+    daily_bars.connect(
+        asset_dir / "2024_bars_ext_cols.parquet", asset_dir / "calendar.parquet"
+    )
+
 
 @patch("pyqmt.data.models.stocks.logger")
 @patch("pyqmt.data.models.stocks.fetch_stock_list")

@@ -67,7 +67,7 @@ async def start_backtest(req):
         - principal, float
 
     """
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     params = req.json or {}
     return broker.start_backtest(params)
 
@@ -81,14 +81,14 @@ async def stop_backtest(req):
     # todo: 增加持久化操作
 
     """
-    broker = req.scope.get("broker")
-    return broker.stop_backtest()
+    broker = _get_broker(req)
+    return await broker.stop_backtest()
 
 
 @rt("/accounts", methods=["GET"])
 async def list_accounts(req):
     """只在回测模式下有效？"""
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     return broker.list_accounts()
 
 
@@ -101,7 +101,7 @@ async def buy(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
 
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
@@ -123,7 +123,7 @@ async def buy_percent(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -142,7 +142,7 @@ async def buy_amount(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -158,7 +158,7 @@ async def sell(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -207,7 +207,7 @@ async def sell_amount(
 
 @rt("/positions", methods=["GET"])
 async def positions(req, asset: str, date: datetime.date | None = None):
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     return broker.get_position(asset, date)
 
 
@@ -237,7 +237,7 @@ async def account_info(req, asset: str, date: datetime.date | None = None):
         - positions: 当前持仓，dtype为[backtest.trade.datatypes.position_dtype][]的numpy structured array
     """
 
-    broker = req.scope.get("broker")
+    broker = _get_broker(req)
     return broker.get_account_info(asset, date)
 
 
@@ -267,10 +267,6 @@ async def metrics(request):
     if end:
         end = arrow.get(end).date()
 
-    broker = request.scope.get("broker")
-    metrics = await broker.metrics(start, end, baseline)
-    return Response(pickle.dumps(metrics), media_type="application/octet-stream")
-
 
 @rt("/bills", methods=["GET"])
 async def bills(request):
@@ -286,14 +282,6 @@ async def bills(request):
 
     """
     results = {}
-
-    broker = request.scope.get("broker")
-
-    if not broker._bt_stopped:
-        raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "call `stop_backtest` first")
-
-    results = broker.bills()
-    return JSONResponse(results)
 
 
 @rt("/accounts", methods=["DELETE"])
@@ -311,13 +299,13 @@ async def delete_accounts(request):
     accounts = request.app.ctx.accounts
 
     if account_to_delete is None:
-        broker = request.scope.get("broker")
+        broker = _get_broker(request)
         if broker.account_name == "admin":
             accounts.delete_accounts()
         else:
             return PlainTextResponse("admin account required", status_code=403)
 
-    broker = request.scope.get("broker")
+    broker = _get_broker(request)
     if account_to_delete == broker.account_name:
         accounts.delete_accounts(account_to_delete)
 
@@ -339,7 +327,7 @@ async def get_assets(request):
         Response: 从`start`到`end`期间的账户资产信息，结果以binary方式返回,参考[backtest.trade.datatypes.rich_assets_dtype][]
 
     """
-    broker = request.scope.get("broker")
+    broker = _get_broker(request)
 
     start = request.args.get("start")
     if start:
@@ -356,12 +344,14 @@ async def get_assets(request):
     filter = np.argwhere(
         (broker._assets["date"] >= start) & (broker._assets["date"] <= end)
     ).flatten()
-    return Response(pickle.dumps(broker._assets[filter]), media_type="application/octet-stream")
+    return Response(
+        pickle.dumps(broker._assets[filter]), media_type="application/octet-stream"
+    )
 
 
 @rt("/asset_overview", methods=["GET"])
 async def asset_overview(request):
-    broker = request.scope.get("broker")
+    broker = _get_broker(request)
     return build_asset_overview(broker.asset)
 
 
@@ -416,7 +406,9 @@ async def load_backtest(request):
     """
     name = request.args.get("name", None)
     if name is None:
-        raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "name of the backtest is required")
+        raise TradeError(
+            TradeErrors.ERROR_BAD_PARAMS, "name of the backtest is required"
+        )
 
     token = request.token
     accounts = request.app.ctx.accounts

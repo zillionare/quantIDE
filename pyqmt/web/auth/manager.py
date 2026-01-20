@@ -1,11 +1,13 @@
+from dataclasses import dataclass
+
 from fasthtml.common import *
 from monsterui.all import *
-from dataclasses import dataclass
-from .middleware import AuthBeforeware
+
 from .database import AuthDatabase
+from .middleware import AuthBeforeware
+from .models import User
 from .repository import UserRepository
 from .routes import AuthRoutes
-from .models import User
 
 
 class AuthManager:

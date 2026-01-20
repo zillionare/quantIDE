@@ -1,100 +1,102 @@
 import datetime
-from dataclasses import dataclass
-from typing import Iterable, Sequence
+from abc import ABC, abstractmethod
 
 import polars as pl
 
-from pyqmt.core.message import msg_hub
-from pyqmt.data.models.daily_bars import daily_bars
 
+class DataFeed(ABC):
+    """用以回测、模拟盘获取用以撮合的价格数据。
 
-class TimeProvider:
-    def now(self) -> datetime.datetime:
-        return datetime.datetime.now()
+    实现类需要根据情况，选择实现其中的接口。比如, simulation broker 就不需要实现get_bars 接口
+    """
 
-    def advance_to(self, dt: datetime.datetime) -> None:
-        pass
+    @abstractmethod
+    def get_price_with_limit(
+        self, asset: str | list[str], dt: datetime.date | datetime.datetime | None
+    ) -> pl.DataFrame | float | None:
+        """获取价格数据及当日涨跌停价
 
+        如果dt是日期，返回该日期的收盘价
+        如果dt是时间，返回该时间的价格。
+        Args:
+            asset (str|list[str]): 标的
+            dt (datetime.date|datetime.datetime|None): 日期
 
-class SimClock(TimeProvider):
-    def __init__(self):
-        self._now = datetime.datetime.combine(datetime.date.today(), datetime.time(9, 30, 0))
+        Returns:
+            pl.DataFrame|float|None: 价格数据
+        """
+        ...
 
-    def now(self) -> datetime.datetime:
-        return self._now
+    @abstractmethod
+    def get_bars_in_range(
+        self,
+        assets: list[str],
+        start: datetime.date | datetime.datetime,
+        end: datetime.date | datetime.datetime,
+        adjust: str | None = None,
+        eager_mode: bool = True,
+    ) -> pl.DataFrame:
+        """获取价格数据
 
-    def advance_to(self, dt: datetime.datetime) -> None:
-        self._now = dt
+        Args:
+            assets (list[str]): 标的
+            start (datetime.date|datetime.datetime): 开始时间
+            end (datetime.date|datetime.datetime): 结束时间
+            adjust (str|None, optional): 复权类型. Defaults to None.
+            eager_mode (bool, optional): 是否立即加载数据. Defaults to True.
 
+        Returns:
+            pl.DataFrame: 价格数据
+        """
+        ...
 
-@dataclass(frozen=True)
-class QuoteEvent:
-    asset: str
-    last_price: float
-    up_limit: float | None = None
-    down_limit: float | None = None
-    low: float | None = None
-    high: float | None = None
-    volume: float | None = None
-    tm: datetime.datetime | None = None
+    @abstractmethod
+    def get_trade_price_limits(
+        self, asset: str, dt: datetime.date
+    ) -> tuple[float, float]:
+        """获取指定资产在指定日期的涨跌停限价。
 
+        Args:
+            asset: 资产代码
+            dt: 日期
 
-class ParquetFeed:
-    def __init__(self, clock: TimeProvider | None = None):
-        self._clock = clock or TimeProvider()
+        Returns:
+            tuple[float, float]: (跌停价, 涨停价)
+        """
+        ...
 
-    def publish_open_close_for_date(self, date: datetime.date, assets: Sequence[str]) -> None:
-        df = daily_bars.get_bars_in_range(date, date, assets=list(assets), adjust=None, eager_mode=True)
-        if isinstance(df, pl.LazyFrame):
-            df = df.collect()
-        if df.height == 0:
-            return
-        for row in df.iter_rows(named=True):
-            asset = str(row["asset"])
-            open_px = float(row["open"])
-            close_px = float(row["close"])
-            low = float(row["low"])
-            high = float(row["high"])
-            up = row.get("up_limit")
-            down = row.get("down_limit")
-            vol = row.get("volume")
-            tm_open = max(
-                self._clock.now(),
-                datetime.datetime.combine(date, datetime.time(9, 30, 0)),
-            )
-            tm_close = datetime.datetime.combine(date, datetime.time(15, 0, 0))
-            msg_hub.publish(
-                "md:bar:1d",
-                QuoteEvent(
-                    asset=asset,
-                    last_price=open_px,
-                    up_limit=up,
-                    down_limit=down,
-                    low=low,
-                    high=high,
-                    volume=vol,
-                    tm=tm_open,
-                ),
-            )
-            msg_hub.publish(
-                "md:bar:1d",
-                QuoteEvent(
-                    asset=asset,
-                    last_price=close_px,
-                    up_limit=up,
-                    down_limit=down,
-                    low=low,
-                    high=high,
-                    volume=vol,
-                    tm=tm_close,
-                ),
-            )
+    @abstractmethod
+    def get_price_for_match(
+        self, asset: str, tm: datetime.datetime
+    ) -> pl.DataFrame | None:
+        """获取用于撮合的行情数据。
 
+        对于日线，返回当日行情数据。
+        对于分钟线，返回当前时间到收盘的所有分钟线数据。
 
-class RedisStreamFeed:
-    def __init__(self):
-        pass
+        返回的 DataFrame, 无论是日线还是分钟线，都包含 open, close, high, low, volume, up_limit, down_limit 这几个字段。如果缺少其中之一，则返回 None
 
-    def forward(self, events: Iterable[dict]) -> None:
-        for e in events:
-            msg_hub.publish("md:quote:1s", e)
+        Args:
+            asset: 资产代码
+            tm: 开始时间（通常为报单时间）
+
+        Returns:
+            pl.DataFrame: 包含从 tm 到收盘的行情数据。在没有数据时返回 None
+        """
+        ...
+
+    @abstractmethod
+    def get_close_factor(
+        self, assets: list[str], start: datetime.date, end: datetime.date
+    ) -> pl.DataFrame:
+        """获取指定日期范围内的收盘价和复权因子
+
+        Args:
+            assets: 资产列表
+            start: 开始日期
+            end: 结束日期
+
+        Returns:
+            pl.DataFrame: 包含字段 [dt, asset, close, factor]
+        """
+        ...

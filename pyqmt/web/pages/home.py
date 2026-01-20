@@ -1,7 +1,8 @@
 from fasthtml.common import *
+from loguru import logger
 from monsterui.all import *
 
-from loguru import logger
+from pyqmt.service.registry import BrokerRegistry
 from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
 
@@ -29,13 +30,9 @@ def AssetSummary(asset_overview: dict | None = None):
     total_text = f"{total:,.2f}" if total is not None else "0.00"
     cash_text = f"{cash:,.2f}" if cash is not None else "0.00"
     frozen_cash_text = f"{frozen_cash:,.2f}" if frozen_cash is not None else "0.00"
-    market_value_text = (
-        f"{market_value:,.2f}" if market_value is not None else "0.00"
-    )
+    market_value_text = f"{market_value:,.2f}" if market_value is not None else "0.00"
     pnl_text = f"{pnl:,.2f}" if pnl is not None else "0.00"
-    pnl_pct_text = (
-        f"{pnl_pct * 100:.2f}%" if pnl_pct is not None else "0.00%"
-    )
+    pnl_pct_text = f"{pnl_pct * 100:.2f}%" if pnl_pct is not None else "0.00%"
 
     return Div(
         Div(
@@ -174,12 +171,25 @@ def TradePanel():
                 cls="uk-button-default w-full bg-white text-red-700 font-bold border-none hover:bg-gray-100",
             ),
         ),
-        cls="p-6 rounded-xl shadow-xl h-full"
+        cls="p-6 rounded-xl shadow-xl h-full",
     )
 
 
-def main_block(asset_overview: dict | None = None):
+def BrokerList(items: list[dict]):
+    links = []
+    for it in items:
+        href = f"/home?kind={it['kind']}&id={it['id']}"
+        links.append(Li(A(f"{it['kind']}:{it['id']}", href=href, cls="text-xs")))
     return Div(
+        H3("实例列表", cls="text-sm font-bold mb-2"),
+        Ul(*links, cls="uk-list uk-list-striped"),
+        cls="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-4",
+    )
+
+
+def main_block(asset_overview: dict | None = None, brokers: list[dict] | None = None):
+    return Div(
+        BrokerList(brokers or []),
         AccountTabs(),
         AssetSummary(asset_overview),
         Div(
@@ -199,14 +209,24 @@ def index(req, session):
     )
 
     asset_overview = None
-    broker = req.scope.get("broker")
-    if broker is not None and hasattr(broker, "asset"):
+    brokers = []
+    reg: BrokerRegistry | None = req.scope.get("registry")
+    if reg is not None:
+        brokers = reg.list()
+        kind = req.query_params.get("kind")
+        bid = req.query_params.get("id")
         try:
-            asset_overview = build_asset_overview(broker.asset)
+            if kind and bid:
+                broker = reg.get(kind, bid)
+            else:
+                d = reg.get_default()
+                broker = reg.get(d[0], d[1]) if d else None
+            if broker is not None and hasattr(broker, "asset"):
+                asset_overview = build_asset_overview(broker.asset)  # type: ignore
         except Exception as e:
             logger.exception(e)
             asset_overview = None
 
-    layout.main_block = lambda: main_block(asset_overview)
+    layout.main_block = lambda: main_block(asset_overview, brokers)
 
     return layout.render()

@@ -87,8 +87,9 @@ def patch_calendar(store):
     store._calendar._data = pa.concat_tables(
         [store._calendar._data, pa.Table.from_pandas(year_2025)]
     )
-    new_day_frames = pd.concat([store._calendar.day_frames.to_pandas(),
-    year_2025["date"]])
+    new_day_frames = pd.concat(
+        [store._calendar.day_frames.to_pandas(), year_2025["date"]]
+    )
     store._calendar.day_frames = pa.Date32Array.from_pandas(new_day_frames)
 
 
@@ -190,7 +191,9 @@ def test_save_as_partition(partition_store, temp_partition_path, asset_dir):
         year_partition_dir = Path(partition_path_template.format(year=year))
 
         # 检查目录是否存在
-        assert year_partition_dir.exists(), f"Partition directory does not exist: {year_partition_dir}"
+        assert (
+            year_partition_dir.exists()
+        ), f"Partition directory does not exist: {year_partition_dir}"
 
         # 获取目录中的parquet文件
         parquet_files = list(year_partition_dir.glob("*.parquet"))
@@ -599,7 +602,9 @@ def test_last_update_time(single_file_store):
     store = single_file_store
     assert store.last_update_time is None
 
-    with patch.object(store._calendar, "ceiling", return_value=datetime.date(2024, 5, 1)):
+    with patch.object(
+        store._calendar, "ceiling", return_value=datetime.date(2024, 5, 1)
+    ):
         patch.object(store._calendar, "floor", return_value=datetime.date(2024, 6, 28))
         store._fetch_data_func = MagicMock(return_value=(pd.DataFrame(), []))
         start = datetime.datetime.now(cfg.TIMEZONE)

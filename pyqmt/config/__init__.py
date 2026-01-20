@@ -42,10 +42,10 @@ def init_config(config_dir: str | Path | None = None):
     config_dir = config_dir or get_config_dir()
     cfg4py.init(str(config_dir))
 
-
     cfg_ = cfg4py.get_instance()
     if not hasattr(cfg_, "epoch"):
         cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
+
 
 cfg: Config = cfg4py.get_instance()
 

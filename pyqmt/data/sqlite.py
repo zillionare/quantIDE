@@ -67,7 +67,6 @@ class Entity:
     __pk__: ClassVar[Union[str, List[str]]]
     __indexes__: ClassVar[Tuple[List[str], bool]]
 
-
     @classmethod
     def to_db_schema(cls) -> dict:
         """类方法：解析当前 dataclass 为 fastlite 兼容的 schema 字典"""
@@ -80,8 +79,8 @@ class Entity:
                 schema[f.name] = f.type
             # 处理所有联合类型（Union[A, B] 和 A | B 语法）
             elif (
-                (hasattr(f.type, "__origin__") and get_origin(f.type) is Union) or isinstance(f.type, types.UnionType)
-            ):
+                hasattr(f.type, "__origin__") and get_origin(f.type) is Union
+            ) or isinstance(f.type, types.UnionType):
                 # 提取非 None 的类型
                 args = get_args(f.type)
                 non_none_types = [t for t in args if t is not type(None)]
@@ -106,6 +105,7 @@ class Entity:
                 d[k] = v.value
         return d
 
+
 @dataclass
 class Order(Entity):
     __table_name__ = "orders"
@@ -117,9 +117,9 @@ class Order(Entity):
     side: OrderSide
     shares: float | int  # 委托数量。调用者需要保证符合交易要求
     bid_type: BidType  # 委托类型，比如限价单、市价单
+    tm: datetime.datetime = field(default_factory=datetime.datetime.now)
     price: float = 0
     filled: float = 0.0
-    tm: datetime.datetime | None = None  # 下单时间
 
     foid: str | None = None  # 代理(比如QMT)指定的 id，透传，一般用以查错
     cid: str | None = None  # 券商柜台合约 id
@@ -136,6 +136,7 @@ class Order(Entity):
     def __post_init__(self):
         if isinstance(self.tm, str):
             self.tm = datetime.datetime.fromisoformat(self.tm)
+
 
 @dataclass
 class Trade(Entity):
@@ -163,6 +164,7 @@ class Trade(Entity):
         if isinstance(self.tm, str):
             self.tm = datetime.datetime.fromisoformat(self.tm)
 
+
 @dataclass
 class Position(Entity):
     __table_name__ = "positions"
@@ -174,8 +176,8 @@ class Position(Entity):
     asset: str
     shares: float
     avail: float  # 可用数量
-    price: float  # 持仓价格
-    profit: float  # 盈亏比
+    price: float  # 持仓成本
+    profit: float  # 盈亏比，本字段主要供实盘快速查询使用，在回测、模拟时都不使用。
     mv: float  # 市值
 
     def __post_init__(self):
@@ -213,6 +215,7 @@ class Asset(Entity):
         elif isinstance(self.dt, datetime.datetime):
             self.dt = self.dt.date()
 
+
 @dataclass
 class Portfolio(Entity):
     __table_name__ = "portfolios"
@@ -224,7 +227,7 @@ class Portfolio(Entity):
     start: datetime.date
     name: str = ""
     info: str = ""
-    end: datetime.date|None = None
+    end: datetime.date | None = None
     status: bool = True
 
     def __post_init__(self):
@@ -240,6 +243,7 @@ class Portfolio(Entity):
         if not isinstance(self.status, bool):
             self.status = bool(self.status)
 
+
 @singleton
 class SQLiteDB:
     def __init__(self):
@@ -248,7 +252,7 @@ class SQLiteDB:
         self.db_path: str = ""
         self._initialized = False
 
-    def init(self, db_path: str|Path):
+    def init(self, db_path: str | Path):
         next_path = str(Path(db_path).expanduser())
         if self._initialized and self.db_path == next_path and next_path != ":memory:":
             return
@@ -447,7 +451,7 @@ class SQLiteDB:
         else:
             return Order(**orders[0])
 
-    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame|None:
+    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame | None:
         """根据日期查询订单
 
         Args:
@@ -519,7 +523,7 @@ class SQLiteDB:
 
     def query_trade(
         self, qtoid: str | None = None, foid: str | None = None
-    ) -> pl.DataFrame|None:
+    ) -> pl.DataFrame | None:
         """通过 qtoid, foid 或者 tid查询成交
 
             Args:
@@ -537,9 +541,9 @@ class SQLiteDB:
                 filters.append(f"{param} = :{param}")
 
         if len(filters) == 0:
-            return (pl.DataFrame(self["trades"].rows)
-                    .with_columns(pl.col("tm").cast(pl.Datetime))
-                    )
+            return pl.DataFrame(self["trades"].rows).with_columns(
+                pl.col("tm").cast(pl.Datetime)
+            )
 
         where_clause = " OR ".join(filters)
         rows = self["trades"].rows_where(where_clause, params)
@@ -676,7 +680,7 @@ class SQLiteDB:
         """插入组合信息"""
         self["portfolios"].insert(portfolio.to_dict(), pk=Portfolio.__pk__)  # type: ignore
 
-    def get_portfolio(self, portfolio_id: str)-> Portfolio | None:
+    def get_portfolio(self, portfolio_id: str) -> Portfolio | None:
         """获取组合信息"""
         rows = list(self["portfolios"].rows_where("portfolio_id = ?", (portfolio_id,)))
         if len(rows) == 0:
@@ -684,7 +688,7 @@ class SQLiteDB:
         else:
             return Portfolio(**rows[0])
 
-    def portfolios_all(self)->pl.DataFrame:
+    def portfolios_all(self) -> pl.DataFrame:
         """获取所有组合信息"""
         return pl.DataFrame(self["portfolios"].rows)
 

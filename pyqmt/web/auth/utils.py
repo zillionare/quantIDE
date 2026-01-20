@@ -1,9 +1,9 @@
 """Utility functions for FastHTML-Auth"""
 
-from typing import Optional
+import re
 import secrets
 import string
-import re
+from typing import Optional
 
 
 def generate_token(length: int = 32) -> str:

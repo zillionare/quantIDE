@@ -1,6 +1,7 @@
-from fasthtml.common import *
 import inspect
-from typing import Optional, List, Any, Callable
+from typing import Any, Callable, List, Optional
+
+from fasthtml.common import *
 
 
 class AuthBeforeware:
@@ -103,8 +104,8 @@ class AuthBeforeware:
         """Decorator for paths requiting admin role to access"""
         return self.require_role("admin")
 
-    from typing import Any
     import functools
+    from typing import Any
 
     def require_role(self, *allowed_roles):
         """Decorator to require a specific role"""

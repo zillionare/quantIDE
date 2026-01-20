@@ -71,7 +71,7 @@ def test_portfolio_crud(setup):
         start=start_date,
         name="Test Portfolio",
         info="Testing...",
-        status=True
+        status=True,
     )
     db.insert_portfolio(portfolio)
 
@@ -85,10 +85,7 @@ def test_portfolio_crud(setup):
 
     # 02 Test update_portfolio with variable fields
     db.update_portfolio(
-        portfolio_id,
-        name="Updated Name",
-        info="Updated Info",
-        status=False
+        portfolio_id, name="Updated Name", info="Updated Info", status=False
     )
 
     # Verify update
@@ -101,9 +98,9 @@ def test_portfolio_crud(setup):
     assert updated.kind == BrokerKind.BACKTEST
     assert updated.start == start_date
 
+
 def test_orders_crud(setup):
     """Test order CRUD"""
-
 
     # 01 Test saving order
     tm = datetime.datetime.now()
@@ -158,9 +155,9 @@ def test_orders_crud(setup):
 
     # 06 Test query_order_by_date
     orders_by_date = db.query_order_by_date(tm)
-    assert len(orders_by_date) ==1 # type: ignore
+    assert len(orders_by_date) == 1  # type: ignore
 
-    order_qtoids = orders_by_date["qtoid"].to_list() #type: ignore
+    order_qtoids = orders_by_date["qtoid"].to_list()  # type: ignore
     assert qtoid in order_qtoids
 
     # Create an order for a different date
@@ -181,7 +178,6 @@ def test_orders_crud(setup):
 def test_get_order_by_foid(setup):
     """Test getting order by external foid"""
 
-
     # Save the order
     tm = datetime.datetime.now()
     order = Order(
@@ -193,7 +189,7 @@ def test_get_order_by_foid(setup):
         side=OrderSide.BUY,
         bid_type=BidType.MARKET,
         tm=tm,
-        foid="123"
+        foid="123",
     )
     db.insert_order(order)
 
@@ -221,7 +217,7 @@ def test_trades_crud(setup):
         side=OrderSide.BUY,
         bid_type=BidType.MARKET,
         tm=tm,
-        foid="foid1"
+        foid="foid1",
     )
     qtoid = db.insert_order(order)
 
@@ -325,8 +321,6 @@ def test_trades_crud(setup):
 def test_foreign_key_constraint(setup):
     """Test foreign key constraint enforcement"""
 
-
-
     # Create an order first
     order = Order(
         portfolio_id="test_portfolio",
@@ -396,7 +390,6 @@ def test_foreign_key_constraint(setup):
 
 def test_positions_crud(setup):
     """Test get_positions method to cover that code path"""
-
 
     # 01 Insert single position record directly
     pos01 = Position(
@@ -476,10 +469,9 @@ def test_positions_crud(setup):
     # Test get_positions with dt=None for empty portfolio
     assert len(db.get_positions(dt=None, portfolio_id="non_existent")) == 0
 
+
 def test_proxy_methods(setup):
     """Test __getitem__ and __getattr__ proxy methods"""
-
-
 
     # Test __getitem__ proxy
     orders_table = db["orders"]
@@ -495,8 +487,6 @@ def test_proxy_methods(setup):
 
 def test_foreign_key_constraint_in_init_tables(setup):
     """Test that foreign keys are properly created in _init_tables"""
-
-
 
     # Check that foreign key constraint exists on trades table
     trades_table = db["trades"]
@@ -526,7 +516,7 @@ def test_assets(setup):
         cash=1_000_000,
         frozen_cash=0,
         market_value=0,
-        total=1_000_000
+        total=1_000_000,
     )
     db.upsert_asset(asset)
     asset_from_db = db.get_asset(dt, portfolio_id="test_portfolio")
@@ -550,7 +540,7 @@ def test_assets(setup):
         cash=1_000_000,
         frozen_cash=0,
         market_value=0,
-        total=1_000_000
+        total=1_000_000,
     )
     db.upsert_asset(asset)
     asset_from_db = db.get_asset(dt, portfolio_id="test_portfolio")
@@ -807,7 +797,9 @@ def test_entity_post_init_conversions():
     p_str = Position("p", "2024-01-02", "A", 100, 100, 10, 0, 1000)
     assert p_str.dt == datetime.date(2024, 1, 2)
 
-    p_dt = Position("p", datetime.datetime(2024, 1, 3, 10, 0), "A", 100, 100, 10, 0, 1000)
+    p_dt = Position(
+        "p", datetime.datetime(2024, 1, 3, 10, 0), "A", 100, 100, 10, 0, 1000
+    )
     assert p_dt.dt == datetime.date(2024, 1, 3)
 
     # 4. Asset

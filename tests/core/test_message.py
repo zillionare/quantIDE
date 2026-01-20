@@ -29,6 +29,7 @@ def clean_hub():
         hub._worker.start()
     yield hub
 
+
 def test_subscribe_and_publish(clean_hub):
     """测试订阅和发布功能"""
     hub = clean_hub
@@ -136,9 +137,9 @@ def test_error_isolation(clean_hub):
     hub.subscribe("error_test", success_callback)
 
     hub.publish("error_test", "test_data")
-    
+
     time.sleep(0.2)
-    
+
     assert len(received_messages) == 1
     assert received_messages[0] == "test_data"
 
@@ -151,7 +152,7 @@ def test_queue_overflow(clean_hub):
     for i in range(1002):  # 默认队列大小是1000
         hub.publish("overflow_msg", f"message_{i}")
 
-    time.sleep(0.5) # 给点时间让 worker 处理完 1000+ 条消息
+    time.sleep(0.5)  # 给点时间让 worker 处理完 1000+ 条消息
 
     # 验证队列中有消息
     try:

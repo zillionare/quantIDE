@@ -24,20 +24,18 @@ from typing import TYPE_CHECKING
 import polars as pl
 from loguru import logger
 from tenacity import RetryCallState, retry, stop_after_attempt, wait_fixed
-
-
-from xtquant.xttrader import XtQuantTrader
-from xtquant.xttrader import XtQuantTraderCallback
-from xtquant.xttype import StockAccount
-from xtquant.xttype import XtAsset
-from xtquant.xttype import XtCancelError
-from xtquant.xttype import XtOrder
-from xtquant.xttype import XtOrderError
-from xtquant.xttype import XtOrderResponse
-from xtquant.xttype import XtPosition
-from xtquant.xttype import XtTrade
 from xtquant import xtconstant
-
+from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
+from xtquant.xttype import (
+    StockAccount,
+    XtAsset,
+    XtCancelError,
+    XtOrder,
+    XtOrderError,
+    XtOrderResponse,
+    XtPosition,
+    XtTrade,
+)
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BidType, OrderSide, OrderStatus
@@ -61,8 +59,10 @@ def as_asset(xt_asset: XtAsset, principal: float, portfolio_id: str) -> Asset:
         market_value=xt_asset.market_value,
         frozen_cash=xt_asset.frozen_cash,
         dt=datetime.date.today(),
-        principal=principal
+        principal=principal,
     )
+
+
 def as_position(xt_position: XtPosition, portfolio_id: str) -> Position:
     return Position(
         portfolio_id=portfolio_id,
@@ -260,7 +260,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
             xt_order: XtOrder对象
         """
         logger.info(f"on order callback: {order.stock_code} {order.order_status}")
-        _order = as_order(order, self.broker.portfolio_id)
+        _order = as_order(order, self.broker._portfolio_id)
 
         params = {}
 
@@ -295,7 +295,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :return:
         """
         logger.info(trade.account_id, trade.stock_code, trade.order_id)
-        _trade = as_trade(trade, self.broker.portfolio_id)
+        _trade = as_trade(trade, self.broker._portfolio_id)
         db.insert_trades(_trade)
 
     def on_stock_position(self, position: XtPosition):
@@ -305,7 +305,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :return:
         """
         logger.info(f"on position callback {position}")
-        _position = as_position(position, self.broker.portfolio_id)
+        _position = as_position(position, self.broker._portfolio_id)
         db.upsert_positions(_position)
 
     def on_order_error(self, order_error: XtOrderError):
@@ -390,7 +390,7 @@ class QMTBroker(AbstractBroker):
 
         assert Path(cfg.qmt.path).exists(), "qmt安装路径不存在"
 
-        self.acc = StockAccount(self.account_id, self.account_type) # type: ignore
+        self.acc = StockAccount(self.account_id, self.account_type)  # type: ignore
         self.path = cfg.qmt.path
 
         # xt接口需要的区分不同账号的session_id，同一个账号可以多次登录
@@ -487,6 +487,29 @@ class QMTBroker(AbstractBroker):
         else:
             raise XtTradeConnectError(TradeErrors.ERROR_UNKNOWN, "连接交易API失败")
 
+    def on_sync_asset(
+        self,
+        total_asset: float,
+        cash: float,
+        frozen_cash: float,
+        market_value: float,
+        dt: datetime.date | None = None,
+    ) -> None:
+        """同步资产状态"""
+        if dt is None:
+            dt = datetime.date.today()
+
+        self._asset = Asset(
+            portfolio_id=self._portfolio_id,
+            total=total_asset,
+            cash=cash,
+            market_value=market_value,
+            frozen_cash=frozen_cash,
+            dt=dt,
+            principal=self._principal,
+        )
+        db.upsert_asset(self._asset)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_fixed(1),
@@ -500,7 +523,7 @@ class QMTBroker(AbstractBroker):
         if response is None:
             raise XtQuantTradeError(TradeErrors.ERROR_UNKNOWN, "查询资产信息失败")
 
-        return as_asset(response, self._principal, self.portfolio_id)
+        return as_asset(response, self._principal, self._portfolio_id)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -513,7 +536,7 @@ class QMTBroker(AbstractBroker):
         positions = []
         response = self.trade_api.query_stock_positions(self.acc) or []
         for pos in response:
-            position = as_position(pos, self.portfolio_id)
+            position = as_position(pos, self._portfolio_id)
             positions.append(position)
 
         db.upsert_positions(positions)
@@ -525,7 +548,7 @@ class QMTBroker(AbstractBroker):
         before_sleep=before_retry_sleep,
         retry_error_callback=on_final_failure,
     )
-    async def query_orders(self, cancelable_only: bool = False) -> pl.DataFrame|None:
+    async def query_orders(self, cancelable_only: bool = False) -> pl.DataFrame | None:
         """查询最新的订单信息，并列新数据库中保存的状态。
 
         qmt 返回的都是当日委托。
@@ -540,7 +563,7 @@ class QMTBroker(AbstractBroker):
         response = self.trade_api.query_stock_orders(self.acc, cancelable_only) or []
 
         for order in response:
-            order_ = as_order(order, self.portfolio_id)
+            order_ = as_order(order, self._portfolio_id)
 
             if order_.qtoid == "":
                 order_.qtoid = order.order_remark or new_uuid_id()
@@ -567,7 +590,7 @@ class QMTBroker(AbstractBroker):
         bid_time: datetime.datetime | None = None,
         strategy: str = "",
         timeout: float = 0.5,
-    ) -> pl.DataFrame|None:
+    ) -> pl.DataFrame | None:
         """买入指令
 
         如果传入价格为0或者 None，则为市价买入。
@@ -593,15 +616,15 @@ class QMTBroker(AbstractBroker):
         shares = self._normalize_buy_shares(shares)
 
         order = Order(
-            portfolio_id=self.portfolio_id,
+            portfolio_id=self._portfolio_id,
             asset=asset,
             price=price,
             shares=shares,
             side=OrderSide.BUY,
             bid_type=bid_type,
-            tm = bid_time or datetime.datetime.now(),
-            strategy=strategy
-         )
+            tm=bid_time or datetime.datetime.now(),
+            strategy=strategy,
+        )
         qtoid = db.insert_order(order)
 
         xt_order_side = as_xt_order_side(OrderSide.BUY)
@@ -643,14 +666,14 @@ class QMTBroker(AbstractBroker):
         # 查询成交
         return db.query_trade(qtoid=qtoid)
 
-    async def buy_percent(self,
+    async def buy_percent(
+        self,
         asset: str,
         percent: float,
         bid_time: datetime.datetime | None = None,
         timeout: float = 0.5,
-    ) -> pl.DataFrame|None:
+    ) -> pl.DataFrame | None:
         pass
-
 
     async def buy_amount(
         self,
@@ -698,7 +721,6 @@ class QMTBroker(AbstractBroker):
         """
         ...
 
-
     async def sell_percent(
         self,
         asset: str,
@@ -718,7 +740,6 @@ class QMTBroker(AbstractBroker):
             成交结果。如果超时未成交(含部成），返回空列表
         """
         ...
-
 
     async def sell_amount(
         self,

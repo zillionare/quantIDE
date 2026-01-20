@@ -8,10 +8,10 @@ import logging
 import time
 import urllib.parse
 from typing import Awaitable, Union
-from loguru import logger
 
 import cfg4py
 import httpx
+from loguru import logger
 
 logger = logging.getLogger(__name__)
 cfg = cfg4py.get_instance()

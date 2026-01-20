@@ -21,6 +21,7 @@ def tf(asset_dir):
     tf.load(asset_dir / "baseline_calendar.parquet")
     return tf
 
+
 def test_shift_min1(tf):
     X = [
         ("2020-03-26 09:31", 0, "2020-03-26 09:31"),
@@ -35,6 +36,7 @@ def test_shift_min1(tf):
     for i, (start, offset, expected) in enumerate(X):
         actual = tf.shift(arrow.get(start, tzinfo=cfg.TIMEZONE), offset, FrameType.MIN1)
         assert arrow.get(expected, tzinfo=cfg.TIMEZONE).datetime == actual
+
 
 def test_count_frames_min1(tf):
     X = [
@@ -55,6 +57,7 @@ def test_count_frames_min1(tf):
         )
         assert expected == actual
 
+
 def test_shift_min5(tf):
     X = [
         ("2020-03-26 09:35", 0, "2020-03-26 09:35"),
@@ -70,6 +73,7 @@ def test_shift_min5(tf):
     for i, (start, offset, expected) in enumerate(X):
         actual = tf.shift(arrow.get(start, tzinfo=cfg.TIMEZONE), offset, FrameType.MIN5)
         assert arrow.get(expected, tzinfo=cfg.TIMEZONE).datetime == actual
+
 
 def test_shift_min15(tf):
     X = [
@@ -90,6 +94,7 @@ def test_shift_min15(tf):
         )
         assert arrow.get(expected, fmt, tzinfo=cfg.TIMEZONE).datetime == actual
 
+
 def test_shift_min30(tf):
     X = [
         ["2020-03-26 10:00", 0, "2020-03-26 10:00"],
@@ -108,6 +113,7 @@ def test_shift_min30(tf):
         )
         assert arrow.get(expected, fmt, tzinfo=cfg.TIMEZONE).datetime == actual
 
+
 def test_count_frames_min15(tf):
     X = [
         ["2020-03-26 09:45", "2020-03-26 10:00", 2],
@@ -121,6 +127,7 @@ def test_count_frames_min15(tf):
         actual = tf.count_frames(start, end, FrameType.MIN15)
         assert expected == actual
 
+
 def test_shift(tf):
     mom = arrow.get("2020-1-20").date()
 
@@ -128,8 +135,10 @@ def test_shift(tf):
     assert tf.shift(mom, 1, FrameType.WEEK) == tf.week_shift(mom, 1)
     assert tf.shift(mom, 1, FrameType.MONTH) == tf.month_shift(mom, 1)
 
+
 def test_count_frames_min30():
     pass
+
 
 def test_count_day_frames(tf):
     """
@@ -156,6 +165,7 @@ def test_count_day_frames(tf):
         )
         assert expected == actual
 
+
 def test_week_shift(tf):
     X = [
         ["2020-01-25", 0, "2020-01-23"],
@@ -168,6 +178,7 @@ def test_week_shift(tf):
     for i, (x, n, expected) in enumerate(X):
         actual = tf.week_shift(arrow.get(x).date(), n)
         assert actual == arrow.get(expected).date()
+
 
 def test_count_week_frames(tf):
     X = [
@@ -187,6 +198,7 @@ def test_is_trade_day(tf):
     assert not tf.is_trade_day(arrow.get("2099-01-25").date())
     assert not tf.is_trade_day(arrow.get("1999-01-23", tzinfo=cfg.TIMEZONE).datetime)
 
+
 def test_day_shift(tf):
     X = [  # of test case
         ["2019-12-13", 0, "2019-12-13"],  # should be 2019-12-13
@@ -199,6 +211,7 @@ def test_day_shift(tf):
     for i, (start, offset, expected) in enumerate(X):
         actual = tf.day_shift(arrow.get(start).date(), offset)
         assert arrow.get(expected).date() == actual
+
 
 def test_count_frames_week(tf):
     X = [
@@ -213,6 +226,7 @@ def test_count_frames_week(tf):
             arrow.get(start).date(), arrow.get(end).date(), FrameType.WEEK
         )
         assert actual == expected
+
 
 def test_count_frames_month(tf):
     X = [
@@ -244,6 +258,7 @@ def test_count_month_frames(tf):
         actual = tf.count_month_frames(arrow.get(s).date(), arrow.get(e).date())
         assert actual == expected
 
+
 def test_month_shift(tf):
     X = [
         ["2015-02-25", 0, "2015-01-30"],
@@ -257,6 +272,7 @@ def test_month_shift(tf):
     for i, (start, n, expected) in enumerate(X):
         actual = tf.month_shift(arrow.get(start).date(), n)
         assert arrow.get(expected).date() == actual
+
 
 def test_floor(tf):
     X = [
@@ -299,6 +315,7 @@ def test_floor(tf):
 
         assert expected == actual
 
+
 def test_ceiling(tf):
     X = [
         ("2005-1-3", FrameType.DAY, "2005-1-4"),
@@ -335,6 +352,7 @@ def test_ceiling(tf):
 
         assert expected == actual
 
+
 def test_get_frames_by_count(tf):
     days = [
         arrow.get("2020-01-17").date(),
@@ -361,24 +379,137 @@ def test_get_frames_by_count(tf):
     X = [
         ("2020-02-04 10:30", 1, ["2020-02-04 10:30"]),
         ("2020-02-04 10:30", 2, ["2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 3, ["2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 4, ["2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 5, ["2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 6, ["2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 7, ["2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 8, ["2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 9, ["2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 10, ["2020-02-03 10:00", "2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 11, ["2020-01-23 15:00", "2020-02-03 10:00", "2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
+        (
+            "2020-02-04 10:30",
+            3,
+            ["2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"],
+        ),
+        (
+            "2020-02-04 10:30",
+            4,
+            [
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            5,
+            [
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            6,
+            [
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            7,
+            [
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            8,
+            [
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            9,
+            [
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            10,
+            [
+                "2020-02-03 10:00",
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            11,
+            [
+                "2020-01-23 15:00",
+                "2020-02-03 10:00",
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
     ]
     for end, n, expected in X:
-        end_dt = arrow.get(end, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(tzinfo=cfg.TIMEZONE)
-        expected_dt = [arrow.get(s, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(tzinfo=cfg.TIMEZONE) for s in expected]
+        end_dt = arrow.get(
+            end, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE
+        ).datetime.replace(tzinfo=cfg.TIMEZONE)
+        expected_dt = [
+            arrow.get(s, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(
+                tzinfo=cfg.TIMEZONE
+            )
+            for s in expected
+        ]
         actual = tf.get_frames_by_count(end_dt, n, FrameType.MIN30)
         assert expected_dt == actual
 
     actual = tf.get_frames_by_count(datetime.date(2020, 2, 12), 3, FrameType.MONTH)
-    actual_month = [x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual]
+    actual_month = [
+        x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual
+    ]
     expected_month = [
         arrow.get("2019-11-29").date(),
         arrow.get("2019-12-31").date(),
@@ -387,13 +518,16 @@ def test_get_frames_by_count(tf):
     assert expected_month == actual_month
 
     actual = tf.get_frames_by_count(datetime.date(2020, 2, 12), 3, FrameType.WEEK)
-    actual_week = [x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual]
+    actual_week = [
+        x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual
+    ]
     expected_week = [
         arrow.get("2020-01-17").date(),
         arrow.get("2020-01-23").date(),
         arrow.get("2020-02-07").date(),
     ]
     assert expected_week == actual_week
+
 
 def test_get_frames(tf):
     days = [
@@ -415,30 +549,148 @@ def test_get_frames(tf):
         start = days[0]
         end = days[i]
         actual = tf.get_frames(start, end, FrameType.DAY)
-        actual_dates = [x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual]
+        actual_dates = [
+            x if isinstance(x, datetime.date) else tf.int2date(x) for x in actual
+        ]
         assert days[0 : i + 1] == actual_dates
 
     X = [
         ("2020-02-04 10:30", 1, ["2020-02-04 10:30"]),
         ("2020-02-04 10:30", 2, ["2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 3, ["2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 4, ["2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 5, ["2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 6, ["2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 7, ["2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 8, ["2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 9, ["2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 10, ["2020-02-03 10:00", "2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
-        ("2020-02-04 10:30", 11, ["2020-01-23 15:00", "2020-02-03 10:00", "2020-02-03 10:30", "2020-02-03 11:00", "2020-02-03 11:30", "2020-02-03 13:30", "2020-02-03 14:00", "2020-02-03 14:30", "2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"]),
+        (
+            "2020-02-04 10:30",
+            3,
+            ["2020-02-03 15:00", "2020-02-04 10:00", "2020-02-04 10:30"],
+        ),
+        (
+            "2020-02-04 10:30",
+            4,
+            [
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            5,
+            [
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            6,
+            [
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            7,
+            [
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            8,
+            [
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            9,
+            [
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            10,
+            [
+                "2020-02-03 10:00",
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
+        (
+            "2020-02-04 10:30",
+            11,
+            [
+                "2020-01-23 15:00",
+                "2020-02-03 10:00",
+                "2020-02-03 10:30",
+                "2020-02-03 11:00",
+                "2020-02-03 11:30",
+                "2020-02-03 13:30",
+                "2020-02-03 14:00",
+                "2020-02-03 14:30",
+                "2020-02-03 15:00",
+                "2020-02-04 10:00",
+                "2020-02-04 10:30",
+            ],
+        ),
     ]
 
     for end, n, expected in X:
-        start_dt = arrow.get(expected[0], "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(tzinfo=cfg.TIMEZONE)
-        end_dt = arrow.get(end, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(tzinfo=cfg.TIMEZONE)
+        start_dt = arrow.get(
+            expected[0], "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE
+        ).datetime.replace(tzinfo=cfg.TIMEZONE)
+        end_dt = arrow.get(
+            end, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE
+        ).datetime.replace(tzinfo=cfg.TIMEZONE)
         actual = tf.get_frames(start_dt, end_dt, FrameType.MIN30)
-        actual_dt = [x if isinstance(x, datetime.datetime) else tf.int2time(x) for x in actual]
-        expected_dt = [arrow.get(s, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(tzinfo=cfg.TIMEZONE) for s in expected]
+        actual_dt = [
+            x if isinstance(x, datetime.datetime) else tf.int2time(x) for x in actual
+        ]
+        expected_dt = [
+            arrow.get(s, "YYYY-MM-DD HH:mm", tzinfo=cfg.TIMEZONE).datetime.replace(
+                tzinfo=cfg.TIMEZONE
+            )
+            for s in expected
+        ]
         assert expected_dt == actual_dt
+
 
 def test_first_min_frame(tf):
     moments = [
@@ -469,6 +721,7 @@ def test_first_min_frame(tf):
         actual = tf.first_min_frame(moment, ft)
         assert expected[i] == actual
 
+
 def test_last_min_frame(tf):
     with pytest.raises(ValueError):
         tf.last_min_frame(datetime.datetime.now(), FrameType.DAY)
@@ -490,6 +743,7 @@ def test_frame_len(tf):
     assert 30 == tf.frame_len(FrameType.MIN30)
     assert 60 == tf.frame_len(FrameType.MIN60)
     assert 240 == tf.frame_len(FrameType.DAY)
+
 
 def test_get_ticks(tf):
     expected = [
@@ -517,10 +771,12 @@ def test_get_ticks(tf):
     ):
         assert list(expected[i]) == list(tf.get_ticks(ft))
 
+
 def test_replace_date(tf):
     dtm = datetime.datetime(2020, 1, 1, 15, 35)
     dt = datetime.date(2021, 1, 1)
     assert datetime.datetime(2021, 1, 1, 15, 35) == tf.replace_date(dtm, dt)
+
 
 def test_is_closing_call_auction_time(tf):
     for moment in ["2020-1-7 14:57", "2020-1-7 14:58", "2020-1-7 14:59"]:
@@ -534,6 +790,7 @@ def test_is_closing_call_auction_time(tf):
     # not in trade day
     assert not tf.is_closing_call_auction_time(arrow.get("2020-1-4").datetime)
 
+
 def test_is_opening_call_auction_time(tf):
     for moment in [
         datetime.datetime(2020, 1, 7, 9, 16, tzinfo=cfg.TIMEZONE),
@@ -543,9 +800,10 @@ def test_is_opening_call_auction_time(tf):
 
     for moment in [
         datetime.datetime(2020, 1, 7, 9, 14, tzinfo=cfg.TIMEZONE),
-        datetime.datetime(2020, 1, 7, 9, 26, tzinfo=cfg.TIMEZONE)
+        datetime.datetime(2020, 1, 7, 9, 26, tzinfo=cfg.TIMEZONE),
     ]:
         assert not tf.is_opening_call_auction_time(moment)
+
 
 def test_is_open_time(tf):
     assert tf.is_open_time(datetime.datetime(2020, 1, 7, 9, 35))
@@ -555,6 +813,7 @@ def test_is_open_time(tf):
 
     with freeze_time("2020-01-07 09:35:00 +0800"):
         assert tf.is_open_time()
+
 
 def test_replace_time(tf):
     moment = datetime.datetime(2020, 1, 1, tzinfo=cfg.TIMEZONE)

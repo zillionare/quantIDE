@@ -1,5 +1,4 @@
 import asyncio
-from loguru import logger
 import mimetypes
 import os
 from email.message import EmailMessage
@@ -8,6 +7,7 @@ from typing import Awaitable, List
 import aiosmtplib
 import aiosmtplib.errors
 import cfg4py
+from loguru import logger
 from tenacity import (
     retry,
     retry_if_exception_type,

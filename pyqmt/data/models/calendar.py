@@ -24,15 +24,17 @@ from pyqmt.data.fetchers.tushare import fetch_calendar
 
 Frame = datetime.datetime | datetime.date
 
+
 @singleton
 class Calendar:
     """交易日历
 
     提供交易日历以及相关计算，比如计算[start, end]之间有多少个交易周期，偏移等。
     """
+
     def __init__(self):
-        self._path: Path|None = None
-        self._data: pa.Table = None
+        self._path: Path | None = None
+        self._data: pa.Table | None = None
         self.minute_level_frames = [
             FrameType.MIN1,
             FrameType.MIN5,
@@ -40,10 +42,17 @@ class Calendar:
             FrameType.MIN30,
             FrameType.MIN60,
         ]
-        self.day_level_frames = [FrameType.DAY, FrameType.WEEK, FrameType.MONTH, FrameType.YEAR]
+        self.day_level_frames = [
+            FrameType.DAY,
+            FrameType.WEEK,
+            FrameType.MONTH,
+            FrameType.YEAR,
+        ]
 
         self.ticks = {
-            FrameType.MIN1: [i for i in itertools.chain(range(571, 691), range(781, 901))],
+            FrameType.MIN1: [
+                i for i in itertools.chain(range(571, 691), range(781, 901))
+            ],
             FrameType.MIN5: [
                 i for i in itertools.chain(range(575, 695, 5), range(785, 905, 5))
             ],
@@ -51,11 +60,11 @@ class Calendar:
                 i for i in itertools.chain(range(585, 705, 15), range(795, 915, 15))
             ],
             FrameType.MIN30: [
-                int(s/100) * 60 + int(s%100)
+                int(s / 100) * 60 + int(s % 100)
                 for s in [1000, 1030, 1100, 1130, 1330, 1400, 1430, 1500]
             ],
             FrameType.MIN60: [
-                int(s/100) * 60 + int(s%100) for s in [1030, 1130, 1400, 1500]
+                int(s / 100) * 60 + int(s % 100) for s in [1030, 1130, 1400, 1500]
             ],
         }
 
@@ -107,7 +116,6 @@ class Calendar:
         """
         calendar_data.to_parquet(self.path)
 
-
     def load(self, path: str | Path) -> "Calendar":
         """加载日历数据，并构建日/周/月帧。
 
@@ -136,9 +144,7 @@ class Calendar:
         return self
 
     def update(self) -> None:
-        """更新日历数据并重建帧
-        """
-
+        """更新日历数据并重建帧"""
 
         df = fetch_calendar(self.epoch)
         self._data = pa.Table.from_pandas(df)
@@ -150,7 +156,7 @@ class Calendar:
     def _build_frames_arrow(self, table: pa.Table):
         """构建交易日、周、月帧"""
         # 1) 只保留交易日
-        is_open = pc.equal(table.column("is_open"), 1) # type: ignore
+        is_open = pc.equal(table.column("is_open"), 1)  # type: ignore
         ft = table.filter(is_open)
         day_frames = ft.column("date").combine_chunks()  # pa.ChunkedArray(date32)
 
@@ -160,14 +166,27 @@ class Calendar:
         # 3) 每周最后交易日：按 (year, week) 分组后取最大日期
         iso = idx.isocalendar()  # 返回 DataFrame，含 year/week/day
         week_key = iso.year * 100 + iso.week
-        week_last = pd.Series(1, index=idx).groupby(week_key).apply(lambda x: x.index.max()).sort_values()
+        week_last = (
+            pd.Series(1, index=idx)
+            .groupby(week_key)
+            .apply(lambda x: x.index.max())
+            .sort_values()
+        )
         week_frames = pa.array([d.date() for d in week_last.tolist()], type=pa.date32())
 
         # 4) 每月最后交易日：按月分组后取最大日期
-        month_last = pd.Series(1, index=idx).groupby(idx.to_period("M")).apply(lambda x: x.index.max()).sort_values()
-        month_frames = pa.array([d.date() for d in month_last.tolist()], type=pa.date32())
+        month_last = (
+            pd.Series(1, index=idx)
+            .groupby(idx.to_period("M"))
+            .apply(lambda x: x.index.max())
+            .sort_values()
+        )
+        month_frames = pa.array(
+            [d.date() for d in month_last.tolist()], type=pa.date32()
+        )
 
         return day_frames, week_frames, month_frames
+
     def int2time(self, tm: int) -> datetime.datetime:
         """将整数表示的时间转换为`datetime`类型表示
 
@@ -422,7 +441,7 @@ class Calendar:
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} is not supported.")
 
-    def _floor_idx(self, arr, x)-> int:
+    def _floor_idx(self, arr, x) -> int:
         arr = arr.combine_chunks() if hasattr(arr, "combine_chunks") else arr
         le = pc.less_equal(arr, x)
         cnt = int(pc.sum(pc.cast(le, pa.int32())).as_py())
@@ -551,6 +570,7 @@ class Calendar:
             return days * len(self.ticks[frame_type]) + min_bars
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} is not supported yet")
+
     def is_trade_day(self, dt: Frame) -> bool:
         """判断`dt`是否为交易日
 
@@ -592,9 +612,7 @@ class Calendar:
         tick = tm.hour * 60 + tm.minute
         return tick in self.ticks[FrameType.MIN1]
 
-    def is_opening_call_auction_time(
-        self, tm: datetime.datetime = None
-    ) -> bool:
+    def is_opening_call_auction_time(self, tm: datetime.datetime = None) -> bool:
         """判断`tm`指定的时间是否为开盘集合竞价时间
 
         Args:
@@ -612,9 +630,7 @@ class Calendar:
         minutes = tm.hour * 60 + tm.minute
         return 9 * 60 + 15 < minutes <= 9 * 60 + 25
 
-    def is_closing_call_auction_time(
-        self, tm: datetime.datetime = None
-    ) -> bool:
+    def is_closing_call_auction_time(self, tm: datetime.datetime = None) -> bool:
         """判断`tm`指定的时间是否为收盘集合竞价时间
 
         Fixme:
@@ -663,6 +679,7 @@ class Calendar:
         # ’right' 相当于 ticks <= m
         index = np.searchsorted(ticks, moment, side="right")
         return ticks[index - 1], 0
+
     def floor(self, moment: Frame, frame_type: FrameType) -> Frame:
         """求`moment`在指定的`frame_type`中的下界
 
@@ -716,15 +733,12 @@ class Calendar:
 
         if type(moment) == datetime.date:
             if moment == datetime.date.today():
-                moment = datetime.datetime.now(tz = cfg.TIMEZONE)
+                moment = datetime.datetime.now(tz=cfg.TIMEZONE)
             else:
                 moment = self.replace_time(moment, 15, 0)
 
         # 如果是交易日，但还未收盘，对回测也适用
-        if (
-            self.is_trade_day(moment)
-            and moment.hour * 60 + moment.minute < 900
-        ):
+        if self.is_trade_day(moment) and moment.hour * 60 + moment.minute < 900:
             moment = self.day_shift(moment, -1)
 
         if frame_type == FrameType.DAY:
@@ -833,30 +847,54 @@ class Calendar:
             floor_day = day
         if frame_type == FrameType.MIN1:
             return datetime.datetime(
-                floor_day.year, floor_day.month, floor_day.day, hour=9, minute=31, tzinfo=cfg.TIMEZONE
+                floor_day.year,
+                floor_day.month,
+                floor_day.day,
+                hour=9,
+                minute=31,
+                tzinfo=cfg.TIMEZONE,
             )
         elif frame_type == FrameType.MIN5:
             return datetime.datetime(
-                floor_day.year, floor_day.month, floor_day.day, hour=9, minute=35, tzinfo=cfg.TIMEZONE
+                floor_day.year,
+                floor_day.month,
+                floor_day.day,
+                hour=9,
+                minute=35,
+                tzinfo=cfg.TIMEZONE,
             )
         elif frame_type == FrameType.MIN15:
             return datetime.datetime(
-                floor_day.year, floor_day.month, floor_day.day, hour=9, minute=45, tzinfo=cfg.TIMEZONE
+                floor_day.year,
+                floor_day.month,
+                floor_day.day,
+                hour=9,
+                minute=45,
+                tzinfo=cfg.TIMEZONE,
             )
         elif frame_type == FrameType.MIN30:
             return datetime.datetime(
-                floor_day.year, floor_day.month, floor_day.day, hour=10, tzinfo=cfg.TIMEZONE
+                floor_day.year,
+                floor_day.month,
+                floor_day.day,
+                hour=10,
+                tzinfo=cfg.TIMEZONE,
             )
         elif frame_type == FrameType.MIN60:
             return datetime.datetime(
-                floor_day.year, floor_day.month, floor_day.day, hour=10, minute=30, tzinfo=cfg.TIMEZONE
+                floor_day.year,
+                floor_day.month,
+                floor_day.day,
+                hour=10,
+                minute=30,
+                tzinfo=cfg.TIMEZONE,
             )
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} not supported")
 
     def get_frames(
         self, start: Frame, end: Frame, frame_type: FrameType
-    ) -> List[datetime.date|datetime.datetime]:
+    ) -> List[datetime.date | datetime.datetime]:
         """取[start, end]间所有类型为frame_type的frames
 
         调用本函数前，请先通过`floor`或者`ceiling`将时间帧对齐到`frame_type`的边界值
@@ -879,8 +917,8 @@ class Calendar:
         return self.get_frames_by_count(end, n, frame_type)
 
     def get_frames_by_count(
-        self, end: datetime.datetime|datetime.date, n: int, frame_type: FrameType
-    ) -> List[datetime.date|datetime.datetime]:
+        self, end: datetime.datetime | datetime.date, n: int, frame_type: FrameType
+    ) -> List[datetime.date | datetime.datetime]:
         """取以end为结束点,周期为frame_type的n个frame
 
         调用前请将`end`对齐到`frame_type`的边界
@@ -924,8 +962,14 @@ class Calendar:
             n_days = n // len(self.ticks[frame_type]) + 2
             ticks = self.ticks[frame_type] * n_days
 
-            days = self.get_frames_by_count(end.date() if isinstance(end, datetime.datetime) else end, n_days, FrameType.DAY)
-            days = np.array(np.repeat(days, len(self.ticks[frame_type])), dtype='datetime64[ms]')
+            days = self.get_frames_by_count(
+                end.date() if isinstance(end, datetime.datetime) else end,
+                n_days,
+                FrameType.DAY,
+            )
+            days = np.array(
+                np.repeat(days, len(self.ticks[frame_type])), dtype="datetime64[ms]"
+            )
 
             np_timedeltas = [np.timedelta64(t, "m") for t in ticks]
 
@@ -939,7 +983,9 @@ class Calendar:
                 return result.tolist()
 
             # 回补时区信息
-            return [x.astype(datetime.datetime).replace(tzinfo=end.tzinfo) for x in result]
+            return [
+                x.astype(datetime.datetime).replace(tzinfo=end.tzinfo) for x in result
+            ]
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} not support yet")
 
@@ -1021,7 +1067,7 @@ class Calendar:
             minute,
             second,
             microsecond,
-            tzinfo=pytz.timezone(tzinfo)
+            tzinfo=pytz.timezone(tzinfo),
         )
 
     def replace_date(
@@ -1076,5 +1122,6 @@ class Calendar:
 
         filtered_dates = filtered_table.column("date")
         return [date.as_py() for date in filtered_dates]
+
 
 calendar = Calendar()

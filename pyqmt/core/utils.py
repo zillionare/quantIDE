@@ -4,6 +4,7 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+
 def str2date(dt: str) -> datetime.date:
     if len(dt) != 8:
         raise ValueError(f"input date should be at 8 length, got {dt}")

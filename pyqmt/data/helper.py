@@ -4,11 +4,12 @@ from loguru import logger
 
 DataFrame = pd.DataFrame | pl.DataFrame | pl.LazyFrame
 
+
 def qfq_adjustment(
     df: pd.DataFrame | pl.LazyFrame,
     adj_factor_col: str = "adjust",
     eager_mode: bool = True,
-) -> pl.LazyFrame | pd.DataFrame:
+) -> pl.LazyFrame | pl.DataFrame:
     """
     前复权算法 (qfq - 前复权)
     以最新价格为基准，调整历史价格
@@ -19,7 +20,7 @@ def qfq_adjustment(
         adj_factor_col: 复权因子列名，默认为"adj_factor"
 
     Returns:
-        复权后的lazyFrame
+        复权后的数据
     """
     if isinstance(df, pd.DataFrame):
         lf = pl.from_pandas(df).lazy()
@@ -67,8 +68,7 @@ def qfq_adjustment(
     )
 
     if eager_mode:
-        # 返回 pandas，且日期为 datetime64 类型，便于时间序列运算
-        return result.collect().to_pandas()
+        return result.collect()
 
     return result
 
@@ -77,7 +77,7 @@ def hfq_adjustment(
     df: pd.DataFrame | pl.LazyFrame,
     adj_factor_col: str = "adjust",
     eager_mode: bool = True,
-) -> pd.DataFrame | pl.LazyFrame:
+) -> pl.DataFrame | pl.LazyFrame:
     """
     后复权算法 (hfq - 后复权)
     以历史价格为基准，调整后续价格
@@ -88,7 +88,7 @@ def hfq_adjustment(
         adj_factor_col: 复权因子列名，默认为"adjust"
 
     Returns:
-        复权后的pandas DataFrame
+        复权后的数据
     """
     if isinstance(df, pd.DataFrame):
         lf = pl.from_pandas(df).lazy()
@@ -126,16 +126,16 @@ def hfq_adjustment(
     )
 
     if eager_mode:
-        # 返回 pandas，且日期为 datetime64 类型
-        return result.collect().to_pandas()
+        return result.collect()
 
     return result
+
 
 def train_test_split(
     data: DataFrame,
     group_id: str | None = "asset",
     cuts: tuple[float, float] = (0.7, 0.2),
-    date_col: str="date"
+    date_col: str = "date",
 ):
     """
     对时间序列进行train, valid和test子集划分
@@ -187,17 +187,28 @@ def train_test_split(
         idx_expr = pl.arange(0, pl.len())
 
     # Unified split logic using the expressions built above
-    lf_with_split = lf.with_columns([
-        total_expr.alias("_total"),
-        idx_expr.alias("_idx")
-    ]).with_columns([
-        pl.when(pl.col("_idx") < (pl.col("_total") * train_ratio).round().cast(pl.Int64))
-        .then(pl.lit("train"))
-        .when(pl.col("_idx") < (pl.col("_total") * (train_ratio + val_ratio)).round().cast(pl.Int64))
-        .then(pl.lit("valid"))
-        .otherwise(pl.lit("test"))
-        .alias("_split")
-    ]).drop(["_total", "_idx"])
+    lf_with_split = (
+        lf.with_columns([total_expr.alias("_total"), idx_expr.alias("_idx")])
+        .with_columns(
+            [
+                pl.when(
+                    pl.col("_idx")
+                    < (pl.col("_total") * train_ratio).round().cast(pl.Int64)
+                )
+                .then(pl.lit("train"))
+                .when(
+                    pl.col("_idx")
+                    < (pl.col("_total") * (train_ratio + val_ratio))
+                    .round()
+                    .cast(pl.Int64)
+                )
+                .then(pl.lit("valid"))
+                .otherwise(pl.lit("test"))
+                .alias("_split")
+            ]
+        )
+        .drop(["_total", "_idx"])
+    )
 
     # Split into train/valid/test
     train_lf = lf_with_split.filter(pl.col("_split") == "train").drop("_split")

@@ -1,10 +1,11 @@
 # auth/admin_routes.py
+import math  # For pagination calculations
+from typing import Optional
+
 from fasthtml.common import *
 from monsterui.all import *
-import math  # For pagination calculations
+
 from .forms import create_message_alert
-from typing import Optional
-import math
 
 
 class AdminRoutes:

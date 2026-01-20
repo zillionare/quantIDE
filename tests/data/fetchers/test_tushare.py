@@ -189,20 +189,28 @@ class TestTushareFetcher:
         cutoff = datetime.date(2007, 1, 1)
         valid_dates = [datetime.date(2007, 1, 4), datetime.date(2007, 1, 5)]
 
-        def fake_fetch_by_dates(func_name, dates, *args, fields=None, rename_as=None, **kwargs):
+        def fake_fetch_by_dates(
+            func_name, dates, *args, fields=None, rename_as=None, **kwargs
+        ):
             assert all(d >= cutoff for d in dates)
             s_dates = pd.to_datetime(dates).astype("datetime64[ms]")
             # English: build minimal DataFrame with expected numeric columns
-            return pd.DataFrame(
-                {
-                    "asset": ["000001.SZ"] * len(dates),
-                    "date": s_dates,
-                    "up_limit": [10.0] * len(dates),
-                    "down_limit": [5.0] * len(dates),
-                }
-            ), []
+            return (
+                pd.DataFrame(
+                    {
+                        "asset": ["000001.SZ"] * len(dates),
+                        "date": s_dates,
+                        "up_limit": [10.0] * len(dates),
+                        "down_limit": [5.0] * len(dates),
+                    }
+                ),
+                [],
+            )
 
-        with patch("pyqmt.data.fetchers.tushare._fetch_by_dates", side_effect=fake_fetch_by_dates):
+        with patch(
+            "pyqmt.data.fetchers.tushare._fetch_by_dates",
+            side_effect=fake_fetch_by_dates,
+        ):
             mixed_df, mixed_errors = fetch_limit_price([pre_date] + valid_dates)
 
         assert mixed_errors == []
@@ -280,13 +288,18 @@ class TestTushareFetcher:
         cutoff = datetime.date(2016, 1, 1)
         valid_dates = [datetime.date(2016, 1, 4), datetime.date(2016, 1, 5)]
 
-        def fake_fetch_by_dates(func_name, dates, *args, fields=None, rename_as=None, **kwargs):
+        def fake_fetch_by_dates(
+            func_name, dates, *args, fields=None, rename_as=None, **kwargs
+        ):
             assert all(d >= cutoff for d in dates)
             s_dates = pd.to_datetime(dates).astype("datetime64[ms]")
             df_ = pd.DataFrame({"asset": ["000001.SZ"] * len(dates), "date": s_dates})
             return df_, []
 
-        with patch("pyqmt.data.fetchers.tushare._fetch_by_dates", side_effect=fake_fetch_by_dates):
+        with patch(
+            "pyqmt.data.fetchers.tushare._fetch_by_dates",
+            side_effect=fake_fetch_by_dates,
+        ):
             df_mix, errors_mix = fetch_st_info([pre_date] + valid_dates)
 
         assert errors_mix == []
@@ -363,11 +376,20 @@ class TestTushareFetcher:
                 "down_limit": pd.Series(dtype="float64"),
             }
         )
-        with patch("pyqmt.data.fetchers.tushare.fetch_limit_price", return_value=(empty_limit, [])):
+        with patch(
+            "pyqmt.data.fetchers.tushare.fetch_limit_price",
+            return_value=(empty_limit, []),
+        ):
             actual2, errors2 = fetch_bars_ext(dates)
             # normalize actual2 to pandas
-            actual2_pd = actual2.collect().to_pandas() if isinstance(actual2, pl.LazyFrame) else actual2
-            assert "up_limit" in actual2_pd.columns and "down_limit" in actual2_pd.columns
+            actual2_pd = (
+                actual2.collect().to_pandas()
+                if isinstance(actual2, pl.LazyFrame)
+                else actual2
+            )
+            assert (
+                "up_limit" in actual2_pd.columns and "down_limit" in actual2_pd.columns
+            )
             # English: with no limit rows, these columns are all NaN
             assert actual2_pd["up_limit"].isna().all()
             assert actual2_pd["down_limit"].isna().all()

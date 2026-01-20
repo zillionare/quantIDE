@@ -1,7 +1,8 @@
 # auth/models.py
 from dataclasses import dataclass
-import bcrypt
 from datetime import datetime
+
+import bcrypt
 
 
 @dataclass

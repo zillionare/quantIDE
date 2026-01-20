@@ -40,6 +40,7 @@ class Config(object):
         clients: list
 
     broker: str
+    brokers: list
 
     class qmt:
         account: str

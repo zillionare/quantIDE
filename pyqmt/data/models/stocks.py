@@ -16,7 +16,7 @@ class StockList:
     """管理证券列表、更新和查询"""
 
     def __init__(self):
-        self._path: str|Path = ""
+        self._path: str | Path = ""
         self._data = pl.DataFrame()
         self._last_update_time: datetime.datetime | None = None
 
@@ -42,7 +42,7 @@ class StockList:
             raise ValueError("证券列表路径路径未指定")
         return Path(self._path)
 
-    def load(self, path: str|Path) -> None:
+    def load(self, path: str | Path) -> None:
         """加载证券列表。如果指定文件不存在，则从tushare获取"""
         self._path = path
 
@@ -126,7 +126,6 @@ class StockList:
             return result["asset"].to_list()
         return result.to_pandas()
 
-
     def get_name(self, asset: str) -> str:
         """获取股票名称
 
@@ -138,7 +137,7 @@ class StockList:
         """
         return self.data.filter(pl.col("asset") == asset).item(0, "name")
 
-    def get_pinyin(self, asset: str)->str:
+    def get_pinyin(self, asset: str) -> str:
         """获取股票拼音
 
         Args:
@@ -148,7 +147,7 @@ class StockList:
         """
         return self.data.filter(pl.col("asset") == asset).item(0, "pinyin")
 
-    def is_st(self, asset: str|list[str], date: datetime.date) -> bool:
+    def is_st(self, asset: str | list[str], date: datetime.date) -> bool:
         """在指定日期个股是否为 st。"""
         from pyqmt.data.models.daily_bars import daily_bars
 
@@ -159,7 +158,7 @@ class StockList:
         # 找不到记录则认为不是 st
         return False
 
-    def stocks_listed(self, date: datetime.date, exclude_st: bool=True) -> list[str]:
+    def stocks_listed(self, date: datetime.date, exclude_st: bool = True) -> list[str]:
         """获取`date`日已经上市的所有股票。
 
         Args:
@@ -180,7 +179,9 @@ class StockList:
         lf = daily_bars.get_bars_in_range(date, date, eager_mode=False)
         return lf.filter(~pl.col("st")).collect()["asset"].to_list()
 
-    def sample(self, date: datetime.date, size:int, exclude_st: bool = True, seed: int = 42) -> list[str]:
+    def sample(
+        self, date: datetime.date, size: int, exclude_st: bool = True, seed: int = 42
+    ) -> list[str]:
         """在指定日期随机采样股票。
 
         Args:
@@ -198,5 +199,6 @@ class StockList:
 
         random.seed(seed)
         return random.sample(stocks, size)
+
 
 stock_list = StockList()

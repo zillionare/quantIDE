@@ -21,7 +21,7 @@ from pyqmt.data.sqlite import db
 def cfg():
     """Initialize cfg before running tests."""
     tests = Path(__file__).parent
-    cfg = cfg4py.init(str(tests/"assets"))
+    cfg = cfg4py.init(str(tests / "assets"))
     cfg.epoch = datetime.date(2024, 1, 1)
     yield cfg
 

@@ -3,10 +3,10 @@ from fasthtml.common import *
 from monsterui.all import *
 
 from .forms import (
-    create_login_form,
-    create_register_form,
     create_forgot_password_form,
+    create_login_form,
     create_profile_form,
+    create_register_form,
 )
 
 

@@ -1,5 +1,6 @@
 from fasthtml.common import *
 from monsterui.all import *
+
 from ..components.header import header_component
 from ..components.sidebar import sidebar_component
 from .base import BaseLayout
@@ -11,33 +12,23 @@ class MainLayout(BaseLayout):
     def __init__(self, title: str = "PyQMT系统", user: str | None = None):
         super().__init__(title)
         self.user = user
-        self.header_menu = []
+        self.header_menu = [
+            ("交易", "/trade"),
+            ("策略", "/strategy"),
+            ("系统", "/system"),
+        ]
 
         self.sidebar_menu = [
-            {"title": "仪表板", "url": "/home", "icon": "home", "section": "dashboard"},
             {
-                "title": "回测",
-                "url": "#",
-                "icon": "activity",
+                "title": "行情数据",
                 "children": [
-                    {
-                        "title": "策略列表",
-                        "url": "/backtest/strategies",
-                        "section": "strategies",
-                    },
-                    {
-                        "title": "回测结果",
-                        "url": "/backtest/results",
-                        "section": "results",
-                    },
+                    {"title": "交易日历", "url": "/system/calendar"},
+                    {"title": "股票列表", "url": "/system/stocks"},
+                    {"title": "计划任务", "url": "/system/jobs"},
+                    {"title": "数据库管理", "url": "/system/db"},
+                    {"title": "配置管理", "url": "/system/config"},
                 ],
-            },
-            {
-                "title": "设置",
-                "url": "/settings",
-                "icon": "settings",
-                "section": "settings",
-            },
+            }
         ]
 
     def main_block(self):
@@ -58,15 +49,17 @@ class MainLayout(BaseLayout):
                 # Header
                 header_component(
                     logo="/static/logo.png",
-                    brand="PyQMT量化交易系统",
+                    brand="匡醍",
                     nav_items=self.header_menu,
                     user=self.user,
                 ),
                 Div(
-                    sidebar_component(self.sidebar_menu),
-                    # 页面主要内容
-                    Main(self.main_block(), cls="flex-1 p-6"),
-                    cls="flex flex-1",
+                    Div(
+                        sidebar_component(self.sidebar_menu),
+                        Main(self.main_block(), cls="flex-1 p-6"),
+                        cls="flex",
+                    ),
+                    cls="max-w-[1280px] mx-auto w-full flex-1",
                 ),
                 cls="flex flex-col min-h-screen",
             ),
