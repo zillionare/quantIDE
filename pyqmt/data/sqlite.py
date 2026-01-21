@@ -43,7 +43,7 @@ import uuid
 from dataclasses import asdict, dataclass, field, fields
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import ClassVar, List, Literal, Tuple, TypeVar, Union, get_args, get_origin
+from typing import ClassVar, Iterable, List, Literal, Tuple, TypeVar, Union, get_args, get_origin
 
 import polars as pl
 import sqlite_utils as su
@@ -130,7 +130,6 @@ class Order(Entity):
 
     # 本委托 ID, pk
     qtoid: str = field(default_factory=new_uuid_id)
-    strategy: str = ""  # 策略名称
     error: str = ""  # 报单错误信息，包括错误码和错误信息,以:分隔
 
     def __post_init__(self):
@@ -333,7 +332,7 @@ class SQLiteDB:
         """代理其他方法调用"""
         return getattr(self.db, name)
 
-    def upsert_positions(self, positions: list[Position] | Position) -> None:
+    def upsert_positions(self, positions: Iterable[Position] | Position) -> None:
         """保存(更新)持仓信息
 
         Args:

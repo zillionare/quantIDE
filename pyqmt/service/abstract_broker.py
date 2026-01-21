@@ -8,9 +8,9 @@ import polars as pl
 import quantstats as qs
 from loguru import logger
 
-from pyqmt.core.enums import BrokerKind, OrderSide
-from pyqmt.core.errors import TradeError, TradeErrors
-from pyqmt.data.sqlite import db
+from pyqmt.core.enums import BrokerKind
+from pyqmt.core.errors import NonMultipleOfLotSize, InsufficientPosition
+from pyqmt.data.sqlite import Position, db
 from pyqmt.service.base_broker import Broker
 
 
@@ -66,40 +66,19 @@ class AbstractBroker(Broker):
     def portfolio_id(self) -> str:
         return self._portfolio_id
 
-    def _normalize_buy_shares(self, shares: float) -> float:
-        """买入时，必须以100股为单位
-
-        Args:
-            shares: 建议买入量
-
-        Returns:
-            float: 实际允许买入量
-        """
-        s = (shares // 100) * 100
-        if s <= 0:
-            raise TradeError(
-                TradeErrors.ERROR_BAD_PARAMS, f"无效的参数: shares不足一手:{shares}"
-            )
-        return s
-
-    def _normalize_sell_shares(
-        self, position_shares: float, shares: int | float
-    ) -> float | int:
+    def _validate_sell_shares(
+        self, pos: Position, shares: float
+    ) ->None:
         """卖出时，如果是清仓，则不限制卖出数量；否则必须以100的整数倍为单位"""
-        s = shares
-        if s <= 0:
-            raise TradeError(TradeErrors.ERROR_BAD_PARAMS, "无效的参数: shares <= 0")
-        if s >= position_shares:  # 清仓卖出时，允许不足一手，允许小数
-            s = position_shares
-        else:
-            s = (s // 100) * 100
+        # 清仓时，允许 shares 不为整手数
+        if pos.avail == 0:
+            raise InsufficientPosition(pos.asset, pos.avail)
 
-        if s <= 0:
-            raise TradeError(
-                TradeErrors.ERROR_BAD_PARAMS,
-                f"无效的参数: 可卖资金不足一手或为0: {position_shares}",
-            )
-        return s
+        if abs(pos.shares - pos.avail) < 1e-7 and shares >= pos.avail:
+            return
+
+        if shares % 100 != 0 or shares == 0:
+            raise NonMultipleOfLotSize(pos.asset, shares)
 
     async def wait(self, event_id: Any, timeout: float) -> tuple[Any, float]:
         """事件等待机制

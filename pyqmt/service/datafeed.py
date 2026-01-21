@@ -10,45 +10,9 @@ class DataFeed(ABC):
     实现类需要根据情况，选择实现其中的接口。比如, simulation broker 就不需要实现get_bars 接口
     """
 
-    @abstractmethod
-    def get_price_with_limit(
-        self, asset: str | list[str], dt: datetime.date | datetime.datetime | None
-    ) -> pl.DataFrame | float | None:
-        """获取价格数据及当日涨跌停价
 
-        如果dt是日期，返回该日期的收盘价
-        如果dt是时间，返回该时间的价格。
-        Args:
-            asset (str|list[str]): 标的
-            dt (datetime.date|datetime.datetime|None): 日期
 
-        Returns:
-            pl.DataFrame|float|None: 价格数据
-        """
-        ...
 
-    @abstractmethod
-    def get_bars_in_range(
-        self,
-        assets: list[str],
-        start: datetime.date | datetime.datetime,
-        end: datetime.date | datetime.datetime,
-        adjust: str | None = None,
-        eager_mode: bool = True,
-    ) -> pl.DataFrame:
-        """获取价格数据
-
-        Args:
-            assets (list[str]): 标的
-            start (datetime.date|datetime.datetime): 开始时间
-            end (datetime.date|datetime.datetime): 结束时间
-            adjust (str|None, optional): 复权类型. Defaults to None.
-            eager_mode (bool, optional): 是否立即加载数据. Defaults to True.
-
-        Returns:
-            pl.DataFrame: 价格数据
-        """
-        ...
 
     @abstractmethod
     def get_trade_price_limits(
@@ -81,7 +45,7 @@ class DataFeed(ABC):
             tm: 开始时间（通常为报单时间）
 
         Returns:
-            pl.DataFrame: 包含从 tm 到收盘的行情数据。在没有数据时返回 None
+            pl.DataFrame: 包含从 tm 到收盘的行情数据。在没有数据时返回 None，而不是空 DataFrame
         """
         ...
 
@@ -89,7 +53,7 @@ class DataFeed(ABC):
     def get_close_factor(
         self, assets: list[str], start: datetime.date, end: datetime.date
     ) -> pl.DataFrame:
-        """获取指定日期范围内的收盘价和复权因子
+        """获取指定日期范围内的收盘价和复权因子，用以计算市值和除权。
 
         Args:
             assets: 资产列表
