@@ -14,14 +14,14 @@ from pyqmt.core.errors import (
     ClockBeforeStart,
     ClockRewind,
     DupPortfolio,
-    InsufficientCash,
     InsufficientAmount,
+    InsufficientCash,
     InsufficientPosition,
     LimitPrice,
     NoDataForMatch,
     NonMultipleOfLotSize,
     PriceNotMeet,
-    TradeError
+    TradeError,
 )
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.daily_bars import daily_bars
@@ -461,7 +461,7 @@ class BacktestBroker(AbstractBroker):
 
         bars = self._remove_for_bid(bars, order.price, up_limit)
 
-        if bars.is_empty:
+        if bars.is_empty():
             raise NoDataForMatch(order.asset, order.tm)
 
         mean_price, filled, tm = self._match_shares(bars, order.shares)
@@ -568,7 +568,7 @@ class BacktestBroker(AbstractBroker):
             portfolio_id=self._portfolio_id,
             cash=self._cash,
             total=total,
-            mv=mv
+            market_value=mv
         )
 
         return trade
@@ -773,7 +773,7 @@ class BacktestBroker(AbstractBroker):
 
         # volume 是手数，转换成股数，以便与 shares 比较
         v = bars["volume"].to_numpy() * 100
-        times = bars["tm"].to_numpy()
+        times = bars["tm"].to_list()
 
         cum_v = np.cumsum(v)
 
@@ -918,3 +918,11 @@ class BacktestBroker(AbstractBroker):
             return await self.buy_amount(asset, margin, price, order_time)
         else:
             return await self.sell_amount(asset, -margin, price, order_time)
+
+    async def cancel_order(self, qt_oid: str):
+        """回测模式下，不支持取消订单"""
+        return None
+
+    async def cancel_all_orders(self, side=None):
+        """回测模式下，不支持取消订单"""
+        return None

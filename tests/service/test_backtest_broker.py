@@ -1,25 +1,23 @@
+import asyncio
 import datetime
 
 import polars as pl
 import pytest
 
-from pyqmt.data.models.calendar import calendar
+from pyqmt.data.models.calendar import calendar as trade_calendar
 from pyqmt.data.sqlite import Asset, Position, db
 from pyqmt.service.backtest_broker import BacktestBroker
+from tests import asset_dir, calendar
+
+
+def make_dt(d: datetime.date, hour: int, minute: int = 0) -> datetime.datetime:
+    return trade_calendar.replace_time(d, hour, minute)
 
 
 @pytest.fixture
-def broker():
+def broker(calendar):
     # 初始化数据库
     db.init(":memory:")
-
-    # 初始化日历，包含 2023 年最后一天作为 Day 0
-    import pyarrow as pa
-
-    calendar.day_frames = pa.array(
-        [datetime.date(2023, 12, 31)]
-        + [datetime.date(2024, 1, i) for i in range(1, 31)]
-    )
 
     class MockDataFeed:
         def get_trade_price_limits(self, asset, dt):
@@ -37,7 +35,7 @@ def broker():
     # 使用内存数据库或临时数据库进行测试
     # 假设 db 已经配置好
     b = BacktestBroker(
-        bt_start=datetime.date(2024, 1, 1),
+        bt_start=datetime.date(2024, 1, 2),
         bt_end=datetime.date(2024, 1, 10),
         portfolio_id="test_bt",
         data_feed=MockDataFeed(),
@@ -48,8 +46,8 @@ def broker():
 
 def test_set_clock_filling(broker):
     # 1. 初始状态
-    dt1 = datetime.date(2024, 1, 1)
-    broker._clock = datetime.datetime.combine(dt1, datetime.time(15, 0))
+    dt1 = datetime.date(2024, 1, 2)
+    broker._clock = make_dt(dt1, 15)
 
     # 插入初始资产和持仓
     db.upsert_asset(
@@ -65,11 +63,11 @@ def test_set_clock_filling(broker):
     )
 
     # 2. 模拟拨动时钟到 2024-01-03
-    dt3 = datetime.date(2024, 1, 3)
-    broker.set_clock(datetime.datetime.combine(dt3, datetime.time(9, 30)))
+    dt3 = datetime.date(2024, 1, 4)
+    broker.set_clock(make_dt(dt3, 9, 30))
 
     # 3. 验证 2024-01-02 的资产记录是否已填实
-    dt2 = datetime.date(2024, 1, 2)
+    dt2 = datetime.date(2024, 1, 3)
     asset2 = db.get_asset(dt2, "test_bt")
     assert asset2 is not None
     assert asset2.dt == dt2
@@ -80,14 +78,14 @@ def test_set_clock_filling(broker):
 
 def test_equity_conservation_on_factor_change(broker, monkeypatch):
     """验证复权事件发生时，权益是否守恒（现金补偿逻辑）"""
-    # 模拟行情数据：2024-01-02 发生 10 送 10
-    # 01-01: price=10.0, factor=1.0
-    # 01-02: price=5.0,  factor=2.0
+    # 模拟行情数据：2024-01-03 发生 10 送 10
+    # 01-02: price=10.0, factor=1.0
+    # 01-03: price=5.0,  factor=2.0
     class MockDataFeed:
         def get_close_factor(self, assets, start, end):
             data = [
-                {"dt": datetime.date(2024, 1, 1), "asset": "000001.SZ", "close": 10.0, "factor": 1.0},
-                {"dt": datetime.date(2024, 1, 2), "asset": "000001.SZ", "close": 5.0, "factor": 2.0},
+                {"dt": datetime.date(2024, 1, 2), "asset": "000001.SZ", "close": 10.0, "factor": 1.0},
+                {"dt": datetime.date(2024, 1, 3), "asset": "000001.SZ", "close": 5.0, "factor": 2.0},
             ]
             return pl.DataFrame([
                 row for row in data
@@ -98,11 +96,11 @@ def test_equity_conservation_on_factor_change(broker, monkeypatch):
     # 替换 broker 中的 data_feed
     monkeypatch.setattr(broker, "_data_feed", MockDataFeed())
 
-    dt1 = datetime.date(2024, 1, 1)
-    broker._clock = datetime.datetime.combine(dt1, datetime.time(15, 0))
+    dt1 = datetime.date(2024, 1, 2)
+    broker._clock = make_dt(dt1, 15)
     broker._cash = 900000
 
-    # 1. 插入 01-01 的初始状态
+    # 1. 插入 01-02 的初始状态
     db.upsert_asset(Asset(
         portfolio_id="test_bt", dt=dt1, principal=1000000,
         cash=900000, frozen_cash=0, market_value=100000, total=1000000
@@ -112,19 +110,19 @@ def test_equity_conservation_on_factor_change(broker, monkeypatch):
         shares=10000, price=10.0, avail=10000, mv=100000, profit=0
     ))
 
-    # 2. 拨动时钟到 2024-01-03，触发 01-02 的展仓
-    dt3 = datetime.date(2024, 1, 3)
+    # 2. 拨动时钟到 2024-01-04，触发 01-03 的展仓
+    dt3 = datetime.date(2024, 1, 4)
     # 在拨动之前，需要确保内存中的 _positions 也是同步的，因为 set_clock 内部可能用到
     broker._positions["000001.SZ"] = Position(
         portfolio_id="test_bt", dt=dt1, asset="000001.SZ",
         shares=10000, price=10.0, avail=10000, mv=100000, profit=0
     )
 
-    broker.set_clock(datetime.datetime.combine(dt3, datetime.time(9, 30)))
+    broker.set_clock(make_dt(dt3, 9, 30))
 
-    # 3. 验证 01-02 的数据
-    asset2 = db.get_asset(datetime.date(2024, 1, 2), "test_bt")
-    pos2 = db.get_positions(datetime.date(2024, 1, 2), "test_bt")
+    # 3. 验证 01-03 的数据
+    asset2 = db.get_asset(datetime.date(2024, 1, 3), "test_bt")
+    pos2 = db.get_positions(datetime.date(2024, 1, 3), "test_bt")
 
     # 验证逻辑：
     # CashAdj = (new_factor - prev_factor) * shares * close
@@ -158,8 +156,8 @@ def test_set_clock_with_halted_stock(broker, monkeypatch):
 
     monkeypatch.setattr(broker, "_data_feed", MockDataFeed())
 
-    dt1 = datetime.date(2024, 1, 1)
-    broker._clock = datetime.datetime.combine(dt1, datetime.time(15, 0))
+    dt1 = datetime.date(2024, 1, 2)
+    broker._clock = make_dt(dt1, 15)
     broker._cash = 900000
 
     # 插入初始持仓
@@ -187,12 +185,12 @@ def test_set_clock_with_halted_stock(broker, monkeypatch):
         )
     )
 
-    # 拨动到 2024-01-03
-    dt3 = datetime.date(2024, 1, 3)
-    broker.set_clock(datetime.datetime.combine(dt3, datetime.time(9, 30)))
+    # 拨动到 2024-01-04
+    dt3 = datetime.date(2024, 1, 4)
+    broker.set_clock(make_dt(dt3, 9, 30))
 
-    # 验证 2024-01-02 的持仓（应沿用 10.0 的价格）
-    dt2 = datetime.date(2024, 1, 2)
+    # 验证 2024-01-03 的持仓（应沿用 10.0 的价格）
+    dt2 = datetime.date(2024, 1, 3)
     pos2 = db.get_positions(dt2, "test_bt")
     assert len(pos2) == 1
     assert pos2["price"][0] == 10.0  # 沿用上一日价格
@@ -202,37 +200,35 @@ def test_set_clock_with_halted_stock(broker, monkeypatch):
 
 def test_initialization_day_0(broker):
     # 验证 __init__ 是否创建了 Day 0 的记录
-    # calendar.day_shift(2024-01-01, -1) 在我们的 MockCalendar 中应该是 2023-12-31?
-    # 不，MockCalendar.day_frames 只定义了 2024-01-01 之后。
+    # calendar.day_shift(2024-01-02, -1) 在交易日历中应为 2023-12-29?
+    # 交易日历只包含交易日。
     # 我们需要检查 day_shift 的实现。
 
     # 检查数据库中是否存在 bt_start 之前的记录
     assets = db.assets_all("test_bt")
     assert len(assets) == 1
 
-    # 因为我们的 MockCalendar 只有 2024-01-01 之后的日期，
-    # day_shift(2024-01-01, -1) 可能会返回 2023-12-31 (简单日期减法)
-    # 或者是 None 如果它严格依赖 day_frames。
+    # day_shift(2024-01-02, -1) 可能会返回 2023-12-29
 
     # 让我们直接检查记录的日期
     day0_dt = assets["dt"][0]
-    assert day0_dt < datetime.date(2024, 1, 1)
+    assert day0_dt < datetime.date(2024, 1, 2)
 
 
 def test_set_clock_no_redundant_fill(broker):
     # 初始状态：Day 0 已存在，_clock 为 Day 0
     # 调用 set_clock(bt_start) 不应触发填补，也不应增加记录
 
-    dt1 = datetime.date(2024, 1, 1)
-    broker.set_clock(dt1)
+    dt1 = datetime.date(2024, 1, 2)
+    broker.set_clock(make_dt(dt1, 9, 30))
 
     assets = db.assets_all("test_bt")
     # 仍然只有 Day 0 一条记录
     assert len(assets) == 1
 
     # 调用 set_clock(bt_start + 1) 应增加一条记录 (bt_start)
-    dt2 = datetime.date(2024, 1, 2)
-    broker.set_clock(dt2)
+    dt2 = datetime.date(2024, 1, 3)
+    broker.set_clock(make_dt(dt2, 9, 30))
 
     assets = db.assets_all("test_bt")
     assert len(assets) == 2
@@ -245,15 +241,15 @@ def test_set_clock_multi_assets(broker, monkeypatch):
     class MockDataFeed:
         def get_close_factor(self, assets, start, end):
             return pl.DataFrame([
-                {"dt": datetime.date(2024, 1, 2), "asset": "000001.SZ", "close": 11.0, "factor": 1.0},
-                {"dt": datetime.date(2024, 1, 2), "asset": "000002.SZ", "close": 22.0, "factor": 1.0},
+                {"dt": datetime.date(2024, 1, 3), "asset": "000001.SZ", "close": 11.0, "factor": 1.0},
+                {"dt": datetime.date(2024, 1, 3), "asset": "000002.SZ", "close": 22.0, "factor": 1.0},
             ])
         def get_trade_price_limits(self, asset, dt): return 9.0, 25.0
 
     monkeypatch.setattr(broker, "_data_feed", MockDataFeed())
 
-    dt1 = datetime.date(2024, 1, 1)
-    broker._clock = datetime.datetime.combine(dt1, datetime.time(15, 0))
+    dt1 = datetime.date(2024, 1, 2)
+    broker._clock = make_dt(dt1, 15)
     broker._cash = 700000
 
     # 插入多个初始持仓
@@ -293,12 +289,12 @@ def test_set_clock_multi_assets(broker, monkeypatch):
         )
     )
 
-    # 拨动到 2024-01-03
-    dt3 = datetime.date(2024, 1, 3)
-    broker.set_clock(datetime.datetime.combine(dt3, datetime.time(9, 30)))
+    # 拨动到 2024-01-04
+    dt3 = datetime.date(2024, 1, 4)
+    broker.set_clock(make_dt(dt3, 9, 30))
 
-    # 验证 2024-01-02 的持仓
-    dt2 = datetime.date(2024, 1, 2)
+    # 验证 2024-01-03 的持仓
+    dt2 = datetime.date(2024, 1, 3)
     pos2 = db.get_positions(dt2, "test_bt")
     assert len(pos2) == 2
 
@@ -320,16 +316,16 @@ def test_set_clock_multi_assets(broker, monkeypatch):
 
 def test_set_clock_not_overwrite_existing(broker, monkeypatch):
     """验证 set_clock 不会覆盖已存在的记录"""
-    dt1 = datetime.date(2024, 1, 1)
-    broker._clock = datetime.datetime.combine(dt1, datetime.time(15, 0))
+    dt1 = datetime.date(2024, 1, 2)
+    broker._clock = make_dt(dt1, 15)
     broker._cash = 1000000
 
-    # 手动插入 2024-01-02 的资产记录，并给一个特殊的值
+    # 手动插入 2024-01-03 的资产记录，并给一个特殊的值
     special_total = 1234567.0
     db.upsert_asset(
         Asset(
             portfolio_id="test_bt",
-            dt=datetime.date(2024, 1, 2),
+            dt=datetime.date(2024, 1, 3),
             principal=1000000,
             cash=special_total,
             frozen_cash=0,
@@ -338,11 +334,162 @@ def test_set_clock_not_overwrite_existing(broker, monkeypatch):
         )
     )
 
-    # 拨动时钟到 2024-01-03
-    dt3 = datetime.date(2024, 1, 3)
-    broker.set_clock(datetime.datetime.combine(dt3, datetime.time(9, 30)))
+    # 拨动时钟到 2024-01-04
+    dt3 = datetime.date(2024, 1, 4)
+    broker.set_clock(make_dt(dt3, 9, 30))
 
-    # 验证 2024-01-02 的记录没有被覆盖
-    asset2 = db.get_asset(datetime.date(2024, 1, 2), "test_bt")
+    # 验证 2024-01-03 的记录没有被覆盖
+    asset2 = db.get_asset(datetime.date(2024, 1, 3), "test_bt")
     assert asset2.total == special_total
     assert asset2.cash == special_total
+
+
+@pytest.fixture
+def day_broker(calendar):
+    db.init(":memory:")
+
+    bars = pl.read_parquet("tests/assets/2024_bars_ext_cols.parquet")
+
+    class MockDataFeed:
+        def __init__(self, df):
+            self._df = df
+
+        def get_trade_price_limits(self, asset, dt):
+            row = (
+                self._df.filter(
+                    (pl.col("asset") == asset)
+                    & (pl.col("date").dt.date() == dt)
+                )
+                .select(["down_limit", "up_limit"])
+                .row(0)
+            )
+            return row[0], row[1]
+
+        def get_price_for_match(self, asset, tm):
+            bars = self._df.filter(
+                (pl.col("asset") == asset)
+                & (pl.col("date").dt.date() == tm.date())
+            )
+            if bars.is_empty():
+                return None
+            return bars
+
+        def get_close_factor(self, assets, start, end):
+            return (
+                self._df.filter(
+                    pl.col("asset").is_in(assets)
+                    & (pl.col("date").dt.date() >= start)
+                    & (pl.col("date").dt.date() <= end)
+                )
+                .select(
+                    [
+                        pl.col("date").dt.date().alias("dt"),
+                        pl.col("asset"),
+                        pl.col("close"),
+                    ]
+                )
+                .with_columns(pl.lit(1.0).alias("factor"))
+            )
+
+    b = BacktestBroker(
+        bt_start=datetime.date(2024, 1, 2),
+        bt_end=datetime.date(2024, 1, 3),
+        portfolio_id="day_bt",
+        data_feed=MockDataFeed(bars),
+        principal=1000000,
+    )
+    return b
+
+
+def test_day_buy_match_open_price(day_broker):
+    bars = day_broker._data_feed._df
+    row = (
+        bars.filter(pl.col("open") < pl.col("up_limit"))
+        .select(
+            [
+                "asset",
+                "date",
+                "open",
+                "close",
+            ]
+        )
+        .row(0, named=True)
+    )
+    asset = row["asset"]
+    dt = row["date"].date()
+    order_time = make_dt(dt, 9, 30)
+
+    result = asyncio.run(
+        day_broker.buy(asset=asset, shares=100, price=0, order_time=order_time)
+    )
+
+    trade = result.trades[0]
+    assert trade.price == row["open"]
+    assert trade.tm.date() == dt
+
+
+@pytest.fixture
+def minute_broker(calendar):
+    db.init(":memory:")
+
+    class MockDataFeed:
+        def get_trade_price_limits(self, asset, dt):
+            return 9.0, 12.0
+
+        def get_price_for_match(self, asset, tm):
+            bars = pl.DataFrame(
+                {
+                    "tm": [
+                        make_dt(datetime.date(2024, 1, 2), 9, 30),
+                        make_dt(datetime.date(2024, 1, 2), 9, 31),
+                        make_dt(datetime.date(2024, 1, 2), 9, 32),
+                    ],
+                    "open": [10.0, 10.5, 11.0],
+                    "high": [10.2, 10.7, 11.2],
+                    "low": [9.9, 10.4, 10.9],
+                    "close": [10.0, 10.5, 11.0],
+                    "price": [10.0, 10.5, 11.0],
+                    "volume": [5.0, 5.0, 5.0],
+                    "up_limit": [12.0, 12.0, 12.0],
+                    "down_limit": [9.0, 9.0, 9.0],
+                }
+            )
+            return bars
+
+        def get_close_factor(self, assets, start, end):
+            return pl.DataFrame(
+                {"dt": [], "asset": [], "close": [], "factor": []},
+                schema={
+                    "dt": pl.Date,
+                    "asset": pl.String,
+                    "close": pl.Float64,
+                    "factor": pl.Float64,
+                },
+            )
+
+    b = BacktestBroker(
+        bt_start=datetime.date(2024, 1, 2),
+        bt_end=datetime.date(2024, 1, 3),
+        portfolio_id="minute_bt",
+        data_feed=MockDataFeed(),
+        principal=1000000,
+        match_level="minute",
+    )
+    return b
+
+
+def test_minute_buy_match_volume(minute_broker):
+    order_time = make_dt(datetime.date(2024, 1, 2), 9, 30)
+    result = asyncio.run(
+        minute_broker.buy(
+            asset="000001.SZ",
+            shares=1500,
+            price=0,
+            order_time=order_time,
+        )
+    )
+    trade = result.trades[0]
+    expected_price = (10.0 * 500 + 10.5 * 500 + 11.0 * 500) / 1500
+    assert trade.price == expected_price
+    assert trade.shares == 1500
+    assert trade.tm == make_dt(datetime.date(2024, 1, 2), 9, 32)
