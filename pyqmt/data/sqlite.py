@@ -43,7 +43,18 @@ import uuid
 from dataclasses import asdict, dataclass, field, fields
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import ClassVar, Iterable, List, Literal, Tuple, TypeVar, Union, get_args, get_origin
+from typing import (
+    Any,
+    ClassVar,
+    Iterable,
+    List,
+    Literal,
+    Tuple,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+)
 
 import polars as pl
 import sqlite_utils as su
@@ -450,21 +461,43 @@ class SQLiteDB:
         else:
             return Order(**orders[0])
 
-    def query_order_by_date(self, dt: datetime.date) -> pl.DataFrame | None:
+    def get_orders(
+        self, dt: datetime.date | None = None, portfolio_id: str | None = None
+    ) -> pl.DataFrame:
+        """获取订单信息
+
+        Args:
+            dt: 指定日期，如果为 None 则获取所有日期的订单
+            portfolio_id: 指定组合 ID
+        """
+        if dt is not None:
+            return self.query_order_by_date(dt, portfolio_id)
+
+        return self.orders_all(portfolio_id)
+
+    def query_order_by_date(
+        self, dt: datetime.date, portfolio_id: str | None = None
+    ) -> pl.DataFrame | None:
         """根据日期查询订单
 
         Args:
             dt: 日期
-
+            portfolio_id: 组合 ID
+        
         Returns:
             订单数据框
         """
         if isinstance(dt, datetime.datetime):
             dt = dt.date()
 
-        rows = self["orders"].rows_where(
-            "tm >= ? and tm < ?", (dt, dt + datetime.timedelta(days=1))
-        )
+        where = "tm >= ? and tm < ?"
+        params = [dt, dt + datetime.timedelta(days=1)]
+
+        if portfolio_id:
+            where += " and portfolio_id = ?"
+            params.append(portfolio_id)
+
+        rows = self["orders"].rows_where(where, params)
         df = pl.DataFrame(rows)
         if len(df) == 0:
             return None

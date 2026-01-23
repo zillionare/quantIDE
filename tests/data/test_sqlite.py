@@ -1059,3 +1059,130 @@ def test_entity_to_db_schema_uuid_and_unions():
     assert schema["uid"] == str
     assert schema["val"] == float
     assert schema["status"] == int  # Takes first non-None type
+
+
+def test_get_orders_portfolio_filter(setup):
+    """Test get_orders and query_order_by_date with portfolio_id filter"""
+    db = setup
+    p1 = "p1"
+    p2 = "p2"
+    dt1 = datetime.datetime(2024, 1, 1, 10, 0)
+    dt2 = datetime.datetime(2024, 1, 1, 11, 0)
+
+    # Insert orders for different portfolios on same day
+    o1 = Order(p1, "A", OrderSide.BUY, 100, BidType.MARKET, tm=dt1)
+    o2 = Order(p2, "B", OrderSide.BUY, 200, BidType.MARKET, tm=dt2)
+
+    db.insert_order(o1)
+    db.insert_order(o2)
+
+    # 1. get_orders with dt and portfolio_id
+    res_p1 = db.get_orders(dt=dt1.date(), portfolio_id=p1)
+    assert len(res_p1) == 1
+    assert res_p1["portfolio_id"][0] == p1
+    assert res_p1["qtoid"][0] == o1.qtoid
+
+    res_p2 = db.get_orders(dt=dt1.date(), portfolio_id=p2)
+    assert len(res_p2) == 1
+    assert res_p2["portfolio_id"][0] == p2
+    assert res_p2["qtoid"][0] == o2.qtoid
+
+    # 2. get_orders with dt only (should get both)
+    res_all_dt = db.get_orders(dt=dt1.date())
+    assert len(res_all_dt) == 2
+
+    # 3. get_orders without dt (should get all)
+    res_all = db.get_orders()
+    assert len(res_all) == 2
+
+    # 4. get_orders without dt but with portfolio_id
+    res_p1_all = db.get_orders(portfolio_id=p1)
+    assert len(res_p1_all) == 1
+    assert res_p1_all["portfolio_id"][0] == p1
+
+
+def test_trades_all_portfolio_filter(setup):
+    """Test trades_all with portfolio_id filter"""
+    db = setup
+    p1 = "p1"
+    p2 = "p2"
+    q1 = "q1"
+    q2 = "q2"
+
+    # Need orders for FK
+    db.insert_order(Order(p1, "A", OrderSide.BUY, 100, BidType.MARKET, qtoid=q1))
+    db.insert_order(Order(p2, "B", OrderSide.BUY, 200, BidType.MARKET, qtoid=q2))
+
+    # Insert trades
+    t1 = Trade(p1, "t1", q1, "f1", "A", 100, 10, 1000, datetime.datetime.now(), OrderSide.BUY, "c1")
+    t2 = Trade(p2, "t2", q2, "f2", "B", 200, 20, 4000, datetime.datetime.now(), OrderSide.BUY, "c2")
+
+    db.insert_trades([t1, t2])
+
+    # 1. Filter by portfolio
+    res_p1 = db.trades_all(portfolio_id=p1)
+    assert len(res_p1) == 1
+    assert res_p1["portfolio_id"][0] == p1
+
+    # 2. No filter
+    res_all = db.trades_all()
+    assert len(res_all) == 2
+
+
+def test_get_asset_portfolio_filter(setup):
+    """Test get_asset with portfolio_id"""
+    db = setup
+    p1 = "p1"
+    p2 = "p2"
+    d = datetime.date.today()
+
+    db.upsert_asset(Asset(p1, d, 100, 100, 0, 0, 100))
+    db.upsert_asset(Asset(p2, d, 200, 200, 0, 0, 200))
+
+    a1 = db.get_asset(d, portfolio_id=p1)
+    assert a1.portfolio_id == p1
+    assert a1.principal == 100
+
+    a2 = db.get_asset(d, portfolio_id=p2)
+    assert a2.portfolio_id == p2
+    assert a2.principal == 200
+
+    # Test get latest asset with portfolio filter
+    # Add a newer date for p1
+    d_new = d + datetime.timedelta(days=1)
+    db.upsert_asset(Asset(p1, d_new, 150, 150, 0, 0, 150))
+
+    a1_latest = db.get_asset(dt=None, portfolio_id=p1)
+    assert a1_latest.dt == d_new
+    assert a1_latest.principal == 150
+
+
+def test_get_positions_latest_portfolio_filter(setup):
+    """Test get_positions(dt=None) with portfolio filter"""
+    db = setup
+    p1 = "p1"
+    p2 = "p2"
+    d1 = datetime.date(2024, 1, 1)
+    d2 = datetime.date(2024, 1, 2)
+
+    # p1 has positions on d2
+    db.upsert_positions(Position(p1, d2, "A", 100, 100, 10, 0, 1000))
+    # p2 has positions on d1 (older)
+    db.upsert_positions(Position(p2, d1, "B", 200, 200, 20, 0, 4000))
+
+    # get latest for p1
+    res_p1 = db.get_positions(dt=None, portfolio_id=p1)
+    assert len(res_p1) == 1
+    assert res_p1["asset"][0] == "A"
+
+    # get latest for p2
+    res_p2 = db.get_positions(dt=None, portfolio_id=p2)
+    assert len(res_p2) == 1
+    assert res_p2["asset"][0] == "B"
+
+    # get latest globally (should depend on implementation, usually max date across all?)
+    # The SQL is: "dt = (SELECT MAX(dt) FROM positions)"
+    # So it returns positions from d2 only (p1's positions). p2's positions are on d1, so they are ignored.
+    res_all = db.get_positions(dt=None)
+    assert len(res_all) == 1
+    assert res_all["asset"][0] == "A"

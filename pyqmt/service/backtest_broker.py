@@ -76,7 +76,6 @@ class BacktestBroker(AbstractBroker):
         # 初始化回测数据记录
         self.init_backtest()
 
-        self._pending: dict[str, list[str]] = {}
         self._positions: dict[str, Position] = {}
         self._last_snapshot_day: datetime.date | None = None
 
@@ -124,10 +123,8 @@ class BacktestBroker(AbstractBroker):
         # 1. 设置时钟到 bt_end，这会触发补齐逻辑，确保当前 positions 是最新的
         self.set_clock(self._bt_end)
 
-        # 2. 遍历所有持仓并卖出，先将下单时间设置为 bt_end 15:00
-        order_time = datetime.datetime.combine(
-            self._bt_end, datetime.time(15, 0)
-        )
+        # 2. 遍历所有持仓并卖出
+        order_time = self._bt_end
         # 获取当前所有持仓资产
         assets_to_sell = [a for a, p in self._positions.items() if p.shares > 0]
 
@@ -313,13 +310,16 @@ class BacktestBroker(AbstractBroker):
 
         在设置回测时钟时，如果 dt 对应的日期与 self._clock 对应的日期不相同，则需要调用 fill_history_gap 以填实跨越的日期 gap。
         """
-
         if dt < self._bt_start:
             raise ClockBeforeStart(dt, self._bt_start)
         if dt > self._bt_end:
             raise ClockAfterEnd(dt, self._bt_end)
         if dt < self._clock:
             raise ClockRewind(dt, self._clock)
+
+        if not calendar.is_trade_day(self.as_date(dt)):
+            logger.warning(f"{dt} is not a valid trade day, skip set_clock")
+            return
 
         new_dt = self.as_date(dt)
         old_dt = self.as_date(self._clock)
@@ -356,7 +356,7 @@ class BacktestBroker(AbstractBroker):
 
         # 2. 获取撮合所需的行情数据
         bars = self._data_feed.get_price_for_match(asset, order_time)
-        if bars is None:
+        if bars is None or bars.is_empty():
             logger.warning(f"failed to match {asset}, no data at {order_time}")
             raise NoDataForMatch(asset, order_time)
 
@@ -568,7 +568,8 @@ class BacktestBroker(AbstractBroker):
             portfolio_id=self._portfolio_id,
             cash=self._cash,
             total=total,
-            market_value=mv
+            market_value=mv,
+            principal=self._principal,
         )
 
         return trade
@@ -857,6 +858,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        method: Literal["ceil", "floor"] = "ceil",
     ) -> TradeResult:
         _ = timeout
 
@@ -865,7 +867,7 @@ class BacktestBroker(AbstractBroker):
         if price > 0:
             est_price = price
         else:
-            _, down_limit = self._data_feed.get_trade_price_limits(
+            down_limit, _ = self._data_feed.get_trade_price_limits(
                 asset, self.as_date(order_time)
             )
             est_price = down_limit
@@ -874,7 +876,11 @@ class BacktestBroker(AbstractBroker):
         if est_price <= 0:
             raise NoDataForMatch(asset, order_time)
 
-        shares = math.ceil(amount / est_price / 100) * 100
+        if method == "ceil":
+            shares = math.ceil(amount / est_price / 100) * 100
+        else:
+            shares = int(amount / est_price / 100) * 100
+
         if shares == 0:
             return TradeResult.empty()
 
@@ -917,7 +923,7 @@ class BacktestBroker(AbstractBroker):
         if margin > 0:
             return await self.buy_amount(asset, margin, price, order_time)
         else:
-            return await self.sell_amount(asset, -margin, price, order_time)
+            return await self.sell_amount(asset, -margin, price, order_time, method="floor")
 
     async def cancel_order(self, qt_oid: str):
         """回测模式下，不支持取消订单"""
