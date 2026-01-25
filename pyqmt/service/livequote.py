@@ -1,3 +1,4 @@
+import datetime
 import logging
 import threading
 import time
@@ -5,11 +6,14 @@ from typing import Any, Dict, Optional
 
 import cfg4py
 import msgpack
+import pandas as pd
 import redis
 
 from pyqmt.core.enums import Topics
 from pyqmt.core.message import msg_hub
+from pyqmt.core.scheduler import scheduler
 from pyqmt.core.singleton import singleton
+from pyqmt.data.fetchers.tushare import fetch_limit_price
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +32,8 @@ class LiveQuote:
 
     def __init__(self):
         self._cache: Dict[str, Dict[str, Any]] = {}
+        self._limits: Dict[str, Dict[str, float]] = {}
+        self._limit_date: datetime.date | None = None
         self._cfg = cfg4py.get_instance()
         self._is_running = False
         self._mode = self._cfg.server.get("quote_mode", "qmt")  # qmt or redis
@@ -46,6 +52,9 @@ class LiveQuote:
         if self._is_running:
             return
 
+        # 无论何种模式，都启动涨跌停限制的定时刷新
+        self._start_limit_schedule()
+
         if self._mode == "qmt":
             if xt is None:
                 raise ImportError("xtquant is required for qmt mode")
@@ -58,6 +67,20 @@ class LiveQuote:
         self._is_running = True
         logger.info(f"LiveQuote service started in {self._mode} mode")
 
+    def _start_limit_schedule(self):
+        # 仅在交易日 9:00 之后立即刷新一次
+        now = datetime.datetime.now()
+        if 9 <= now.hour < 15: # 简单判断交易时间段
+             self._refresh_limits()
+             
+        scheduler.add_job(
+            self._refresh_limits,
+            "cron",
+            hour=9,
+            minute=0,
+            name="livequote.limit.refresh",
+        )
+
     def _start_redis_subscription(self):
         """从 Redis 订阅全推数据"""
         if self._redis_client is None:
@@ -67,21 +90,21 @@ class LiveQuote:
             pubsub = self._redis_client.pubsub()  # type: ignore
 
             # 订阅全推行情频道
-            channel = Topics.QUOTES_ALL.value
-            pubsub.subscribe(channel)
-            logger.info(f"Subscribed to Redis channel: {channel}")
+            channels = [Topics.QUOTES_ALL.value]
+            pubsub.subscribe(*channels)
+            logger.info(f"Subscribed to Redis channels: {channels}")
 
             for message in pubsub.listen():
                 # 过滤掉 logistic message，比如订阅成功
                 if message["type"] == "message":
-                    self._on_redis_message(message["data"])
+                    self._on_redis_message(message["channel"], message["data"])
 
         thread = threading.Thread(
             target=redis_listener, name="RedisQuoteListener", daemon=True
         )
         thread.start()
 
-    def _on_redis_message(self, raw_data: bytes):
+    def _on_redis_message(self, channel: bytes | str, raw_data: bytes):
         """处理来自 Redis 的原始消息字节流"""
         start_time = time.perf_counter()
         try:
@@ -105,9 +128,57 @@ class LiveQuote:
         # 发布通知
         msg_hub.publish("quote.all", data)
 
+    def _cache_limits(self, data: Dict[str, Any]):
+        if not data:
+            return
+            
+        # 假设 data 已经是 {asset: {'up_limit': float, 'down_limit': float}} 格式
+        # 即使包含其他字段，只要包含 up_limit/down_limit 即可
+        # 如果需要严格校验或转换，可以在发送端（Redis Publisher）保证
+        self._limits.update(data)
+
+    def _refresh_limits(self, dt: datetime.date | None = None):
+        dt = dt or datetime.date.today()
+        df, _ = fetch_limit_price(dt)
+        if df is None or df.empty:
+            return
+        if "asset" not in df.columns and "ts_code" in df.columns:
+            df = df.rename(columns={"ts_code": "asset"})
+        if "asset" not in df.columns:
+            return
+        self._limit_date = dt
+        
+        # 优化：使用向量化操作替代循环
+        df = df[df["asset"].notna() & (df["asset"] != "")]
+        
+        for col in ["up_limit", "down_limit"]:
+            if col not in df.columns:
+                df[col] = 0.0
+            else:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+        df["asset"] = df["asset"].astype(str)
+        self._limits.update(df.set_index("asset")[["up_limit", "down_limit"]].to_dict("index"))
+
     def get_quote(self, asset: str) -> Optional[Dict[str, Any]]:
         """获取指定资产的最新行情字典"""
         return self._cache.get(asset)
+
+    def get_price_limits(self, asset: str) -> tuple[float, float]:
+        limits = self._limits.get(asset)
+        if not limits:
+            return 0.0, 0.0
+        return limits.get("down_limit", 0.0), limits.get("up_limit", 0.0)
+
+    def get_limit(self, asset: str) -> Optional[Dict[str, float]]:
+        limits = self._limits.get(asset)
+        if not limits:
+            return None
+        return limits.copy()
+
+    @property
+    def all_limits(self) -> Dict[str, Dict[str, float]]:
+        return self._limits.copy()
 
     @property
     def all_quotes(self) -> Dict[str, Dict[str, Any]]:

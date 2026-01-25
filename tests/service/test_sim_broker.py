@@ -56,6 +56,15 @@ from pyqmt.service.sim_broker import SimulationBroker
 @pytest.fixture
 def mock_live_quote():
     with patch("pyqmt.service.sim_broker.live_quote") as mock:
+        def get_limits(asset):
+            # Try to get quote from the mock's return_value
+            # Note: mock.get_quote.return_value might be the dict
+            quote = mock.get_quote.return_value
+            if isinstance(quote, dict):
+                 return quote.get("downLimit", 0.0), quote.get("upLimit", 0.0)
+            return 0.0, 0.0
+
+        mock.get_price_limits.side_effect = get_limits
         yield mock
 
 @pytest.fixture
@@ -708,7 +717,9 @@ async def test_buy_percent(broker, mock_live_quote):
     # Check active order
     assert "000001" in broker._active_orders
     order = broker._active_orders["000001"][0]
-    assert order.shares == 50000
+    # buy_percent uses upLimit (11.0) for conservative calculation
+    # 500,000 / 11.0 = 45454.54 -> 45400
+    assert order.shares == 45400
 
     # Cleanup
     await broker.cancel_all_orders()
@@ -723,7 +734,9 @@ async def test_buy_amount(broker, mock_live_quote):
     await asyncio.sleep(0.01)
 
     order = broker._active_orders["000001"][0]
-    assert order.shares == 10000
+    # buy_amount uses upLimit (11.0)
+    # 100,000 / 11.0 = 9090.9 -> 9000
+    assert order.shares == 9000
 
     await broker.cancel_all_orders()
     await task
@@ -798,7 +811,9 @@ async def test_trade_target_pct(broker, mock_live_quote):
     await asyncio.sleep(0.01)
 
     order = broker._active_orders["000001"][0]
-    assert order.shares == 10000
+    # buy_amount (called by trade_target_pct) uses upLimit (11.0)
+    # 100,000 / 11.0 = 9090.9 -> 9000
+    assert order.shares == 9000
     assert order.side == OrderSide.BUY
 
     await broker.cancel_all_orders()
@@ -824,7 +839,9 @@ async def test_trade_target_pct(broker, mock_live_quote):
     await asyncio.sleep(0.01)
 
     order2 = broker._active_orders["000001"][0]
-    assert order2.shares == 10000
+    # sell_amount uses downLimit (9.0)
+    # 100,000 / 9.0 = 11111.1 -> 11100
+    assert order2.shares == 11100
     assert order2.side == OrderSide.SELL
 
     await broker.cancel_all_orders()

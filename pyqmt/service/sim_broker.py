@@ -272,13 +272,13 @@ class SimulationBroker(AbstractBroker):
             # 但是为了 crash recovery，必须更新 Asset 表以保存 Cash 状态
             if traded_assets:
                 today = datetime.date.today()
-                
+
                 # 1. 持久化 Positions
                 to_upsert = [self._positions[a] for a in traded_assets]
                 for p in to_upsert:
                     p.dt = today
                 db.upsert_positions(to_upsert)
-                
+
                 # 2. 持久化 Asset (Cash)
                 # 计算当前总市值
                 market_value = sum(p.mv for p in self._positions.values())
@@ -315,10 +315,11 @@ class SimulationBroker(AbstractBroker):
             return 0.0, None
 
         # 检查涨跌停
-        up_limit = quote.get("upLimit", 0)
-        down_limit = quote.get("downLimit", 0)
+        # 使用 live_quote 获取最新的涨跌停数据，而不是依赖 quote 中的字段
+        down_limit, up_limit = live_quote.get_price_limits(order.asset)
 
         # 严格规则：涨停不买，跌停不卖
+        # 注意：如果是新股等无涨跌停限制的情况（limit=0），则允许交易
         if order.side == OrderSide.BUY and up_limit > 0 and last_price >= up_limit:
             return 0.0, None
         if order.side == OrderSide.SELL and down_limit > 0 and last_price <= down_limit:
@@ -443,12 +444,18 @@ class SimulationBroker(AbstractBroker):
         Raises:
             InsufficientCash: 资金不足
         """
-        # 1. 检查资金（简单检查）
+        if int(shares) % 100 != 0:
+            raise NonMultipleOfLotSize(asset, shares)
+
         est_price = price
         if est_price == 0:
-            quote = live_quote.get_quote(asset)
-            if quote:
-                est_price = quote.get("lastPrice", 0)
+            _, up_limit = live_quote.get_price_limits(asset)
+            est_price = up_limit
+            # 如果 up_limit 为 0 (无涨跌停限制，如新股)，则使用 lastPrice 估算
+            if est_price <= 0:
+                quote = live_quote.get_quote(asset)
+                if quote:
+                    est_price = quote.get("lastPrice", 0)
 
         if est_price > 0:
             est_cost = est_price * shares * (1 + self._commission)
@@ -557,7 +564,11 @@ class SimulationBroker(AbstractBroker):
         if not quote:
              return TradeResult("", [])
 
-        p = price if price > 0 else quote.get("lastPrice", 0)
+        if price > 0:
+            p = price
+        else:
+            _, up_limit = live_quote.get_price_limits(asset)
+            p = up_limit or quote.get("lastPrice", 0)
         if p <= 0:
             return TradeResult("", [])
 
@@ -594,7 +605,11 @@ class SimulationBroker(AbstractBroker):
         if not quote and price == 0:
              return TradeResult("", [])
 
-        p = price if price > 0 else quote.get("lastPrice", 0)
+        if price > 0:
+            p = price
+        else:
+            _, up_limit = live_quote.get_price_limits(asset)
+            p = up_limit or quote.get("lastPrice", 0)
         if p <= 0:
              return TradeResult("", [])
 
@@ -661,7 +676,11 @@ class SimulationBroker(AbstractBroker):
         if not quote and price == 0:
              return TradeResult("", [])
 
-        p = price if price > 0 else quote.get("lastPrice", 0)
+        if price > 0:
+            p = price
+        else:
+            down_limit, _ = live_quote.get_price_limits(asset)
+            p = down_limit or quote.get("lastPrice", 0)
         if p <= 0:
              return TradeResult("", [])
 
@@ -698,8 +717,19 @@ class SimulationBroker(AbstractBroker):
         quote = live_quote.get_quote(asset)
         if not quote and price == 0:
              return TradeResult("", [])
-        p = price if price > 0 else quote.get("lastPrice", 0)
-        if p <= 0:
+
+        # 计算当前价值和目标价值应该统一使用参考价格（通常是 lastPrice）
+        # 只有在计算买入/卖出数量时，为了保守起见，才可能使用 limit price
+        ref_price = price
+        if ref_price == 0:
+            ref_price = quote.get("lastPrice", 0)
+            if ref_price <= 0:
+                # Fallback to limit price if lastPrice is invalid
+                down_limit, up_limit = live_quote.get_price_limits(asset)
+                # 如果没有 lastPrice，尝试使用涨停价作为参考
+                ref_price = up_limit if up_limit > 0 else 0
+
+        if ref_price <= 0:
              return TradeResult("", [])
 
         total = self.total_assets
@@ -707,7 +737,7 @@ class SimulationBroker(AbstractBroker):
 
         current_val = 0.0
         if asset in self._positions:
-            current_val = self._positions[asset].shares * p
+            current_val = self._positions[asset].shares * ref_price
 
         diff = target_val - current_val
 
@@ -849,4 +879,3 @@ class SimulationBroker(AbstractBroker):
                 total=total_asset
             )
             db.upsert_asset(asset_record)
-

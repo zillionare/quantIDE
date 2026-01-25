@@ -176,3 +176,4 @@ class Topics(Enum):
     """消息主题"""
 
     QUOTES_ALL = "quotes.all"
+    STOCK_LIMIT = "stock_limit"

@@ -32,7 +32,7 @@ class TestLiveQuote(unittest.TestCase):
         raw_bytes = msgpack.packb(test_dict)
 
         with patch.object(self.live_quote, "_cache_and_broadcast") as mock_broadcast:
-            self.live_quote._on_redis_message(raw_bytes)
+            self.live_quote._on_redis_message(b"channel", raw_bytes)
             mock_broadcast.assert_called_once_with(test_dict)
 
     def test_on_redis_message_invalid(self):
@@ -40,7 +40,7 @@ class TestLiveQuote(unittest.TestCase):
         invalid_bytes = b"not a msgpack"
 
         with patch("pyqmt.service.livequote.logger") as mock_logger:
-            self.live_quote._on_redis_message(invalid_bytes)
+            self.live_quote._on_redis_message(b"channel", invalid_bytes)
             # 验证记录了错误日志，且没有崩溃
             mock_logger.error.assert_called()
 
