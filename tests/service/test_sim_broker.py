@@ -43,7 +43,11 @@ if 'xtquant.xtdata' not in sys.modules:
 
 # --- Imports after mocking ---
 from pyqmt.core.enums import BrokerKind, OrderSide, OrderStatus
-from pyqmt.core.errors import InsufficientCash, InsufficientPosition
+from pyqmt.core.errors import (
+    InsufficientCash,
+    InsufficientPosition,
+    NonMultipleOfLotSize,
+)
 from pyqmt.data.sqlite import Asset, Order, Portfolio, Position, Trade, db
 from pyqmt.service.sim_broker import SimulationBroker
 
@@ -414,35 +418,45 @@ async def test_partial_fill_timeout(broker):
     assert broker._positions[asset].shares == 200
 
 @pytest.mark.asyncio
-async def test_volume_consumption_across_orders(broker):
-    asset = "000002.SZ"
+async def test_volume_consumption_across_orders(broker, mock_live_quote):
+    """测试同一 tick 内多个订单对成交量的消耗"""
+    # 1. 模拟两个买单，分别需要 1000 股和 2000 股
+    task1 = asyncio.create_task(broker.buy("000001", 1000, 10.0))
+    task2 = asyncio.create_task(broker.buy("000001", 2000, 10.0))
+    await asyncio.sleep(0.01) # 等待订单注册
 
-    task1 = asyncio.create_task(broker.buy(asset, 200, price=10.0, timeout=1.0))
-    await asyncio.sleep(0.01)
-    task2 = asyncio.create_task(broker.buy(asset, 200, price=10.0, timeout=1.0))
-
-    await asyncio.sleep(0.01)
-
-    # Push quote with 3 hands = 300 shares
-    broker._on_quote_update({
-        asset: {
-            "lastPrice": 10.0,
-            "volume": 3,
-            "upLimit": 11.0,
-            "downLimit": 9.0
-        }
-    })
+    # 2. 推送行情：只有 15 手（1500 股）成交量
+    # broker 处理逻辑是 active_orders 列表顺序撮合
+    mock_live_quote.get_quote.return_value = {
+        "lastPrice": 10.0,
+        "volume": 15, # 15手 = 1500股
+        "upLimit": 11.0,
+        "downLimit": 9.0
+    }
+    broker._on_quote_update({"000001": mock_live_quote.get_quote.return_value})
 
     res1 = await task1
     res2 = await task2
 
+    # 3. 验证结果
+    # 订单1 (1000股) 应该完全成交
+    assert res1.qt_oid != ""
     assert len(res1.trades) == 1
-    assert res1.trades[0].shares == 200
+    assert res1.trades[0].shares == 1000
 
-    assert len(res2.trades) == 1
-    assert res2.trades[0].shares == 100
+    # 订单2 (2000股) 应该只成交 500 股 (1500 - 1000)
+    assert res2.qt_oid != ""
+    # 注意：如果不完全成交且超时，这里返回的可能是空 trades (如果 timeout 到了)
+    # 或者如果没超时，它还在等。
+    # 在我们的测试里，buy 默认 timeout 0.5s。
+    # 刚才 _on_quote_update 触发了一次撮合。
+    # 订单2 变成了 PART_SUCC。buy() 方法还在 await self.wait_for_trade(timeout)
+    # 因为没有完全成交，所以它会继续等，直到超时。
 
-    assert broker._positions[asset].shares == 300
+    # 检查数据库状态确认部分成交
+    order2 = db.get_order(res2.qt_oid)
+    assert order2.filled == 500
+    assert order2.status == OrderStatus.PART_SUCC.value
 
 @pytest.mark.asyncio
 async def test_volume_consumption_exhausted(broker):
@@ -1123,4 +1137,169 @@ async def test_sell_timeout(broker):
 
     order = db.get_order(res.qt_oid)
     assert order.status.name == "PART_SUCC"
+
+@pytest.mark.asyncio
+async def test_sell_more_than_holdings(broker, mock_live_quote):
+    """测试卖出数量超过持仓量"""
+    # 1. 初始持仓 100 股
+    p = Position(
+        portfolio_id="test_sim", dt=datetime.date.today(), asset="000001",
+        shares=100, price=10.0, avail=100, mv=1000, profit=0
+    )
+    broker._positions["000001"] = p
+
+    # 2. 尝试卖出 200 股
+    mock_live_quote.get_quote.return_value = {"lastPrice": 11.0, "volume": 1000}
+
+    # 预期应该抛出 InsufficientPosition 异常
+    with pytest.raises(InsufficientPosition):
+        await broker.sell("000001", 200, 11.0)
+
+@pytest.mark.asyncio
+async def test_sell_unavailable_shares(broker, mock_live_quote):
+    """测试卖出未解冻持仓（T+1限制）"""
+    # 1. 初始持仓 100 股，可用 0
+    p = Position(
+        portfolio_id="test_sim", dt=datetime.date.today(), asset="000001",
+        shares=100, price=10.0, avail=0, mv=1000, profit=0
+    )
+    broker._positions["000001"] = p
+
+    # 2. 尝试卖出 100 股
+    mock_live_quote.get_quote.return_value = {"lastPrice": 11.0}
+
+    with pytest.raises(InsufficientPosition):
+        await broker.sell("000001", 100, 11.0)
+
+@pytest.mark.asyncio
+async def test_sell_timeout_no_match(broker, mock_live_quote):
+    """测试卖出超时"""
+    # 1. 直接构造持仓，确保有货可卖
+    p = Position(
+        portfolio_id="test_sim", dt=datetime.date.today(), asset="000001",
+        shares=100, price=10.0, avail=100, mv=1000, profit=0
+    )
+    broker._positions["000001"] = p
+
+    # 2. 卖出超时
+    # 模拟长时间不返回 quote 或者不成交
+    # 这里通过不设置 quote 来模拟不成交，从而触发 timeout
+    mock_live_quote.get_quote.return_value = {} # No quote
+
+    res = await broker.sell("000001", 100, 11.0, timeout=0.1)
+
+    # 3. 验证
+    assert res.qt_oid != ""
+    assert len(res.trades) == 0
+
+    # 订单应该保持未报状态（因为只是等待超时，并未撤单）
+    orders_df = db.get_orders(portfolio_id=broker.portfolio_id)
+    assert len(orders_df) > 0
+    latest_status = orders_df["status"][-1]
+    assert latest_status == OrderStatus.UNREPORTED.value
+
+@pytest.mark.asyncio
+async def test_sell_odd_lot_with_frozen_shares(broker, mock_live_quote):
+    """测试存在冻结持仓时，卖出零股（应该失败，因为不能算清仓）"""
+    # 1. 构造场景：持仓 150，可用 50（意味着 100 冻结）
+    p = Position(
+        portfolio_id="test_sim", dt=datetime.date.today(), asset="000001",
+        shares=150, price=10.0, avail=50, mv=1500, profit=0
+    )
+    broker._positions["000001"] = p
+
+    # 2. 尝试卖出 50 股（可用部分的全额，但是是零股）
+    mock_live_quote.get_quote.return_value = {"lastPrice": 11.0, "volume": 1000}
+
+    # 3. 预期：因为有冻结持仓，不能算作清仓，所以必须遵守整手规则
+    # 50 股不足一手，应该抛出 NonMultipleOfLotSize
+    with pytest.raises(NonMultipleOfLotSize):
+        await broker.sell("000001", 50, 11.0)
+
+@pytest.mark.asyncio
+async def test_limit_price_matching_rules(broker, mock_live_quote):
+    """测试涨跌停时的撮合规则（涨停不买，跌停不卖）"""
+    # 1. 涨停不买
+    # 挂买单
+    task_buy = asyncio.create_task(broker.buy("000001", 100, 11.0))
+    await asyncio.sleep(0.01)
+
+    # 推送涨停价行情 (lastPrice == upLimit)
+    mock_live_quote.get_quote.return_value = {
+        "lastPrice": 11.0,
+        "upLimit": 11.0,
+        "downLimit": 9.0,
+        "volume": 1000
+    }
+    broker._on_quote_update({"000001": mock_live_quote.get_quote.return_value})
+
+    # 预期：不成交
+    res_buy = await task_buy
+    assert len(res_buy.trades) == 0
+    order_buy = db.get_order(res_buy.qt_oid)
+    assert order_buy.filled == 0
+
+    # 2. 跌停不卖
+    # 构造持仓
+    p = Position(
+        portfolio_id="test_sim", dt=datetime.date.today(), asset="000001",
+        shares=100, price=10.0, avail=100, mv=1000, profit=0
+    )
+    broker._positions["000001"] = p
+
+    # 挂卖单
+    task_sell = asyncio.create_task(broker.sell("000001", 100, 9.0))
+    await asyncio.sleep(0.01)
+
+    # 推送跌停价行情 (lastPrice == downLimit)
+    mock_live_quote.get_quote.return_value = {
+        "lastPrice": 9.0,
+        "upLimit": 11.0,
+        "downLimit": 9.0,
+        "volume": 1000
+    }
+    broker._on_quote_update({"000001": mock_live_quote.get_quote.return_value})
+
+    # 预期：不成交
+    res_sell = await task_sell
+    assert len(res_sell.trades) == 0
+    order_sell = db.get_order(res_sell.qt_oid)
+    assert order_sell.filled == 0
+
+
+@pytest.mark.asyncio
+async def test_buy_percent_small_amount(broker, mock_live_quote):
+    """测试按比例买入时，计算数量不足一手的情况"""
+    # 现金很少，只够买 50 股
+    broker._cash = 500
+    mock_live_quote.get_quote.return_value = {
+        "lastPrice": 10.0,
+        "upLimit": 11.0,
+        "downLimit": 9.0,
+        "volume": 1000
+    }
+
+    # 全仓买入 -> 500元 / 10元 = 50股 -> 取整后 0 股
+    res = await broker.buy_percent("000001", 1.0)
+
+    # 预期：不生成订单
+    assert res.qt_oid == ""
+    assert len(res.trades) == 0
+
+@pytest.mark.asyncio
+async def test_buy_amount_small_amount(broker, mock_live_quote):
+    """测试按金额买入时，计算数量不足一手的情况"""
+    mock_live_quote.get_quote.return_value = {
+        "lastPrice": 10.0,
+        "upLimit": 11.0,
+        "downLimit": 9.0,
+        "volume": 1000
+    }
+
+    # 买入 500 元 -> 50 股 -> 取整后 0 股
+    res = await broker.buy_amount("000001", 500)
+
+    # 预期：不生成订单
+    assert res.qt_oid == ""
+    assert len(res.trades) == 0
 

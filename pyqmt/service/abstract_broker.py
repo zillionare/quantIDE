@@ -72,13 +72,23 @@ class AbstractBroker(Broker):
         self, pos: Position, shares: float
     ) ->None:
         """卖出时，如果是清仓，则不限制卖出数量；否则必须以100的整数倍为单位"""
-        # 清仓时，允许 shares 不为整手数
+        # 1. 基础检查：没有可用持仓
         if pos.avail == 0:
-            raise InsufficientPosition(pos.asset, pos.avail)
+            raise InsufficientPosition(pos.asset, shares)
 
-        if abs(pos.shares - pos.avail) < 1e-7 and shares >= pos.avail:
+        # 2. 清仓判断：
+        # 条件：请求卖出的数量接近可用持仓量，且可用持仓量接近总持仓量（即全仓可卖）
+        # 允许微小误差
+        is_clearance = (abs(pos.shares - pos.avail) < 1e-7) and (abs(shares - pos.avail) < 1e-7)
+
+        if is_clearance:
             return
 
+        # 3. 数量检查：非清仓情况下，卖出量不能超过可用量
+        if shares > pos.avail:
+             raise InsufficientPosition(pos.asset, shares)
+
+        # 4. 整手检查
         if shares % 100 != 0 or shares == 0:
             raise NonMultipleOfLotSize(pos.asset, shares)
 
