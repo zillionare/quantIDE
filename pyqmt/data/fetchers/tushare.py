@@ -373,12 +373,12 @@ def fetch_limit_price(
         tuple[pd.DataFrame, list[list]]: 涨跌停价数据，错误信息
     """
     fields = "ts_code,trade_date,up_limit,down_limit"
-    # English: limit price data starts from 2007-01-01; return typed empty DataFrame for earlier dates
+
     cutoff = datetime.date(2007, 1, 1)
     _dates = dates if isinstance(dates, Iterable) else [dates]
     sorted_dates = sorted(_dates)
 
-    # English: if all dates < cutoff or empty input, short-circuit with typed empty DataFrame
+    # if all dates < cutoff or empty input, short-circuit with typed empty DataFrame
     if len(sorted_dates) == 0 or sorted_dates[-1] < cutoff:
         empty = pd.DataFrame(
             {
@@ -390,11 +390,11 @@ def fetch_limit_price(
         )
         return empty, []
 
-    # English: only fetch valid dates to avoid noise/errors
+    # only fetch valid dates to avoid noise/errors
     valid_dates = [d for d in sorted_dates if d >= cutoff]
     df, errors = _fetch_by_dates("stk_limit", valid_dates, fields=fields)
     if df is None:
-        # English: build typed empty DataFrame when upstream returns None
+        # build typed empty DataFrame when upstream returns None
         df = pd.DataFrame(
             {
                 "asset": pd.Series(dtype="object"),
@@ -404,7 +404,7 @@ def fetch_limit_price(
             }
         )
 
-    # English: ensure numeric dtype even when DataFrame is empty
+    # ensure numeric dtype even when DataFrame is empty
     for col in ("up_limit", "down_limit"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")

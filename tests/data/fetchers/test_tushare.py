@@ -194,7 +194,7 @@ class TestTushareFetcher:
         ):
             assert all(d >= cutoff for d in dates)
             s_dates = pd.to_datetime(dates).astype("datetime64[ms]")
-            # English: build minimal DataFrame with expected numeric columns
+            # build minimal DataFrame with expected numeric columns
             return (
                 pd.DataFrame(
                     {
@@ -215,7 +215,7 @@ class TestTushareFetcher:
 
         assert mixed_errors == []
         assert mixed_df is not None
-        # English: confirm returned dates are all >= cutoff and dtypes are float64
+        # confirm returned dates are all >= cutoff and dtypes are float64
         returned_dates = mixed_df["date"].dt.date.unique().tolist()
         assert all(d >= cutoff for d in returned_dates)
         assert str(mixed_df["up_limit"].dtype) == "float64"
@@ -241,7 +241,7 @@ class TestTushareFetcher:
         )
         actual = df.sort_values(by="asset").reset_index(drop=True)
 
-        # English: normalize 'st' semantics for comparison
+        # normalize 'st' semantics for comparison
         # For non-empty returns, fetch_st_info marks ST rows as True
         expected["st"] = True
         expected["st"] = expected["st"].astype("boolean")
@@ -262,7 +262,7 @@ class TestTushareFetcher:
             .reset_index(drop=True)
         )
 
-        # English: ensure expected has 'st' set to True and boolean dtype
+        # ensure expected has 'st' set to True and boolean dtype
         expected["st"] = True
         expected["st"] = expected["st"].astype("boolean")
         if "st" in actual.columns:
@@ -270,7 +270,7 @@ class TestTushareFetcher:
 
         assert_frame_equal(expected, actual)
 
-        # English: test pre-2016 dates return typed empty and no remote call
+        # test pre-2016 dates return typed empty and no remote call
         pre_date = datetime.date(2015, 12, 31)
         with patch("pyqmt.data.fetchers.tushare._fetch_by_dates") as mock:
             df_pre, errors_pre = fetch_st_info([pre_date])
@@ -284,7 +284,7 @@ class TestTushareFetcher:
         assert "[ms]" in str(df_pre["date"].dtype)
         assert str(df_pre["st"].dtype) == "boolean"
 
-        # English: test mixed dates only fetch >= 2016-01-01 and mark st=True
+        # test mixed dates only fetch >= 2016-01-01 and mark st=True
         cutoff = datetime.date(2016, 1, 1)
         valid_dates = [datetime.date(2016, 1, 4), datetime.date(2016, 1, 5)]
 
@@ -307,7 +307,7 @@ class TestTushareFetcher:
         assert all(d >= cutoff for d in returned_dates)
         assert df_mix["st"].eq(True).all()
 
-        # English: test empty input returns typed empty and no remote call
+        # test empty input returns typed empty and no remote call
         with patch("pyqmt.data.fetchers.tushare._fetch_by_dates") as mock2:
             df_empty, errors_empty = fetch_st_info([])
             mock2.assert_not_called()
@@ -367,7 +367,7 @@ class TestTushareFetcher:
 
         assert len(errors) == 0
 
-        # English: when limit returns typed empty (pre-2007), bars_ext should still succeed
+        # when limit returns typed empty (pre-2007), bars_ext should still succeed
         empty_limit = pd.DataFrame(
             {
                 "asset": pd.Series(dtype="object"),
@@ -390,7 +390,7 @@ class TestTushareFetcher:
             assert (
                 "up_limit" in actual2_pd.columns and "down_limit" in actual2_pd.columns
             )
-            # English: with no limit rows, these columns are all NaN
+            # with no limit rows, these columns are all NaN
             assert actual2_pd["up_limit"].isna().all()
             assert actual2_pd["down_limit"].isna().all()
 
