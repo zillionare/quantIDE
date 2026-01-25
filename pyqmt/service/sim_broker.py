@@ -165,6 +165,19 @@ class SimulationBroker(AbstractBroker):
         market_value = sum(p.mv for p in self._positions.values())
         return self._cash + market_value
 
+    @property
+    def positions(self) -> List[Position]:
+        """获取当前持仓列表。"""
+        return list(self._positions.values())
+
+    @property
+    def cash(self) -> float:
+        return self._cash
+
+    @property
+    def principal(self) -> float:
+        return self._principal
+
     def _on_quote_update(self, data: dict):
         """行情更新回调，执行撮合逻辑。
 

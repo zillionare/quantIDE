@@ -11,11 +11,14 @@ import cfg4py
 from fastapi.staticfiles import StaticFiles
 from fasthtml.common import *
 from monsterui.all import *
+from starlette.middleware import Middleware
 
 from pyqmt.config import cfg, get_config_dir
 from pyqmt.core.errors import BaseTradeError
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
+from pyqmt.service.registry import BrokerRegistry
+from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.service.sync import start_intraday_sync
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
@@ -34,6 +37,16 @@ def init():
     scheduler.start()
     start_intraday_sync()
 
+    # 初始化 Registry
+    reg = BrokerRegistry()
+    # 临时：创建一个默认仿真账户方便测试
+    # TODO: 应该从数据库加载活跃的 portfolios
+    try:
+        sim_broker = SimulationBroker(portfolio_id="sim_demo", portfolio_name="演示账户", principal=1000000)
+        reg.register(sim_broker)
+    except Exception as e:
+        print(f"Failed to create demo broker: {e}")
+
     # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})
 
@@ -41,6 +54,7 @@ def init():
     app, rt = fast_app(
         hdrs=Theme.blue.headers(),
         before=auth.create_beforeware(),
+        middleware=[Middleware(BrokerRegistryMiddleware, registry=reg)],
         exception_handlers={
             Exception: exception_handler,
             BaseTradeError: exception_handler,
