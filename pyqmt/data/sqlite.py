@@ -146,6 +146,12 @@ class Order(Entity):
     def __post_init__(self):
         if isinstance(self.tm, str):
             self.tm = datetime.datetime.fromisoformat(self.tm)
+        if isinstance(self.status, int):
+            self.status = OrderStatus(self.status)
+        if isinstance(self.side, int):
+            self.side = OrderSide(self.side)
+        if isinstance(self.bid_type, int):
+            self.bid_type = BidType(self.bid_type)
 
 
 @dataclass
@@ -173,6 +179,8 @@ class Trade(Entity):
     def __post_init__(self):
         if isinstance(self.tm, str):
             self.tm = datetime.datetime.fromisoformat(self.tm)
+        if isinstance(self.side, int):
+            self.side = OrderSide(self.side)
 
 
 @dataclass
@@ -483,7 +491,7 @@ class SQLiteDB:
         Args:
             dt: 日期
             portfolio_id: 组合 ID
-        
+
         Returns:
             订单数据框
         """

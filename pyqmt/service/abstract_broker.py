@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import threading
 import time
 from typing import Any
 
@@ -9,7 +10,7 @@ import quantstats as qs
 from loguru import logger
 
 from pyqmt.core.enums import BrokerKind
-from pyqmt.core.errors import NonMultipleOfLotSize, InsufficientPosition
+from pyqmt.core.errors import InsufficientPosition, NonMultipleOfLotSize
 from pyqmt.data.sqlite import Position, db
 from pyqmt.service.base_broker import Broker
 
@@ -40,6 +41,7 @@ class AbstractBroker(Broker):
 
         # 超时等待队列，用来实现带超时的交易
         self._pending_txs: dict[Any, Any] = {}
+        self._lock = threading.RLock()
 
     def as_date(self, dt: datetime.date | datetime.datetime) -> datetime.date:
         """将 datetime 转换为 date"""
@@ -94,26 +96,32 @@ class AbstractBroker(Broker):
         if event_id in self._pending_txs:
             logger.warning("duplicate event_id: {}, overwritten.", event_id)
 
-        _future = asyncio.Future()
-        self._pending_txs[event_id] = _future
+        _future = asyncio.get_running_loop().create_future()
+        with self._lock:
+            self._pending_txs[event_id] = _future
 
         try:
             t0 = time.perf_counter()
             result = await asyncio.wait_for(_future, timeout=timeout)
             return result, time.perf_counter() - t0
         except asyncio.TimeoutError:
+            with self._lock:
+                self._pending_txs.pop(event_id, None)
             return None, 0
 
     def awake(self, event_id: Any, result: Any) -> None:
-        """事件触发机制
+        """事件触发机制。线程安全。
 
         Args:
             event_id: 事件，全局唯一，通过它来获取绑定的 context
             result: 事件结果
         """
-        if event_id in self._pending_txs:
-            _future = self._pending_txs.pop(event_id)
-            _future.set_result(result)
-        else:
-            logger.warning("event_id not found: {}", event_id)
-            raise ValueError(f"event_id not found: {event_id}")
+        with self._lock:
+            if event_id in self._pending_txs:
+                future = self._pending_txs.pop(event_id)
+                if not future.done():
+                    loop = future.get_loop()
+                    if not loop.is_closed():
+                        loop.call_soon_threadsafe(future.set_result, result)
+            else:
+                logger.warning("event_id not found: {}", event_id)
