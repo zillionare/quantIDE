@@ -55,6 +55,7 @@ import arrow
 
 from pyqmt.config import get_config_dir
 from pyqmt.core.constants import DATE_FORMAT, TIME_FORMAT
+from pyqmt.core.scheduler import scheduler
 from pyqmt.core.utils import date2str, handle_xt_error, str2date, str2time, time2str
 
 logger = logging.getLogger(__name__)
@@ -172,10 +173,10 @@ def schedule_after(after: Actor, job_func: Callable, args: Tuple[List[str], Fram
             return
 
         # 增加任务，立即执行
-        cfg.sched.add_job(job_func, args=args)
+        scheduler.add_job(job_func, args=args)
 
     my_listener = partial(listener, after, job_func, args)
-    cfg.sched.add_listener(my_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+    scheduler.add_listener(my_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
 
 def sync_sector_list(force=False):
@@ -222,7 +223,7 @@ def sync_factor():
     g.haystore.save_factors(data)
 
 
-def start_intraday_sync(scheduler):
+def start_intraday_sync():
     scheduler.add_job(
         sync_minute_bars,
         "cron",

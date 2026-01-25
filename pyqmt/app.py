@@ -14,7 +14,9 @@ from monsterui.all import *
 
 from pyqmt.config import cfg, get_config_dir
 from pyqmt.core.errors import BaseTradeError
+from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
+from pyqmt.service.sync import start_intraday_sync
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
@@ -27,6 +29,10 @@ def init():
 
     # 初始化交易数据库
     init_data(cfg.home)  # type: ignore
+
+    # 启动任务调度器
+    scheduler.start()
+    start_intraday_sync()
 
     # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})
