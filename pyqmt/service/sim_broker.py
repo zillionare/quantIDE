@@ -636,6 +636,7 @@ class SimulationBroker(AbstractBroker):
         self,
         asset: str,
         percent: float,
+        price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
     ) -> TradeResult:
@@ -644,6 +645,7 @@ class SimulationBroker(AbstractBroker):
         Args:
             asset: 资产代码
             percent: 卖出比例 (0.0 - 1.0)。如果 >= 0.9999 则视为清仓。
+            price: 卖出价格，0 表示市价
             order_time: 下单时间
             timeout: 超时时间（秒）
 
@@ -663,7 +665,7 @@ class SimulationBroker(AbstractBroker):
         if shares == 0:
             return TradeResult("", [])
 
-        return await self.sell(asset, shares, 0, order_time, timeout)
+        return await self.sell(asset, shares, price, order_time, timeout)
 
     async def sell_amount(
         self,

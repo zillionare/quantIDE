@@ -79,6 +79,14 @@ class BacktestBroker(AbstractBroker):
         self._positions: dict[str, Position] = {}
         self._last_snapshot_day: datetime.date | None = None
 
+    @property
+    def positions(self) -> dict[str, Position]:
+        return self._positions
+
+    @property
+    def cash(self) -> float:
+        return self._cash
+
     def init_backtest(self) -> None:
         """创建回测相关数据记录
 
@@ -932,3 +940,26 @@ class BacktestBroker(AbstractBroker):
     async def cancel_all_orders(self, side=None):
         """回测模式下，不支持取消订单"""
         return None
+
+    def get_history(
+        self,
+        asset: str,
+        count: int,
+        end_dt: datetime.datetime | None = None,
+        frame_type: str = "1d",
+        skip_suspended: bool = True,
+        fill_value: bool = True,
+    ) -> pl.DataFrame:
+        if frame_type != "1d":
+            # 目前只支持日线，后续可扩展
+            raise NotImplementedError("BacktestBroker currently only supports 1d history")
+
+        end_date = self.as_date(end_dt) if end_dt else self.as_date(self._clock)
+
+        # 使用 daily_bars 获取历史数据
+        return daily_bars.get_bars(
+            n=count,
+            end=end_date,
+            assets=[asset],
+            adjust="qfq"
+        )

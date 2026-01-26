@@ -17,6 +17,8 @@ apikeys:
       key: key1
 
 broker: backtest
+server:
+  quote_mode: qmt
 brokers:
   - kind: backtest
     id: backtest

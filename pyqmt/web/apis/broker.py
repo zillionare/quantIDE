@@ -3,10 +3,22 @@ import datetime
 from fasthtml.common import fast_app
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from pyqmt.config import cfg
+from pyqmt.config import cfg, get_config_dir, init_config
 from pyqmt.core.errors import TradeError, TradeErrors
+from pyqmt.data import init_data
 from pyqmt.data.sqlite import Asset
 from pyqmt.service.base_broker import Broker
+from pyqmt.service.discovery import strategy_loader
+from pyqmt.service.runner import BacktestRunner
+
+# 确保配置和数据已初始化 (方便单独运行 broker app)
+# try:
+#     init_config(get_config_dir())
+#     if cfg.home:
+#         print(f"Initializing data at: {cfg.home}")
+#         init_data(cfg.home)
+# except Exception as e:
+#     print(f"Warning: Failed to auto-initialize data in broker.py: {e}")
 
 app, rt = fast_app()
 
@@ -414,3 +426,64 @@ async def load_backtest(request):
     accounts = request.app.ctx.accounts
 
     return JSONResponse(accounts.load_backtest(name, token))
+
+@rt("/strategies", methods=["GET"])
+async def list_strategies(req):
+    """列出所有可用策略"""
+    # 暂时使用当前工作目录下的 strategies 目录
+    workspace = "pyqmt/strategies"
+    strategies = strategy_loader.load(workspace)
+
+    result = []
+    for name, cls in strategies.items():
+        result.append({
+            "name": name,
+            "doc": cls.__doc__ or "",
+        })
+    return result
+
+
+@rt("/backtest/run", methods=["POST"])
+async def run_backtest_job(req):
+    """启动新的回测任务"""
+    try:
+        params = await req.json()
+    except Exception:
+        params = {}
+
+    strategy_name = params.get("strategy_name")
+    config = params.get("config", {})
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+    interval = params.get("interval", "1d")
+    initial_cash = params.get("initial_cash", 1_000_000)
+    portfolio_id = params.get("portfolio_id")
+
+    workspace = "pyqmt/strategies"
+    strategies = strategy_loader.load(workspace)
+
+    if strategy_name not in strategies:
+        return Response(f"Strategy {strategy_name} not found", status_code=404)
+
+    strategy_cls = strategies[strategy_name]
+
+    try:
+        start = arrow.get(start_date).date()
+        end = arrow.get(end_date).date()
+    except Exception as e:
+        return Response(f"Invalid date format: {e}", status_code=400)
+
+    runner = BacktestRunner()
+    try:
+        result = await runner.run(
+            strategy_cls=strategy_cls,
+            config=config,
+            start_date=start,
+            end_date=end,
+            interval=interval,
+            initial_cash=initial_cash,
+            portfolio_id=portfolio_id
+        )
+        return result
+    except Exception as e:
+        return Response(f"Backtest failed: {str(e)}", status_code=500)

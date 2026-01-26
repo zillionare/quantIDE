@@ -13,13 +13,12 @@ from fasthtml.common import *
 from monsterui.all import *
 from starlette.middleware import Middleware
 
-from pyqmt.config import cfg, get_config_dir
+from pyqmt.config import cfg, init_config
 from pyqmt.core.errors import BaseTradeError
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
-from pyqmt.service.registry import BrokerRegistry
-from pyqmt.service.sim_broker import SimulationBroker
-from pyqmt.service.sync import start_intraday_sync
+
+# from pyqmt.service.sync import start_intraday_sync
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
@@ -35,7 +34,7 @@ def init():
 
     # 启动任务调度器
     scheduler.start()
-    start_intraday_sync()
+    #start_intraday_sync()
 
     # 初始化 Registry
     reg = BrokerRegistry()

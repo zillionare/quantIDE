@@ -9,7 +9,7 @@ from abc import ABCMeta, abstractmethod
 import polars as pl
 
 from pyqmt.core.enums import BidType, OrderSide
-from pyqmt.data.sqlite import Trade
+from pyqmt.data.sqlite import Position, Trade
 
 
 class TradeResult:
@@ -35,6 +35,18 @@ class Broker(metaclass=ABCMeta):
 
     本接口类定义了交易代理的基本功能接口。
     """
+
+    @property
+    @abstractmethod
+    def positions(self) -> dict[str, Position]:
+        """获取当前持仓"""
+        ...
+
+    @property
+    @abstractmethod
+    def cash(self) -> float:
+        """获取当前可用资金"""
+        ...
 
     @abstractmethod
     async def buy(

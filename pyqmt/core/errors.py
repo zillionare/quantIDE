@@ -42,7 +42,7 @@ class TradeErrors(IntEnum):
     ERROR_CLOCK_AFTER_END = 1003    # 回测时，时钟晚于回测结束时间
 
 
-class BaseTradeError(BaseException):
+class BaseTradeError(Exception):
     """基础错误处理基类"""
 
     def __init__(self, code: TradeErrors, msg: str, *args):
