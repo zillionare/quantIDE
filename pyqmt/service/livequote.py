@@ -4,7 +4,6 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
-import cfg4py
 import msgpack
 import pandas as pd
 import redis
@@ -14,6 +13,7 @@ from pyqmt.core.message import msg_hub
 from pyqmt.core.scheduler import scheduler
 from pyqmt.core.singleton import singleton
 from pyqmt.data.fetchers.tushare import fetch_limit_price
+from pyqmt.config import cfg
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +34,9 @@ class LiveQuote:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._limits: Dict[str, Dict[str, float]] = {}
         self._limit_date: datetime.date | None = None
-        self._cfg = cfg4py.get_instance()
         self._is_running = False
-        self._mode = self._cfg.server.get("quote_mode", "qmt")  # qmt or redis
+        self._mode: str|None = None
         self._redis_client = None
-
-        # 初始化 Redis 连接（如果配置了 Redis）
-        if self._cfg.get("redis"):
-            rc = self._cfg.redis
-            # 注意：不设置 decode_responses=True 以支持 msgpack 二进制数据
-            self._redis_client = redis.Redis(
-                host=rc.host, port=rc.port, decode_responses=False
-            )
 
     def start(self):
         """启动订阅"""
@@ -55,6 +46,7 @@ class LiveQuote:
         # 无论何种模式，都启动涨跌停限制的定时刷新
         self._start_limit_schedule()
 
+        self._mode = cfg.livequote.mode
         if self._mode == "qmt":
             if xt is None:
                 raise ImportError("xtquant is required for qmt mode")
@@ -72,7 +64,7 @@ class LiveQuote:
         now = datetime.datetime.now()
         if 9 <= now.hour < 15: # 简单判断交易时间段
              self._refresh_limits()
-             
+
         scheduler.add_job(
             self._refresh_limits,
             "cron",
@@ -83,6 +75,12 @@ class LiveQuote:
 
     def _start_redis_subscription(self):
         """从 Redis 订阅全推数据"""
+        if getattr(cfg, "redis", None) is not None:
+            rc = cfg.redis
+            # 注意：不设置 decode_responses=True 以支持 msgpack 二进制数据
+            self._redis_client = redis.Redis(
+                host=rc.host, port=rc.port, decode_responses=False
+            )
         if self._redis_client is None:
             raise RuntimeError("Redis client is not configured")
 
@@ -131,7 +129,7 @@ class LiveQuote:
     def _cache_limits(self, data: Dict[str, Any]):
         if not data:
             return
-            
+
         # 假设 data 已经是 {asset: {'up_limit': float, 'down_limit': float}} 格式
         # 即使包含其他字段，只要包含 up_limit/down_limit 即可
         # 如果需要严格校验或转换，可以在发送端（Redis Publisher）保证
@@ -147,10 +145,10 @@ class LiveQuote:
         if "asset" not in df.columns:
             return
         self._limit_date = dt
-        
+
         # 优化：使用向量化操作替代循环
         df = df[df["asset"].notna() & (df["asset"] != "")]
-        
+
         for col in ["up_limit", "down_limit"]:
             if col not in df.columns:
                 df[col] = 0.0
@@ -158,7 +156,7 @@ class LiveQuote:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
         df["asset"] = df["asset"].astype(str)
-        self._limits.update(df.set_index("asset")[["up_limit", "down_limit"]].to_dict("index"))
+        self._limits.update(df.set_index("asset")[["up_limit", "down_limit"]].to_dict("index")) # type: ignore
 
     def get_quote(self, asset: str) -> Optional[Dict[str, Any]]:
         """获取指定资产的最新行情字典"""

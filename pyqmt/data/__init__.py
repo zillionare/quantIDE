@@ -1,6 +1,5 @@
 from pathlib import Path
 
-# 延迟导入，避免在包初始化时触发循环依赖
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.models.stocks import stock_list

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import cfg4py
 import pytz
+from loguru import logger
 
 from .schema import Config
 
@@ -27,6 +28,7 @@ def get_config_dir() -> str:
     else:
         _dir = Path.home() / ".zillionare" / "pyqmt" / "config"
 
+    logger.info(f"config dir: {_dir}")
     return str(_dir)
 
 
@@ -45,10 +47,11 @@ def init_config(config_dir: str | Path | None = None):
     cfg_ = cfg4py.get_instance()
     if not hasattr(cfg_, "epoch"):
         cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
+    cfg_.TIMEZONE = pytz.timezone("Asia/Shanghai")
 
 
 cfg: Config = cfg4py.get_instance()
 
-cfg.TIMEZONE = pytz.timezone("Asia/Shanghai")
+
 
 __all__ = ["cfg", "endpoint", "init_config"]

@@ -16,9 +16,9 @@ apikeys:
     - client: client1
       key: key1
 
-broker: backtest
-server:
-  quote_mode: qmt
+livequote:
+  mode: redis
+
 brokers:
   - kind: backtest
     id: backtest
@@ -27,6 +27,9 @@ brokers:
     id: sim1
   - kind: simulation
     id: sim2
+redis:
+    host: "localhost"
+    port: 6379
 qmt:
   account_id: "8881457417"
   account_type: STOCK
