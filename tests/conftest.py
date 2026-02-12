@@ -9,7 +9,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from pyqmt.data.sqlite import db
+from pyqmt.data.sqlite import db as _db
 
 
 @pytest.fixture(scope="session")
@@ -29,9 +29,9 @@ def db():
 
     try:
         # 初始化数据库
-        db._initialized = False
-        db.init(test_db_path)
-        yield db
+        _db._initialized = False
+        _db.init(test_db_path)
+        yield _db
 
     finally:
         try:

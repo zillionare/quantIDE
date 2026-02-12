@@ -1,10 +1,10 @@
 # noqa
 from typing import Any
+import datetime
 
 
 class Config(object):
     __access_counter__ = 0
-    TIMEZONE: Any
 
     def __cfg4py_reset_access_counter__(self):
         self.__access_counter__ = 0
@@ -39,17 +39,26 @@ class Config(object):
 
         clients: list
 
-    broker: str
+    class livequote:
+        mode: str
+
     brokers: list
 
-    class qmt:
-        account: str
+    class redis:
+        host: str
 
-        type: int
+        port: int
+
+    class qmt:
+        account_id: str
+
+        account_type: str
 
         name: str
 
         path: str
+
+        principal: int
 
     class notify:
         class dingtalk:
@@ -66,5 +75,6 @@ class Config(object):
 
             mail_server: str
 
-    class db:
-        path: str
+    home: str
+
+    epoch: datetime.date

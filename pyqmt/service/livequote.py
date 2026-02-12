@@ -1,5 +1,4 @@
 import datetime
-import logging
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -7,15 +6,14 @@ from typing import Any, Dict, Optional
 import msgpack
 import pandas as pd
 import redis
+from loguru import logger
 
+from pyqmt.config import cfg
 from pyqmt.core.enums import Topics
 from pyqmt.core.message import msg_hub
 from pyqmt.core.scheduler import scheduler
 from pyqmt.core.singleton import singleton
 from pyqmt.data.fetchers.tushare import fetch_limit_price
-from pyqmt.config import cfg
-
-logger = logging.getLogger(__name__)
 
 try:
     from xtquant import xtdata as xt
@@ -57,7 +55,17 @@ class LiveQuote:
             self._start_redis_subscription()
 
         self._is_running = True
-        logger.info(f"LiveQuote service started in {self._mode} mode")
+        logger.info("LiveQuote service started in {} mode", self._mode)
+
+    def stop(self):
+        """停止服务"""
+        self._is_running = False
+        if self._redis_client:
+            try:
+                self._redis_client.close()
+            except Exception:
+                pass
+        logger.info("LiveQuote service stopped")
 
     def _start_limit_schedule(self):
         # 仅在交易日 9:00 之后立即刷新一次
@@ -88,9 +96,9 @@ class LiveQuote:
             pubsub = self._redis_client.pubsub()  # type: ignore
 
             # 订阅全推行情频道
-            channels = [Topics.QUOTES_ALL.value]
+            channels = [Topics.QUOTES_ALL.value, Topics.STOCK_LIMIT.value]
             pubsub.subscribe(*channels)
-            logger.info(f"Subscribed to Redis channels: {channels}")
+            logger.info("Subscribed to Redis channels: {}", channels)
 
             for message in pubsub.listen():
                 # 过滤掉 logistic message，比如订阅成功
@@ -108,23 +116,32 @@ class LiveQuote:
         try:
             # 约定：发布端必须使用 msgpack 序列化
             data = msgpack.unpackb(raw_data)
-            self._cache_and_broadcast(data)
+
+            if isinstance(channel, bytes):
+                channel = channel.decode("utf-8")
+
+            if channel == Topics.QUOTES_ALL.value:
+                self._cache_and_broadcast(data)
+            elif channel == Topics.STOCK_LIMIT.value:
+                self._cache_limits_and_broadcast(data)
 
             # 性能监控：单条消息处理超过 50ms 报警
             duration = (time.perf_counter() - start_time) * 1000
             if duration > 50:
                 logger.warning(
-                    f"Slow quote processing: {duration:.2f}ms for {len(data)} items"
+                    "Slow quote processing: {:.2f}ms for {} items",
+                    duration,
+                    len(data),
                 )
         except Exception as e:
-            logger.error(f"Error decoding msgpack quote: {e}")
+            logger.error("Error decoding msgpack quote: {}", e)
 
     def _cache_and_broadcast(self, data: Dict[str, Any]):
         """处理行情数据并广播"""
         self._cache.update(data)
 
         # 发布通知
-        msg_hub.publish("quote.all", data)
+        msg_hub.publish(Topics.QUOTES_ALL.value, data)
 
     def _cache_limits(self, data: Dict[str, Any]):
         if not data:
@@ -134,6 +151,12 @@ class LiveQuote:
         # 即使包含其他字段，只要包含 up_limit/down_limit 即可
         # 如果需要严格校验或转换，可以在发送端（Redis Publisher）保证
         self._limits.update(data)
+
+    def _cache_limits_and_broadcast(self, data: Dict[str, Any]):
+        """缓存涨跌停数据并广播"""
+        self._cache_limits(data)
+        # 发布通知
+        msg_hub.publish(Topics.STOCK_LIMIT.value, data)
 
     def _refresh_limits(self, dt: datetime.date | None = None):
         dt = dt or datetime.date.today()

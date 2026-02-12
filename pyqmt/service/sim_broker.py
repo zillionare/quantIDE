@@ -6,6 +6,7 @@
 import asyncio
 import datetime
 import threading
+import time
 from collections import defaultdict
 from typing import Any, List
 
@@ -31,7 +32,6 @@ class SimulationBroker(AbstractBroker):
     SimulationBroker 模拟真实的交易环境，订阅实时行情，并在本地进行撮合。
     它维护自己的账户状态（现金、持仓），并将交易记录保存到数据库。
     """
-
     def __init__(
         self,
         portfolio_id: str,
@@ -39,6 +39,7 @@ class SimulationBroker(AbstractBroker):
         commission: float = 1e-4,
         portfolio_name: str = "simulation",
         info: str = "",
+        market_value_update_interval: float = 10.0,
     ):
         """初始化 SimulationBroker。
 
@@ -48,6 +49,7 @@ class SimulationBroker(AbstractBroker):
             commission: 佣金费率
             portfolio_name: 账户名称
             info: 账户描述信息
+            market_value_update_interval: 持仓市值更新间隔（秒），默认10秒
         """
         super().__init__(
             portfolio_id=portfolio_id,
@@ -62,11 +64,82 @@ class SimulationBroker(AbstractBroker):
         # 缓存订单的成交记录，用于在完全成交或取消时返回完整结果
         self._order_trades: dict[str, list[Trade]] = defaultdict(list)
 
+        self._lock = threading.Lock()
+
+        self._market_value_update_interval = market_value_update_interval
+        self._last_mv_update_time = 0.0
+
         # 初始化或加载状态
         self._init_or_sync_state()
 
         # 订阅行情
         msg_hub.subscribe(Topics.QUOTES_ALL.value, self._on_quote_update)
+        msg_hub.subscribe(Topics.STOCK_LIMIT.value, self._on_limit_update)
+
+    @classmethod
+    def create(
+        cls,
+        portfolio_id: str,
+        principal: float = 1_000_000,
+        commission: float = 1e-4,
+        portfolio_name: str = "simulation",
+        info: str = "",
+    ) -> "SimulationBroker":
+        """创建新的 SimulationBroker 实例。
+
+        如果账户已存在，抛出异常。
+
+        Args:
+            portfolio_id: 账户ID
+            principal: 初始资金
+            commission: 佣金费率
+            portfolio_name: 账户名称
+            info: 账户描述信息
+
+        Returns:
+            SimulationBroker 实例
+        """
+        # Check if portfolio exists
+        pf = db.get_portfolio(portfolio_id)
+        if pf:
+            raise RuntimeError(f"Portfolio {portfolio_id} already exists. Use load().")
+
+        broker = cls(
+            portfolio_id=portfolio_id,
+            principal=principal,
+            commission=commission,
+            portfolio_name=portfolio_name,
+            info=info,
+        )
+
+        return broker
+
+    @classmethod
+    def load(cls, portfolio_id: str) -> "SimulationBroker":
+        """加载已存在的 SimulationBroker 实例。
+
+        如果账户不存在，抛出异常。
+
+        Args:
+            portfolio_id: 账户ID
+
+        Returns:
+            SimulationBroker 实例
+        """
+        pf = db.get_portfolio(portfolio_id)
+        if not pf:
+            raise RuntimeError(f"Portfolio {portfolio_id} does not exist. Use create().")
+
+        # Initialize with default/dummy values, they will be overwritten by _init_or_sync_state
+        return cls(portfolio_id=portfolio_id)
+
+    def _on_limit_update(self, data: dict):
+        """涨跌停更新回调。
+
+        目前 SimBroker 通过 live_quote 单例获取涨跌停数据，该单例会在此回调之前更新。
+        此处订阅主要为了保持架构一致性（所有外部数据均来自 MessageHub）。
+        """
+        pass
 
     def _validate_data_consistency(self):
         """校验数据一致性。
@@ -101,6 +174,7 @@ class SimulationBroker(AbstractBroker):
         如果在数据库中找不到对应的 portfolio，则创建新的。
         如果存在，则从数据库加载资产和持仓信息。
         """
+
         # 数据一致性检查
         self._validate_data_consistency()
 
@@ -140,15 +214,8 @@ class SimulationBroker(AbstractBroker):
 
         # 同步持仓
         # 注意：这里需要加载最新的持仓，而不是所有历史记录
-        # 我们假设数据库中 dt 是日期类型
-        today = datetime.date.today()
-        # 尝试加载今天的持仓（如果有的话，比如重启）
-        positions_df = db.get_positions(dt=today, portfolio_id=self.portfolio_id)
-
-        if positions_df.is_empty():
-            # 如果今天没有记录，尝试查找最近的一个交易日的记录
-            # db.get_positions(dt=None) 会自动返回最新日期的持仓
-            positions_df = db.get_positions(dt=None, portfolio_id=self.portfolio_id)
+        # db.get_positions(dt=None) 会自动返回最新日期的持仓（如果今天有记录则返回今天，否则返回最近一天）
+        positions_df = db.get_positions(dt=None, portfolio_id=self.portfolio_id)
 
         if not positions_df.is_empty():
             for row in positions_df.to_dicts():
@@ -182,129 +249,136 @@ class SimulationBroker(AbstractBroker):
         """行情更新回调，执行撮合逻辑。
 
         本方法将在 MessageHub 线程中运行。更新持仓市值，并尝试撮合待处理订单。
-
-        !!! warning
-            本方法假设 quote 的成交量可以全部匹配给待成交订单。在实际交易中，只有你的订单在时间上是最早的，或者价格是最低的，才会是这样。如果 quote 没有提供成交量，则只要价格符合条件，就会全部成交。
-
-        Args:
-            data: 行情数据，格式为 {asset: quote_info}
         """
         # 这里的 data 是 {asset: quote_info}
         # 在 MessageHub 线程中运行
         with self._lock:
-            # 1. 更新内存中的持仓市值 (仅用于内存计算，不触发写库)
-            # Broker 需要维护实时的 total_assets 以支持按比例下单等风控逻辑
-            for asset, pos in self._positions.items():
-                quote = data.get(asset)
-                if quote:
-                    last_price = quote.get("lastPrice", 0)
-                    if last_price > 0:
-                        pos.mv = pos.shares * last_price
-                        pos.profit = pos.mv - (pos.shares * pos.price)
+            self._update_positions_market_value(data)
 
             if not self._active_orders:
                 return
 
-            # 2. 撮合订单
-            # traded_assets 仅记录因交易导致持仓数量或成本变化的资产
-            # 只有这些资产需要同步到数据库
             traded_assets = set()
-
             # 遍历所有待处理订单的资产
             # 使用 list() 复制 keys，因为可能会在迭代中修改字典
             for asset in list(self._active_orders.keys()):
-                if asset not in data:
-                    continue
+                if asset in data:
+                    self._match_orders_for_asset(asset, data[asset], traded_assets)
 
-                quote = data[asset]
-                orders = self._active_orders[asset]
-
-                # 初始化剩余成交量
-                # 如果 quote 中没有 volume 字段，则假设成交量无限大（只要价格满足条件即可全额成交）
-                remaining_shares = float('inf')
-                if "volume" in quote:
-                    remaining_shares = quote["volume"] * 100
-
-                # 撮合该资产的所有订单
-                remaining_orders = []
-                for order in orders:
-                    # 如果剩余量<=0，跳过撮合
-                    if remaining_shares <= 0:
-                        remaining_orders.append(order)
-                        continue
-
-                    matched_shares, trade = self._try_match(order, quote, available_shares_limit=remaining_shares)
-                    if matched_shares > 0 and trade:
-                        # 更新剩余成交量
-                        remaining_shares -= matched_shares
-
-                        # 撮合成功（部分或全部）
-                        order.filled += matched_shares
-                        self._order_trades[order.qtoid].append(trade)
-
-                        # 立即持久化成交记录
-                        db.insert_trades(trade)
-
-                        # 应用成交到内存状态 (Cash, Shares, Cost)
-                        self._apply_trade_to_portfolio(trade)
-
-                        # 因为持仓数量变了，立即更新内存中的 MV 和 Profit
-                        # 确保后续逻辑（如 total_assets）读取到的是最新状态
-                        pos = self._positions.get(asset)
-                        if pos:
-                            pos.mv = pos.shares * quote["lastPrice"]
-                            pos.profit = pos.mv - (pos.shares * pos.price)
-                            traded_assets.add(asset)
-
-                        if order.filled >= order.shares:
-                             # 完全成交
-                             order.status = OrderStatus.SUCCEEDED
-                             # 更新 Order 状态到 DB
-                             db.update_order(order.qtoid, status=order.status.value, filled=order.filled)
-
-                             # 唤醒等待的协程，返回所有成交记录
-                             all_trades = self._order_trades.pop(order.qtoid)
-                             self.awake(order.qtoid, TradeResult(order.qtoid, all_trades))
-                        else:
-                             # 部分成交
-                             order.status = OrderStatus.PART_SUCC
-                             # 更新 Order 状态到 DB
-                             db.update_order(order.qtoid, status=order.status.value, filled=order.filled)
-                             remaining_orders.append(order)
-                    else:
-                        remaining_orders.append(order)
-
-                if not remaining_orders:
-                    del self._active_orders[asset]
-                else:
-                    self._active_orders[asset] = remaining_orders
-
-            # 3. 持久化 (仅在发生交易时)
-            # 我们只关心 Shares, Cost 的持久化。
-            # Asset (Cash, MV, Total) 可以在日终清算时统一更新，盘中交易不实时更新 Asset 表
-            # 但是为了 crash recovery，必须更新 Asset 表以保存 Cash 状态
             if traded_assets:
-                today = datetime.date.today()
+                self._persist_updates(traded_assets)
 
-                # 1. 持久化 Positions
-                to_upsert = [self._positions[a] for a in traded_assets]
-                for p in to_upsert:
-                    p.dt = today
-                db.upsert_positions(to_upsert)
+    def _update_positions_market_value(self, data: dict):
+        """更新内存中的持仓市值 (仅用于内存计算，不触发写库)。
 
-                # 2. 持久化 Asset (Cash)
-                # 计算当前总市值
-                market_value = sum(p.mv for p in self._positions.values())
-                asset = Asset(
-                    portfolio_id=self.portfolio_id,
-                    dt=today,
-                    principal=self._principal,
-                    cash=self._cash,
-                    frozen_cash=0, # 简化处理，暂不追踪冻结资金
-                    market_value=market_value,
-                    total=self._cash + market_value
-                )
-                db.upsert_asset(asset)
+        # todo: 如果存在性能问题，也许可以通过 polars 向量化操作来优化？这可能取决于有多少个资产
+        """
+        current_time = time.time()
+        if current_time - self._last_mv_update_time < self._market_value_update_interval:
+            return
+
+        self._last_mv_update_time = current_time
+
+        for asset, pos in self._positions.items():
+            quote = data.get(asset)
+            if quote:
+                last_price = quote.get("lastPrice", 0)
+                if last_price > 0:
+                    pos.mv = pos.shares * last_price
+                    pos.profit = pos.mv - (pos.shares * pos.price)
+
+    def _match_orders_for_asset(self, asset: str, quote: dict, traded_assets: set):
+        """撮合指定资产的订单。"""
+        orders = self._active_orders[asset]
+        # 初始化剩余成交量
+        # 如果 quote 中没有 volume 字段，则假设成交量无限大
+        remaining_shares = float('inf')
+        if "volume" in quote:
+            remaining_shares = quote["volume"] * 100
+
+        remaining_orders = []
+        for order in orders:
+            if remaining_shares <= 0:
+                remaining_orders.append(order)
+                continue
+
+            matched_shares, trade = self._try_match(order, quote, available_shares_limit=remaining_shares)
+
+            if matched_shares > 0 and trade:
+                remaining_shares -= matched_shares
+                self._handle_trade_execution(order, trade, asset, quote, traded_assets)
+
+                if order.filled >= order.shares:
+                    self._handle_order_completion(order)
+                else:
+                    self._handle_order_partial(order)
+                    remaining_orders.append(order)
+            else:
+                remaining_orders.append(order)
+
+        if not remaining_orders:
+            del self._active_orders[asset]
+        else:
+            self._active_orders[asset] = remaining_orders
+
+    def _handle_trade_execution(self, order: Order, trade: Trade, asset: str, quote: dict, traded_assets: set):
+        """处理单次成交逻辑。"""
+        # 撮合成功（部分或全部）
+        order.filled += trade.shares
+        self._order_trades[order.qtoid].append(trade)
+
+        # 立即持久化成交记录
+        db.insert_trades(trade)
+
+        # 应用成交到内存状态 (Cash, Shares, Cost)
+        self._apply_trade_to_portfolio(trade)
+
+        # 因为持仓数量变了，立即更新内存中的 MV 和 Profit
+        pos = self._positions.get(asset)
+        if pos:
+            pos.mv = pos.shares * quote["lastPrice"]
+            pos.profit = pos.mv - (pos.shares * pos.price)
+            traded_assets.add(asset)
+
+    def _handle_order_completion(self, order: Order):
+        """处理订单完全成交。"""
+        order.status = OrderStatus.SUCCEEDED
+        # 更新 Order 状态到 DB
+        db.update_order(order.qtoid, status=order.status.value, filled=order.filled)
+
+        # 唤醒等待的协程，返回所有成交记录
+        all_trades = self._order_trades.pop(order.qtoid)
+        self.awake(order.qtoid, TradeResult(order.qtoid, all_trades))
+
+    def _handle_order_partial(self, order: Order):
+        """处理订单部分成交。"""
+        order.status = OrderStatus.PART_SUCC
+        # 更新 Order 状态到 DB
+        db.update_order(order.qtoid, status=order.status.value, filled=order.filled)
+
+    def _persist_updates(self, traded_assets: set):
+        """持久化持仓和资产信息。"""
+        today = datetime.date.today()
+
+        # 1. 持久化 Positions
+        to_upsert = [self._positions[a] for a in traded_assets]
+        for p in to_upsert:
+            p.dt = today
+        db.upsert_positions(to_upsert)
+
+        # 2. 持久化 Asset (Cash)
+        # 计算当前总市值
+        market_value = sum(p.mv for p in self._positions.values())
+        asset = Asset(
+            portfolio_id=self.portfolio_id,
+            dt=today,
+            principal=self._principal,
+            cash=self._cash,
+            frozen_cash=0, # 简化处理，暂不追踪冻结资金
+            market_value=market_value,
+            total=self._cash + market_value
+        )
+        db.upsert_asset(asset)
 
     def _try_match(self, order: Order, quote: dict, available_shares_limit: float = float('inf')) -> tuple[float, Trade | None]:
         """尝试撮合单个订单。
@@ -849,11 +923,15 @@ class SimulationBroker(AbstractBroker):
         pass
 
     async def on_day_close(self, close_prices: dict[str, float] | None = None):
-        """收盘后处理：生成资产快照。
+        """收盘后处理：生成资产快照，并清理未完成订单。
 
         Args:
             close_prices: 收盘价 {asset: price}
         """
+        # 1. 撤销所有未完成订单
+        # 盘后自动撤单
+        await self.cancel_all_orders()
+
         with self._lock:
             today = datetime.date.today()
 
@@ -876,6 +954,10 @@ class SimulationBroker(AbstractBroker):
 
                 pos.mv = pos.shares * price
                 pos.profit = (price - pos.price) * pos.shares
+
+                # T+1 结算：收盘后，所有持仓在下一交易日均可用
+                pos.avail = pos.shares
+
                 snapshot_positions.append(pos)
                 market_value += pos.mv
 

@@ -7,12 +7,13 @@ This file sets up the FastHTML application with MonsterUI styling.
 
 from pathlib import Path
 
-from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles
 from fasthtml.common import *
 from monsterui.all import *
 from starlette.middleware import Middleware
 
 from pyqmt.config import cfg, init_config
+from pyqmt.core.enums import BrokerKind
 from pyqmt.core.errors import BaseTradeError
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
@@ -25,33 +26,28 @@ from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.login import login_app
+from pyqmt.web.pages.trade import trade_app
+from pyqmt.web.pages.live import live_app
 
 
 def init():
     init_config()
 
-    # 初始化交易数据库
-    init_data(cfg.home)  # type: ignore
+    init_data(cfg.home)
 
-    # 启动任务调度器
     scheduler.start()
 
     live_quote.start()
 
-    # 初始化 Registry
     reg = BrokerRegistry()
-    # 临时：创建一个默认仿真账户方便测试
-    # TODO: 应该从数据库加载活跃的 portfolios
     try:
         sim_broker = SimulationBroker(portfolio_id="sim_demo", portfolio_name="演示账户", principal=1000000)
-        reg.register(sim_broker)
+        reg.register(BrokerKind.SIMULATION, "sim_demo", sim_broker)
     except Exception as e:
         print(f"Failed to create demo broker: {e}")
 
-    # 初始化 auth 管理器，配置登录路径
     auth = AuthManager(config={"login_path": "/login"})
 
-    # 创建主应用
     app, rt = fast_app(
         hdrs=Theme.blue.headers(),
         before=auth.create_beforeware(),
@@ -63,6 +59,8 @@ def init():
         routes=[
             Mount("/login", login_app),
             Mount("/home", home_app),
+            Mount("/trade/simulation", trade_app),
+            Mount("/trade/live", live_app),
             Mount("/broker", broker_api_app),
             Mount("/", home_app),
         ],
@@ -71,7 +69,6 @@ def init():
     static_dir = Path(__file__).resolve().parent / "web" / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    # 初始化认证系统并注册路由
     auth.initialize(app, prefix="/auth")
 
     return app
