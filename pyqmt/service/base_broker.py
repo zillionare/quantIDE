@@ -49,6 +49,23 @@ class Broker(metaclass=ABCMeta):
         ...
 
     @abstractmethod
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """记录策略运行数据
+
+        Args:
+            key: 数据名称
+            value: 数据值
+            dt: 时间
+            extra: 额外信息
+        """
+        ...
+    @abstractmethod
     async def buy(
         self,
         asset: str,
@@ -56,6 +73,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """买入指令
 
@@ -64,10 +82,10 @@ class Broker(metaclass=ABCMeta):
         Args:
             asset: 资产代码，"symbol.SZ"风格
             shares: 委托数量
-
             price: 委托价格
-            bit_time: 下单时间，实盘时可省略传入，测试时必须传入
+            order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交结果。
@@ -81,6 +99,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """按当前持有的现金的比例买入
 
@@ -92,6 +111,7 @@ class Broker(metaclass=ABCMeta):
             price: 订单价格，默认为 0，表示市价
             order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交结果。如果超时未成交（含部成），返回空列表
@@ -106,6 +126,7 @@ class Broker(metaclass=ABCMeta):
         price: int | float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """买入指令按金额买入
 
@@ -115,6 +136,7 @@ class Broker(metaclass=ABCMeta):
             price: 如果委托价格为 None，则以市价买入
             order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交结果。如果超时未成交（含部成），返回空列表
@@ -129,6 +151,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """卖出指令
 
@@ -138,8 +161,9 @@ class Broker(metaclass=ABCMeta):
             asset: 资产代码，"symbol.SZ"风格
             shares: 委托数量
             price: 委托价格
-            bit_time: 下单时间，实盘时可省略传入，测试时必须传入
+            order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交数据。如果超时未成交（含部成），返回空列表
@@ -154,6 +178,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """卖出指令按比例卖出
 
@@ -163,6 +188,7 @@ class Broker(metaclass=ABCMeta):
             price: 委托价格
             order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交结果。如果超时未成交（含部成），返回空列表
@@ -177,6 +203,7 @@ class Broker(metaclass=ABCMeta):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """卖出指令按金额卖出
 
@@ -188,6 +215,7 @@ class Broker(metaclass=ABCMeta):
             price: 如果委托价格为 0，则以市价卖出
             order_time: 下单时间，实盘时可省略传入，测试时必须传入
             timeout: 超时时间，单位秒。超时撮合不成功，返回 None
+            **kwargs: 额外参数，例如 extra (决策快照)
 
         Returns:
             成交结果。如果超时未成交（含部成），返回空列表

@@ -14,12 +14,23 @@
 
 ## 策略体系
 
-本应用支持的用户策略都必须继承自 BaseStrategy 类。BaseStrategy将提供以下功能：
+本应用支持的用户策略都必须继承自 BaseStrategy 类。BaseStrategy 将提供以下核心功能：
 
-1. 日志。回测日志在时间上与系统普通日志有重要区别，它总是应该反应当前回测的时间（特别是当前 active 的main bar）。
-2. 记录交易信号产生时的时间和重要指标（具体数据由用户定义）。
-3. 提供 on_start, on_stop, on_day_open, on_day_close, on_bar 等功能。其中on_start, on_stop 用以策略（回测）一生一次的初始化和结束；on_day_open, on_day_close 用以每天的开盘和收盘；on_bar 用以每个 bar 的处理。
+1.  **时间旅行日志 (Time-Travel Logging)**
+    *   回测日志的时间戳必须反应**回测虚拟时间**（即当前处理的 Bar 时间），而非系统物理时间。
+    *   这是为了确保日志在复盘时与行情时间轴对齐，避免产生混淆。
+    *   **实现要求**：通过 `contextvars` 注入仿真时间，并使用 Loguru Patcher 拦截日志记录，自动替换 `time` 字段。策略开发者无需修改标准的 `logger.info` 调用方式。
 
-策略回测由一个驱动器（runner）来驱动。runner 的重要参数是 frame_type。它根据 frame_type 来计算日历，驱动策略前进。
+2.  **决策快照与指标记录 (Decision Snapshot)**
+    *   为了支持类似于 Backtrader Analyzer 的事后分析功能，系统允许在产生交易信号时记录“决策快照”。
+    *   **实现要求**：
+        *   扩展 `buy/sell` 接口，增加 `extra` (或 `annotations`) 参数，支持传入字典类型的自定义数据（如 `{'rsi': 25.5, 'ma_5': 102.0}`）。
+        *   数据库 `orders` 表需增加 JSON 类型的字段来持久化这些信息。
+        *   前端 UI 在展示成交记录时，应能通过 Tooltip 或侧边栏展示这些快照数据，帮助用户理解“当时为什么买入”。
 
-策略需要的数据通过本项目的 data 模块提供，以实现策略与数据的解耦。
+3.  **生命周期回调**
+    *   提供 `on_start`, `on_stop` 用于策略全生命周期的初始化与清理。
+    *   提供 `on_day_open`, `on_day_close` 用于每日盘前盘后处理。
+    *   提供 `on_bar` 作为核心驱动回调，处理每个周期的行情数据。
+
+策略回测由一个驱动器（Runner）来驱动。Runner 根据 `frame_type` 计算日历，并负责推进全局仿真时间（ContextVars）。策略需要的数据通过本项目的 Data 模块提供，以实现策略与数据的解耦。

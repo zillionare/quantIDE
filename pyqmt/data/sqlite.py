@@ -142,6 +142,7 @@ class Order(Entity):
     # 本委托 ID, pk
     qtoid: str = field(default_factory=new_uuid_id)
     error: str = ""  # 报单错误信息，包括错误码和错误信息,以:分隔
+    extra: str = ""  # 额外信息，json 格式
 
     def __post_init__(self):
         if isinstance(self.tm, str):
@@ -262,6 +263,27 @@ class Portfolio(Entity):
             self.status = bool(self.status)
 
 
+@dataclass
+class StrategyLog(Entity):
+    __table_name__ = "strategy_logs"
+    __pk__ = ["portfolio_id", "dt", "key"]
+    __indexes__ = (["portfolio_id", "dt", "key"], True)
+    __foreign_keys__ = [("portfolio_id", "portfolios", "portfolio_id")]
+
+    portfolio_id: str
+    dt: datetime.datetime
+    key: str
+    value: float
+    extra: str = ""
+
+    def __post_init__(self):
+        if isinstance(self.dt, str):
+            if self.dt.find("T") != -1:
+                self.dt = datetime.datetime.fromisoformat(self.dt)
+            else:
+                self.dt = datetime.datetime.strptime(self.dt, "%Y-%m-%d")
+
+
 @singleton
 class SQLiteDB:
     def __init__(self):
@@ -319,7 +341,7 @@ class SQLiteDB:
 
         在 sqlite_utils 中，创建表结构并非必须；但会导致sqlite-utils 无法准确判断类型。
         """
-        for e in [Order, Trade, Asset, Position, Portfolio]:
+        for e in [Order, Trade, Asset, Position, Portfolio, StrategyLog]:
             table = e.__table_name__
             pk = e.__pk__
 
@@ -544,6 +566,17 @@ class SQLiteDB:
             trades = trades
 
         self["trades"].insert_all([trade.to_dict() for trade in trades], ignore=True)  # type: ignore
+
+    def insert_strategy_logs(self, logs: list[StrategyLog] | StrategyLog) -> None:
+        """保存策略日志
+
+        Args:
+            logs: 策略日志
+        """
+        if isinstance(logs, StrategyLog):
+            logs = [logs]
+
+        self["strategy_logs"].insert_all([log.to_dict() for log in logs], ignore=True)  # type: ignore
 
     def get_trade(self, tid: str) -> Trade | None:
         """根据 tid 获取成交

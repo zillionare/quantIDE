@@ -65,7 +65,8 @@ class BacktestBroker(AbstractBroker):
         self._data_feed = data_feed
         self._match_level = match_level
         self._bt_start: datetime.datetime = calendar.replace_time(bt_start, 9, 30)
-        self._bt_end: datetime.datetime = calendar.replace_time(bt_end, 15, 0)
+        # End time should cover the closing operations
+        self._bt_end: datetime.datetime = calendar.replace_time(bt_end, 16, 0)
         self._bt_stopped: bool = False
         self._desc: str = desc
 
@@ -78,6 +79,9 @@ class BacktestBroker(AbstractBroker):
 
         self._positions: dict[str, Position] = {}
         self._last_snapshot_day: datetime.date | None = None
+
+        # Use patched logger to support time-travel logging
+        self.logger = logger.bind(portfolio_id=portfolio_id)
 
     @property
     def positions(self) -> dict[str, Position]:
@@ -127,21 +131,25 @@ class BacktestBroker(AbstractBroker):
         """停止回测
 
         在停止回测时，需要模拟 bt_end 日，按收盘价卖出所有持仓的操作。
+        注意：遵守 T+1 规则，仅卖出可用持仓 (avail > 0)。
         """
         # 1. 设置时钟到 bt_end，这会触发补齐逻辑，确保当前 positions 是最新的
         self.set_clock(self._bt_end)
 
-        # 2. 遍历所有持仓并卖出
+        # 2. 遍历所有持仓并卖出可用部分
         order_time = self._bt_end
         # 获取当前所有持仓资产
-        assets_to_sell = [a for a, p in self._positions.items() if p.shares > 0]
+        assets_to_sell = [a for a, p in self._positions.items() if p.avail > 0]
 
         for asset in assets_to_sell:
             pos = self._positions[asset]
             # 执行卖出。使用市价单 (price=0) 在 order_time (15:00) 撮合，将以收盘价成交
-            await self.sell(asset=asset, shares=pos.shares, price=0, order_time=order_time)
+            await self.sell(asset=asset, shares=pos.avail, price=0, order_time=order_time)
 
         # 3. 标记停止并更新数据库状态
+        # 计算剩余持仓（冻结部分）的市值
+        remaining_mv = self.market_value()
+
         dt = self.as_date(self._clock)
         asset_info = Asset(
             portfolio_id=self._portfolio_id,
@@ -149,8 +157,8 @@ class BacktestBroker(AbstractBroker):
             principal=self._principal,
             cash=self._cash,
             frozen_cash=0,
-            market_value=0,
-            total=self._cash,
+            market_value=remaining_mv,
+            total=self._cash + remaining_mv,
         )
         db.upsert_asset(asset_info)
 
@@ -323,7 +331,7 @@ class BacktestBroker(AbstractBroker):
             raise ClockRewind(dt, self._clock)
 
         if not calendar.is_trade_day(self.as_date(dt)):
-            logger.warning(f"{dt} is not a valid trade day, skip set_clock")
+            self.logger.warning(f"{dt} is not a valid trade day, skip set_clock")
             return
 
         new_dt = self.as_date(dt)
@@ -348,6 +356,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         # 在回测中，timeout 参数无效，直接忽略
         _ = timeout
@@ -362,13 +371,18 @@ class BacktestBroker(AbstractBroker):
         # 2. 获取撮合所需的行情数据
         bars = self._data_feed.get_price_for_match(asset, order_time)
         if bars is None or bars.is_empty():
-            logger.warning(f"failed to match {asset}, no data at {order_time}")
+            self.logger.warning(f"failed to match {asset}, no data at {order_time}")
             raise NoDataForMatch(asset, order_time)
 
         # 3. 根据报单价格（考虑涨停）和 shares 确定现金是否充足
         # 日线取第一行，分钟线也取第一行作为报单时的参考价
         row = bars.row(0, named=True)
         up_limit = row.get("up_limit", 0.0)
+
+        # 处理 extra 信息
+        extra = kwargs.get("extra", {})
+        import json
+        extra_json = json.dumps(extra) if extra else ""
 
         # 4. 创建 Order 记录（忠实记录用户请求的份额）
         order = Order(
@@ -378,8 +392,10 @@ class BacktestBroker(AbstractBroker):
             shares=shares,
             side=OrderSide.BUY,
             bid_type=BidType.MARKET if price == 0 else BidType.FIXED,
-            tm=order_time
+            tm=order_time,
+            extra=extra_json
         )
+        db.insert_order(order)
 
         # 5. 执行撮合
         try:
@@ -424,18 +440,18 @@ class BacktestBroker(AbstractBroker):
 
         # 成交时间点已涨停，不允许成交
         if up_limit > 0 and match_price >= up_limit:
-            logger.warning(f"资产 {order.asset} 在 {row['date']} 处于涨停，无法成交")
+            self.logger.warning(f"资产 {order.asset} 在 {row['date']} 处于涨停，无法成交")
             raise LimitPrice(order.asset, match_price)
 
         if bid_price > 0 and bid_price < match_price:
-            logger.warning(
+            self.logger.warning(
                 f"资产 {order.asset} 委托价 {bid_price} 低于撮合价 {match_price}，无法成交"
             )
             raise PriceNotMeet(order.asset, bid_price, match_price)
 
         required_cash = order.shares * bid_price * (1 + self._commission)
         if required_cash > self._cash:
-            logger.info(
+            self.logger.info(
                 f"委买失败：{order.asset}, 资金({self._cash:.2f})不足以按价格 {bid_price:.2f} 购买 {order.shares} 股。"
             )
             raise InsufficientCash(self._portfolio_name, required_cash, self._cash)
@@ -600,6 +616,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         _ = timeout
 
@@ -607,7 +624,7 @@ class BacktestBroker(AbstractBroker):
             raise BadPercent(percent)
 
         return await self.buy_amount(
-            asset, self._cash * percent, price, order_time, timeout
+            asset, self._cash * percent, price, order_time, timeout, **kwargs
         )
 
     async def buy_amount(
@@ -617,6 +634,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         _ = timeout
         assert order_time is not None, "order_time must be present in backtest mode"
@@ -640,7 +658,7 @@ class BacktestBroker(AbstractBroker):
             return TradeResult.empty()
 
         return await self.buy(
-            asset, shares, price, order_time, timeout
+            asset, shares, price, order_time, timeout, **kwargs
         )
 
     async def sell(
@@ -650,6 +668,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         _ = timeout
 
@@ -678,6 +697,11 @@ class BacktestBroker(AbstractBroker):
 
         self._validate_sell_shares(pos, shares)
 
+        # 处理 extra 信息
+        extra = kwargs.get("extra", {})
+        import json
+        extra_json = json.dumps(extra) if extra else ""
+
         # 4. 创建 Order 记录
         order = Order(
             portfolio_id=self._portfolio_id,
@@ -686,8 +710,10 @@ class BacktestBroker(AbstractBroker):
             shares=shares,
             side=OrderSide.SELL,
             bid_type=BidType.MARKET if price == 0 else BidType.FIXED,
-            tm=order_time
+            tm=order_time,
+            extra=extra_json
         )
+        db.insert_order(order)
 
         # 5. 执行撮合
         try:
@@ -835,6 +861,7 @@ class BacktestBroker(AbstractBroker):
         price: float = 0,
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
+        **kwargs,
     ) -> TradeResult:
         """按持仓百分比卖出"""
         _ = timeout
@@ -853,7 +880,7 @@ class BacktestBroker(AbstractBroker):
         shares = pos.avail * percent
 
         return await self.sell(
-            asset, shares, price, order_time, timeout
+            asset, shares, price, order_time, timeout, **kwargs
         )
 
     async def sell_amount(
@@ -864,6 +891,7 @@ class BacktestBroker(AbstractBroker):
         order_time: datetime.datetime | None = None,
         timeout: float = 0.5,
         method: Literal["ceil", "floor"] = "ceil",
+        **kwargs,
     ) -> TradeResult:
         _ = timeout
 
@@ -890,7 +918,7 @@ class BacktestBroker(AbstractBroker):
             return TradeResult.empty()
 
         return await self.sell(
-            asset, shares, est_price, order_time, timeout
+            asset, shares, est_price, order_time, timeout, **kwargs
         )
 
     async def trade_target_pct(

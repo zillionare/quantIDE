@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 import threading
 import time
 from typing import Any
@@ -11,7 +12,7 @@ from loguru import logger
 
 from pyqmt.core.enums import BrokerKind
 from pyqmt.core.errors import InsufficientPosition, NonMultipleOfLotSize
-from pyqmt.data.sqlite import Position, db
+from pyqmt.data.sqlite import Position, StrategyLog, db
 from pyqmt.service.base_broker import Broker
 
 
@@ -50,6 +51,36 @@ class AbstractBroker(Broker):
         if isinstance(dt, datetime.datetime):
             return dt.date()
         return dt
+
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """记录策略运行数据
+
+        Args:
+            key: 数据名称
+            value: 数据值
+            dt: 时间，如果未指定则尝试使用仿真时间，否则使用当前时间
+            extra: 额外信息
+        """
+        if dt is None:
+            # 尝试获取仿真时间，如果没有则使用系统时间
+            dt = datetime.datetime.now()
+
+        extra_str = json.dumps(extra) if extra else ""
+
+        log = StrategyLog(
+            portfolio_id=self._portfolio_id,
+            dt=dt,
+            key=key,
+            value=value,
+            extra=extra_str
+        )
+        db.insert_strategy_logs(log)
 
     @property
     def portfolio_name(self) -> str:

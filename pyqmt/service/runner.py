@@ -27,7 +27,9 @@ class BacktestRunner:
         if portfolio_id is None:
             portfolio_id = uuid.uuid4().hex
 
-        logger.info(f"Starting backtest for {strategy_cls.__name__} ({portfolio_id})")
+        # Use patched logger
+        self.logger = logger.bind(runner="BacktestRunner")
+        self.logger.info(f"Starting backtest for {strategy_cls.__name__} ({portfolio_id})")
 
         # 1. Init Broker
         # 使用 daily_bars 作为 data_feed
@@ -56,45 +58,52 @@ class BacktestRunner:
         elif interval == "5m":
             frame_type = FrameType.MIN5
 
-        for day in days:
-            # Day Open (09:30)
-            open_tm = calendar.replace_time(day, 9, 30)
-            broker.set_clock(open_tm)
-            await strategy.on_day_open()
+        try:
+            for day in days:
+                # Day Open (09:30)
+                open_tm = calendar.replace_time(day, 9, 30)
+                strategy._current_time = open_tm
+                broker.set_clock(open_tm)
+                await strategy.on_day_open(open_tm)
 
-            if interval == "1d":
-                # 日线模式：每天一次 on_bar (15:00)
-                bar_tm = calendar.replace_time(day, 15, 0)
-                broker.set_clock(bar_tm)
+                if interval == "1d":
+                    # 日线模式：每天一次 on_bar (15:00)
+                    bar_tm = calendar.replace_time(day, 15, 0)
+                    strategy._current_time = bar_tm
+                    broker.set_clock(bar_tm)
 
-                # 构建 quote: 获取当前持仓的最新价格
-                quote = {}
-                assets = list(broker.positions.keys())
-                if assets:
-                    # 获取当日收盘价
-                    df = daily_bars.get_bars_in_range(day, day, assets)
-                    if not df.is_empty():
-                        for row in df.iter_rows(named=True):
-                            quote[row['asset']] = {
-                                'lastPrice': row['close'],
-                                'volume': row['volume']
-                            }
+                    # 构建 quote: 获取当前持仓及关注标的(universe)的最新价格
+                    quote = {}
+                    universe = config.get("universe", [])
+                    assets = list(set(list(broker.positions.keys()) + universe))
 
-                await strategy.on_bar(bar_tm, quote, FrameType.DAY)
+                    if assets:
+                        # 获取当日收盘价
+                        df = daily_bars.get_bars_in_range(day, day, assets)
+                        if not df.is_empty():
+                            for row in df.iter_rows(named=True):
+                                quote[row['asset']] = {
+                                    'lastPrice': row['close'],
+                                    'volume': row['volume']
+                                }
 
-            else:
-                # 分钟线模式 (暂略，需遍历分钟)
-                pass
+                    await strategy.on_bar(bar_tm, quote, FrameType.DAY)
 
-            # Day Close (15:30 ? usually after market close)
-            close_tm = calendar.replace_time(day, 15, 30)
-            broker.set_clock(close_tm)
-            await strategy.on_day_close()
+                else:
+                    # 分钟线模式 (暂略，需遍历分钟)
+                    pass
 
-        await strategy.on_stop()
+                # Day Close (15:30 ? usually after market close)
+                close_tm = calendar.replace_time(day, 15, 30)
+                strategy._current_time = close_tm
+                broker.set_clock(close_tm)
+                await strategy.on_day_close(close_tm)
+
+        finally:
+            await strategy.on_stop()
         await broker.stop_backtest()
 
-        logger.info(f"Backtest finished: {portfolio_id}")
+        self.logger.info(f"Backtest finished: {portfolio_id}")
 
         # 4. Metrics
         stats = metrics(portfolio_id)
