@@ -241,9 +241,6 @@ class BacktestBroker(AbstractBroker):
             prices_df, on=["dt", "asset"], how="left"
         ).sort(["asset", "dt"])
 
-        # 调试输出
-        # print(f"DEBUG: fill_df before fill_null:\n{fill_df}")
-
         fill_df = fill_df.with_columns([
             pl.col("close").fill_null(strategy="forward").over("asset"),
             pl.col("factor").fill_null(strategy="forward").over("asset"),

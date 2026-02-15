@@ -1,4 +1,6 @@
 """交易模块页面"""
+from typing import Any
+
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
@@ -12,7 +14,7 @@ from pyqmt.web.layouts.main import MainLayout
 trade_app, rt = fast_app()
 
 
-def _get_registry(req) -> BrokerRegistry | None:
+def _get_registry(req) -> Any:
     return req.scope.get("registry")
 
 
@@ -537,7 +539,13 @@ def portfolio_detail(req, session, portfolio_id: str):
 def get_positions(req, portfolio_id: str):
     reg = _get_registry(req)
     broker = reg.get(BrokerKind.SIMULATION, portfolio_id) if reg else None
-    positions = list(broker.positions.values()) if broker and hasattr(broker, "positions") else []
+    positions = []
+    if broker and hasattr(broker, "positions"):
+        pos = broker.positions
+        if isinstance(pos, dict):
+            positions = list(pos.values())
+        else:
+            positions = list(pos)
     return PositionInfo(positions, portfolio_id)
 
 

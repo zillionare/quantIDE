@@ -286,7 +286,6 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         self.broker.on_sync_asset(
             asset.total_asset, asset.cash, asset.frozen_cash, asset.market_value
         )
-        # logger.info(asset.account_id, asset.cash, asset.total_asset)
 
     def on_stock_trade(self, trade: XtTrade):
         """
@@ -314,7 +313,6 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         :param order_error:XtOrderError 对象
         :return:
         """
-        # logger.info(f"on order_error callback {order_error}")
         logger.info(
             f"order_error {order_error.account_id}, {order_error.strategy_name}, {order_error.error_id}, {order_error.error_msg}"
         )
@@ -340,7 +338,6 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         """
         # todo: 需要向 UI 报告
         logger.info(f"on cancel_error callback {cancel_error}")
-        # logger.info(cancel_error.order_id, cancel_error.error_id, cancel_error.error_msg)
 
     def on_order_stock_async_response(self, response: XtOrderResponse) -> None:
         """
@@ -351,8 +348,6 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         order_id, seq = response.order_id, response.seq
         logger.info("on_order_stock_async_response {}, {}", order_id, seq)
         self.broker.awake(seq, order_id)
-
-        # logger.info(response.account_id, response.order_id, response.seq)
 
     def on_account_status(self, status):
         """

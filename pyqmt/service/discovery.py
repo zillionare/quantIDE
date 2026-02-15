@@ -65,7 +65,6 @@ class StrategyLoader:
                     self._strategies[name] = obj
                     logger.debug(f"Loaded strategy: {name} from {module_name}")
         except Exception as e:
-            # logger.error(f"Error importing {module_name}: {e}")
             # 不抛出异常，以免一个文件错误导致整个加载失败
             pass
 

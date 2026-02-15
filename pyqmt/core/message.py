@@ -110,6 +110,7 @@ class MessageHub:
             msg_content: 消息内容
         """
         try:
+            print(f"DEBUG: msg_hub publish {topic}")
             self._dispatch_queue.put_nowait((topic, msg_content))
         except Full:
             logger.warning(
@@ -119,29 +120,37 @@ class MessageHub:
 
     def _dispatch_loop(self):
         """后台分发线程主循环"""
-        while not self._stop_event.is_set():
-            try:
-                # 使用超时以便能够响应停止事件
-                topic, msg_content = self._dispatch_queue.get(timeout=0.1)
-            except Empty:
-                continue
+        logger.info("MessageHub dispatch loop started")
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    # 使用超时以便能够响应停止事件
+                    topic, msg_content = self._dispatch_queue.get(timeout=0.1)
+                except Empty:
+                    continue
 
-            try:
-                # 获取订阅者副本，减少锁持有时间
-                with self._lock:
-                    callbacks = self._subscribers.get(topic, []).copy()
+                print(f"DEBUG: dispatch {topic} to {len(self._subscribers.get(topic, []))} subscribers: {self._subscribers.get(topic, [])}")
 
-                if callbacks:
-                    for callback in callbacks:
-                        try:
-                            callback(msg_content)
-                        except Exception as e:
-                            logger.error(f"Error handling message {topic}: {e}")
-                else:
-                    # 如果没有订阅者，则存入对应的 pull 队列（保持原有逻辑）
-                    self._put_to_pull_queue(topic, msg_content)
-            finally:
-                self._dispatch_queue.task_done()
+                try:
+                    # 获取订阅者副本，减少锁持有时间
+                    with self._lock:
+                        callbacks = self._subscribers.get(topic, []).copy()
+
+                    if callbacks:
+                        for callback in callbacks:
+                            try:
+                                callback(msg_content)
+                            except Exception as e:
+                                logger.error(f"Error handling message {topic}: {e}")
+                    else:
+                        # 如果没有订阅者，则存入对应的 pull 队列（保持原有逻辑）
+                        self._put_to_pull_queue(topic, msg_content)
+                finally:
+                    self._dispatch_queue.task_done()
+        except Exception as e:
+            logger.exception(f"MessageHub dispatch loop crashed: {e}")
+        finally:
+            logger.info("MessageHub dispatch loop exited")
 
     def _put_to_pull_queue(self, topic: str, msg_content: Any):
         """将消息放入 pull 模式的队列中"""

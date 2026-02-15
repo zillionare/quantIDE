@@ -1,2 +1,3 @@
 1. 如果文件是 python 文件，文档使用 google 格式，但在 args 部分，参数名后面的类型可以省略，因为我们将使用 mkdocstrings 生成文档，它会从函数签名中提取类型信息。
 2. 优先 pyproject.toml 中指定的第三方库和版本。比如，指定了 loguru，就不要使用内置的logging.
+3. 当你运行 python 命令时，需要确保运行在 qmt这个虚拟环境下。该环境通过 conda activate qmt 激活。

@@ -1,4 +1,6 @@
 """实盘交易页面"""
+from typing import Any
+
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
@@ -11,7 +13,7 @@ from pyqmt.web.layouts.main import MainLayout
 live_app, rt = fast_app()
 
 
-def _get_registry(req) -> BrokerRegistry | None:
+def _get_registry(req) -> Any:
     return req.scope.get("registry")
 
 

@@ -11,10 +11,10 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 import redis
-from freezegun import freeze_time
 from testcontainers.redis import RedisContainer
 
 import pyqmt.service.livequote as lq_service
+import pyqmt.service.sim_broker
 from pyqmt.core.enums import OrderSide, OrderStatus, Topics
 from pyqmt.core.errors import (
     InsufficientCash,
@@ -32,10 +32,9 @@ from pyqmt.service.sim_broker import SimulationBroker
 @pytest.fixture(scope="module")
 def redis_container():
     """Start Redis container for testing."""
-    container = RedisContainer("redis:8")
-    container.start()
-    yield container
-    container.stop()
+    # Use context manager to ensure proper cleanup even if tests crash
+    with RedisContainer("redis:8") as container:
+        yield container
 
 @pytest.fixture
 def redis_client(redis_container):
@@ -62,7 +61,7 @@ def mock_config(redis_container):
     return config
 
 @pytest.fixture
-def broker(db, mock_config):
+def broker(db, mock_config, request):
     # Mock config
     with patch("pyqmt.config.cfg", mock_config), \
          patch("pyqmt.service.livequote.cfg", mock_config):
@@ -81,6 +80,9 @@ def broker(db, mock_config):
             # Wait for connection
             time.sleep(0.5)
 
+        # Track broker reference for cleanup
+        broker_ref = [None]
+
         # Patch the global live_quote in sim_broker and livequote modules
         # to ensure they use our new instance
         with patch("pyqmt.service.sim_broker.live_quote", lq), \
@@ -89,15 +91,25 @@ def broker(db, mock_config):
             # Create broker
             unique_id = f"test_sim_{uuid.uuid4().hex[:8]}"
             broker = SimulationBroker(unique_id, principal=100000)
+            broker_ref[0] = broker
+
+            def cleanup():
+                try:
+                    # Unsubscribe broker to prevent memory leak
+                    if hasattr(broker_ref[0], '_on_quote_update') and hasattr(broker_ref[0], '_on_limit_update'):
+                        msg_hub.unsubscribe(Topics.QUOTES_ALL.value, broker_ref[0]._on_quote_update)
+                        msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, broker_ref[0]._on_limit_update)
+                except Exception:
+                    pass  # Ignore cleanup errors
+
+                try:
+                    lq.stop()
+                except Exception:
+                    pass
+
+            request.addfinalizer(cleanup)
 
             yield broker
-
-        # Stop live_quote
-        lq.stop()
-
-        # Unsubscribe broker to prevent memory leak
-        msg_hub.unsubscribe(Topics.QUOTES_ALL.value, broker._on_quote_update)
-        msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, broker._on_limit_update)
 
 def publish_quote_to_redis(client, asset, price, volume=None, up_limit=None, down_limit=None, lq_instance=None):
     """Helper to publish quote to Redis."""
@@ -124,8 +136,19 @@ def publish_quote_to_redis(client, asset, price, volume=None, up_limit=None, dow
 
     packed = msgpack.packb(data)
     client.publish(Topics.QUOTES_ALL.value, packed)
-    # Wait for propagation
-    time.sleep(0.5)
+    # Wait for propagation - use shorter sleep time
+    time.sleep(0.1)
+
+@pytest.fixture(autouse=True)
+def run_around_tests():
+    """Ensure clean state for each test."""
+    # Setup
+    msg_hub._subscribers.clear()
+    _instances.clear()
+    yield
+    # Teardown
+    msg_hub._subscribers.clear()
+    _instances.clear()
 
 @pytest.mark.asyncio
 async def test_error_handling_scenarios(broker, redis_client):
@@ -173,7 +196,7 @@ async def test_order_cancellation(broker, redis_client):
     publish_quote_to_redis(redis_client, asset, 10.0, up_limit=11.0, down_limit=9.0)
 
     # Place limit buy at 9.0 (won't fill)
-    task = asyncio.create_task(broker.buy(asset, 100, price=9.0, timeout=5.0))
+    task = asyncio.create_task(broker.buy(asset, 100, price=9.0, timeout=2.0))
     await asyncio.sleep(0.1)
 
     order = broker._active_orders[asset][0]
@@ -191,14 +214,14 @@ async def test_order_cancellation(broker, redis_client):
 
     # Test cancel_all_orders by side
     # Place buy and sell orders
-    task_buy = asyncio.create_task(broker.buy(asset, 100, price=9.0, timeout=5.0))
+    task_buy = asyncio.create_task(broker.buy(asset, 100, price=9.0, timeout=2.0))
 
     # Need position to sell
     broker._positions[asset] = Position(
         portfolio_id=broker.portfolio_id, dt=datetime.date.today(), asset=asset,
         shares=100, price=10.0, avail=100, mv=1000, profit=0
     )
-    task_sell = asyncio.create_task(broker.sell(asset, 100, price=11.0, timeout=5.0))
+    task_sell = asyncio.create_task(broker.sell(asset, 100, price=11.0, timeout=2.0))
     await asyncio.sleep(0.1)
 
     # Cancel BUY only
@@ -324,13 +347,13 @@ async def test_boundary_conditions(broker, redis_client):
     # buy -> est_price=0 -> ...
     # _try_match checks last_price <= 0 -> return 0.0
 
-    task = asyncio.create_task(broker.buy(asset, 100, price=0.0, timeout=1.0))
+    task = asyncio.create_task(broker.buy(asset, 100, price=0.0, timeout=2.0))
     res = await task
     assert len(res.trades) == 0
 
     # Negative price (shouldn't happen in reality but good to test)
     publish_quote_to_redis(redis_client, asset, -10.0)
-    task = asyncio.create_task(broker.buy(asset, 100, price=0.0, timeout=1.0))
+    task = asyncio.create_task(broker.buy(asset, 100, price=0.0, timeout=2.0))
     res = await task
     assert len(res.trades) == 0
 
@@ -343,7 +366,7 @@ async def test_match_price_condition(broker, redis_client):
     publish_quote_to_redis(redis_client, asset, 12.0, up_limit=13.0, down_limit=9.0)
 
     # Place buy order at 10.0. Current market 12.0 > 10.0, should NOT fill.
-    task = asyncio.create_task(broker.buy(asset, 200, price=10.0, timeout=2.0))
+    task = asyncio.create_task(broker.buy(asset, 200, price=10.0, timeout=1.0))
     await asyncio.sleep(0.1)
 
     # Push quote 11.0 (still > 10.0)
@@ -539,7 +562,7 @@ async def test_synthetic_intraday_simulation(broker, redis_client):
 
     # User places a Limit Buy Order at 9.9
     # Current price is 10.0, so it should NOT fill yet
-    buy_task = asyncio.create_task(broker.buy(asset, 1000, price=9.9, timeout=5.0))
+    buy_task = asyncio.create_task(broker.buy(asset, 1000, price=9.9, timeout=2.0))  # Reduced from 5.0 to 2.0
     await asyncio.sleep(0.1)
 
     # Verify not filled
@@ -575,7 +598,7 @@ async def test_synthetic_intraday_simulation(broker, redis_client):
 
     broker._positions[asset].avail = 1000 # Hack T+1 to T+0 for testing
 
-    sell_task = asyncio.create_task(broker.sell(asset, 500, price=10.1, timeout=2.0))
+    sell_task = asyncio.create_task(broker.sell(asset, 500, price=10.1, timeout=1.0))  # Reduced from 2.0 to 1.0
 
     # Since quote is already 10.2, the order might match immediately upon next quote update
     # OR if broker logic matches on arrival (if we had quote cache).
@@ -653,7 +676,7 @@ async def test_day_close_cancels_active_orders(broker, redis_client):
 
     # 2. Case 1: Fully unfilled order
     # Place a limit buy at 9.0 (below market 10.0), won't fill
-    task1 = asyncio.create_task(broker.buy(asset, 1000, price=9.0, timeout=5.0))
+    task1 = asyncio.create_task(broker.buy(asset, 1000, price=9.0, timeout=2.0))  # Reduced from 5.0 to 2.0
     await asyncio.sleep(0.1)
 
     # Verify order is active
@@ -686,7 +709,7 @@ async def test_day_close_cancels_active_orders(broker, redis_client):
     publish_quote_to_redis(redis_client, asset, 10.0)
 
     # Place limit buy at 10.0
-    task2 = asyncio.create_task(broker.buy(asset, 1000, price=10.0, timeout=5.0))
+    task2 = asyncio.create_task(broker.buy(asset, 1000, price=10.0, timeout=2.0))  # Reduced from 5.0 to 2.0
     await asyncio.sleep(0.1)
 
     # Fill 500 shares (half)
@@ -736,6 +759,7 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
         _instances.clear()
         lq = LiveQuote()
         lq.start()
+
         # Ensure SimBroker uses this lq instance
         with patch("pyqmt.service.sim_broker.live_quote", lq):
 
@@ -749,7 +773,7 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             day0 = datetime.date(2022, 12, 31) # Initial setup day
 
             # Create broker
-            with freeze_time(day0):
+            with patch("pyqmt.service.sim_broker.SimulationBroker._get_today", return_value=day0):
                 broker = SimulationBroker.create(
                     portfolio_id=portfolio_id,
                     principal=100_000,
@@ -764,18 +788,21 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             day1 = datetime.date(2023, 1, 1)
 
             # Patch at class level to cover async trade updates
-            with freeze_time(day1):
+            with patch("pyqmt.service.sim_broker.SimulationBroker._get_today", return_value=day1):
                 # Publish initial quote
-                publish_quote_to_redis(redis_client, asset_code, 10.0, up_limit=11.0, down_limit=9.0)
+                publish_quote_to_redis(redis_client, asset_code, 10.0, up_limit=11.0, down_limit=9.0, lq_instance=lq)
 
                 # Buy 1000 shares @ 10.0
-                task = asyncio.create_task(broker.buy(asset_code, 1000, price=10.0, timeout=2.0))
+                task = asyncio.create_task(broker.buy(asset_code, 1000, price=10.0, timeout=1.0))
                 await asyncio.sleep(0.1)
 
                 # Push quote to trigger match
-                publish_quote_to_redis(redis_client, asset_code, 10.0, volume=2000) # Enough volume
+                # print("DEBUG: Publishing trigger quote...")
+                publish_quote_to_redis(redis_client, asset_code, 10.0, volume=2000, lq_instance=lq) # Enough volume
+                await asyncio.sleep(0.5)
 
-                res = await task
+                res = await asyncio.wait_for(task, timeout=5.0)
+
                 assert len(res.trades) == 1
                 assert broker.positions[0].shares == 1000
                 # Cash should decrease: 100,000 - 10,000 - fee
@@ -784,7 +811,7 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
 
                 # Place an unfilled order (Limit too low)
                 # Buy @ 9.0 (Market 10.0)
-                task_unfilled = asyncio.create_task(broker.buy(asset_code, 100, price=9.0, timeout=2.0))
+                task_unfilled = asyncio.create_task(broker.buy(asset_code, 100, price=9.0, timeout=1.0))
                 await asyncio.sleep(0.1)
                 # Don't publish price drop, so it remains active
                 assert len(broker._active_orders[asset_code]) > 0
@@ -809,9 +836,13 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             # Phase 3: Restart (Load Account)
             # ==========================================
             print("\n>>> Phase 3: Restart (Load Account)")
+            # Keep references to broker's callbacks for proper cleanup later
+            quote_callback = broker._on_quote_update
+            limit_callback = broker._on_limit_update
+
             # Simulate process restart: destroy broker instance
-            msg_hub.unsubscribe(Topics.QUOTES_ALL.value, broker._on_quote_update)
-            msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, broker._on_limit_update)
+            msg_hub.unsubscribe(Topics.QUOTES_ALL.value, quote_callback)
+            msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, limit_callback)
             del broker
 
             # Load broker
@@ -822,7 +853,7 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             # So we should patch SimulationBroker._get_today at class level or use a context manager?
             # Creating an instance will use the real method unless patched on the class.
 
-            with freeze_time(day1):
+            with patch("pyqmt.service.sim_broker.SimulationBroker._get_today", return_value=day1):
                  # Load checks for today's position if exists.
                  # We want it to load the state.
                  broker = SimulationBroker.load(portfolio_id)
@@ -845,14 +876,14 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             # are hard to patch per-call.
             # BETTER: Patch the CLASS method for the duration of the phase.
 
-            with freeze_time(day2):
+            with patch("pyqmt.service.sim_broker.SimulationBroker._get_today", return_value=day2):
                 # Publish quote 11.0
-                publish_quote_to_redis(redis_client, asset_code, 11.0, up_limit=12.0, down_limit=10.0)
+                publish_quote_to_redis(redis_client, asset_code, 11.0, up_limit=12.0, down_limit=10.0, lq_instance=lq)
 
                 # Sell 500 shares @ 11.0
-                task_sell = asyncio.create_task(broker.sell(asset_code, 500, price=11.0, timeout=2.0))
+                task_sell = asyncio.create_task(broker.sell(asset_code, 500, price=11.0, timeout=1.0))
                 await asyncio.sleep(0.1)
-                publish_quote_to_redis(redis_client, asset_code, 11.0, volume=1000)
+                publish_quote_to_redis(redis_client, asset_code, 11.0, volume=1000, lq_instance=lq)
 
                 res_sell = await task_sell
                 assert len(res_sell.trades) == 1
@@ -876,7 +907,7 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             day3 = datetime.date(2023, 1, 3)
 
             # Just day close, maybe price dropped to 10.0
-            with freeze_time(day3):
+            with patch("pyqmt.service.sim_broker.SimulationBroker._get_today", return_value=day3):
                 await broker.on_day_close(close_prices={asset_code: 10.0})
 
             asset_record_3 = db.get_asset(dt=day3, portfolio_id=portfolio_id)
@@ -907,8 +938,8 @@ async def test_sim_broker_full_lifecycle(redis_client, mock_config, db):
             assert "Sharpe" in stats.index or "Sharpe Ratio" in stats.index or "Sharpe" in str(stats.index)
             # Note: quantstats output format depends on 'mode'. 'full' returns a DataFrame.
 
-            # Cleanup
-            msg_hub.unsubscribe(Topics.QUOTES_ALL.value, broker._on_quote_update)
-            msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, broker._on_limit_update)
+            # Cleanup - use the stored references to unsubscribe
+            msg_hub.unsubscribe(Topics.QUOTES_ALL.value, quote_callback)
+            msg_hub.unsubscribe(Topics.STOCK_LIMIT.value, limit_callback)
 
         lq.stop()

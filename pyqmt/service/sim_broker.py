@@ -64,8 +64,6 @@ class SimulationBroker(AbstractBroker):
         # 缓存订单的成交记录，用于在完全成交或取消时返回完整结果
         self._order_trades: dict[str, list[Trade]] = defaultdict(list)
 
-        self._lock = threading.Lock()
-
         self._market_value_update_interval = market_value_update_interval
         self._last_mv_update_time = 0.0
 
@@ -84,6 +82,7 @@ class SimulationBroker(AbstractBroker):
         commission: float = 1e-4,
         portfolio_name: str = "simulation",
         info: str = "",
+        market_value_update_interval: float = 10.0,
     ) -> "SimulationBroker":
         """创建新的 SimulationBroker 实例。
 
@@ -95,11 +94,11 @@ class SimulationBroker(AbstractBroker):
             commission: 佣金费率
             portfolio_name: 账户名称
             info: 账户描述信息
+            market_value_update_interval: 持仓市值更新间隔（秒），默认10秒
 
         Returns:
             SimulationBroker 实例
         """
-        # Check if portfolio exists
         pf = db.get_portfolio(portfolio_id)
         if pf:
             raise RuntimeError(f"Portfolio {portfolio_id} already exists. Use load().")
@@ -110,6 +109,7 @@ class SimulationBroker(AbstractBroker):
             commission=commission,
             portfolio_name=portfolio_name,
             info=info,
+            market_value_update_interval=market_value_update_interval,
         )
 
         return broker
@@ -168,6 +168,17 @@ class SimulationBroker(AbstractBroker):
                     f"Data Inconsistency: Portfolio {self.portfolio_id} exists but has no asset records. Please clean up the database."
                 )
 
+    def _get_today(self) -> datetime.date:
+        """获取当前日期。
+
+        设计意图：
+        虽然可以直接使用 datetime.date.today()，但在测试场景中，我们经常需要模拟“过去”或“未来”的时间点
+        来验证跨日逻辑（如持仓结算、隔夜单处理）。使用 freezegun 等库 mock 底层时间模块容易导致
+        asyncio、Redis 客户端等依赖时间的组件出现死锁或行为异常。
+        因此，这里封装一个专用的方法，以便在测试中通过 patch 简单安全地 mock 日期，而不影响系统其他部分。
+        """
+        return datetime.date.today()
+
     def _init_or_sync_state(self):
         """初始化或同步账户状态。
 
@@ -188,7 +199,7 @@ class SimulationBroker(AbstractBroker):
             pf = Portfolio(
                 portfolio_id=self.portfolio_id,
                 kind=BrokerKind.SIMULATION,
-                start=datetime.date.today(),
+                start=self._get_today(),
                 name=self.portfolio_name,
                 info=self.info,
                 status=True,
@@ -202,7 +213,7 @@ class SimulationBroker(AbstractBroker):
             # 初始化资产
             asset = Asset(
                 portfolio_id=self.portfolio_id,
-                dt=datetime.date.today(),
+                dt=self._get_today(),
                 principal=self._principal,
                 cash=self._principal,
                 frozen_cash=0,
@@ -250,23 +261,24 @@ class SimulationBroker(AbstractBroker):
 
         本方法将在 MessageHub 线程中运行。更新持仓市值，并尝试撮合待处理订单。
         """
-        # 这里的 data 是 {asset: quote_info}
-        # 在 MessageHub 线程中运行
-        with self._lock:
-            self._update_positions_market_value(data)
+        try:
+            with self._lock:
+                self._update_positions_market_value(data)
 
-            if not self._active_orders:
-                return
+                if not self._active_orders:
+                    return
 
-            traded_assets = set()
-            # 遍历所有待处理订单的资产
-            # 使用 list() 复制 keys，因为可能会在迭代中修改字典
-            for asset in list(self._active_orders.keys()):
-                if asset in data:
-                    self._match_orders_for_asset(asset, data[asset], traded_assets)
+                traded_assets = set()
+                # 遍历所有待处理订单的资产
+                # 使用 list() 复制 keys，因为可能会在迭代中修改字典
+                for asset in list(self._active_orders.keys()):
+                    if asset in data:
+                        self._match_orders_for_asset(asset, data[asset], traded_assets)
 
-            if traded_assets:
-                self._persist_updates(traded_assets)
+                if traded_assets:
+                    self._persist_updates(traded_assets)
+        except Exception as e:
+            logger.exception(e)
 
     def _update_positions_market_value(self, data: dict):
         """更新内存中的持仓市值 (仅用于内存计算，不触发写库)。
@@ -358,27 +370,31 @@ class SimulationBroker(AbstractBroker):
 
     def _persist_updates(self, traded_assets: set):
         """持久化持仓和资产信息。"""
-        today = datetime.date.today()
+        try:
+            today = self._get_today()
 
-        # 1. 持久化 Positions
-        to_upsert = [self._positions[a] for a in traded_assets]
-        for p in to_upsert:
-            p.dt = today
-        db.upsert_positions(to_upsert)
+            # 1. 持久化 Positions
+            to_upsert = [self._positions[a] for a in traded_assets]
+            for p in to_upsert:
+                p.dt = today
+            db.upsert_positions(to_upsert)
 
-        # 2. 持久化 Asset (Cash)
-        # 计算当前总市值
-        market_value = sum(p.mv for p in self._positions.values())
-        asset = Asset(
-            portfolio_id=self.portfolio_id,
-            dt=today,
-            principal=self._principal,
-            cash=self._cash,
-            frozen_cash=0, # 简化处理，暂不追踪冻结资金
-            market_value=market_value,
-            total=self._cash + market_value
-        )
-        db.upsert_asset(asset)
+            # 2. 持久化 Asset (Cash)
+            # 计算当前总市值
+            market_value = sum(p.mv for p in self._positions.values())
+            asset = Asset(
+                portfolio_id=self.portfolio_id,
+                dt=today,
+                principal=self._principal,
+                cash=self._cash,
+                frozen_cash=0, # 简化处理，暂不追踪冻结资金
+                market_value=market_value,
+                total=self._cash + market_value
+            )
+            db.upsert_asset(asset)
+        except Exception as e:
+            logger.exception(f"ERROR in _persist_updates: {e}")
+            raise
 
     def _try_match(self, order: Order, quote: dict, available_shares_limit: float = float('inf')) -> tuple[float, Trade | None]:
         """尝试撮合单个订单。
@@ -471,7 +487,7 @@ class SimulationBroker(AbstractBroker):
         Args:
             trade: 成交记录
         """
-        today = datetime.date.today()
+        today = self._get_today()
 
         if trade.side == OrderSide.BUY:
             self._cash -= (trade.amount + trade.fee)
@@ -566,6 +582,7 @@ class SimulationBroker(AbstractBroker):
             self._active_orders[asset].append(order)
 
         # 4. 等待结果
+        # 使用父类 AbstractBroker 的 wait 方法，它会返回 (result, cost_time)
         res, _ = await self.wait(order.qtoid, timeout)
 
         if res is None:
@@ -932,8 +949,12 @@ class SimulationBroker(AbstractBroker):
         # 盘后自动撤单
         await self.cancel_all_orders()
 
+        # 清理可能残留的 early results
+        if hasattr(self, "_early_results"):
+            self._early_results.clear()
+
         with self._lock:
-            today = datetime.date.today()
+            today = self._get_today()
 
             # Sync positions with latest prices
             snapshot_positions = []

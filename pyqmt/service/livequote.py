@@ -93,17 +93,21 @@ class LiveQuote:
             raise RuntimeError("Redis client is not configured")
 
         def redis_listener():
-            pubsub = self._redis_client.pubsub()  # type: ignore
+            try:
+                pubsub = self._redis_client.pubsub()  # type: ignore
 
-            # 订阅全推行情频道
-            channels = [Topics.QUOTES_ALL.value, Topics.STOCK_LIMIT.value]
-            pubsub.subscribe(*channels)
-            logger.info("Subscribed to Redis channels: {}", channels)
+                # 订阅全推行情频道
+                channels = [Topics.QUOTES_ALL.value, Topics.STOCK_LIMIT.value]
+                pubsub.subscribe(*channels)
+                logger.info(f"Subscribed to Redis channels: {channels}")
 
-            for message in pubsub.listen():
-                # 过滤掉 logistic message，比如订阅成功
-                if message["type"] == "message":
-                    self._on_redis_message(message["channel"], message["data"])
+                for item in pubsub.listen():
+                    if item["type"] == "message":
+                        self._on_redis_message(item["channel"], item["data"])
+            except Exception as e:
+                logger.exception(f"Redis listener crashed: {e}")
+            finally:
+                logger.info("Redis listener exited")
 
         thread = threading.Thread(
             target=redis_listener, name="RedisQuoteListener", daemon=True

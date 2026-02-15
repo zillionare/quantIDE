@@ -41,6 +41,8 @@ class AbstractBroker(Broker):
 
         # 超时等待队列，用来实现带超时的交易
         self._pending_txs: dict[Any, Any] = {}
+        # 缓存尚未被wait的早期结果
+        self._early_results: dict[Any, Any] = {}
         self._lock = threading.RLock()
 
     def as_date(self, dt: datetime.date | datetime.datetime) -> datetime.date:
@@ -103,11 +105,15 @@ class AbstractBroker(Broker):
             result: 事件结果。如果超时，则为 None
             remaining_time: 剩余时间，单位秒。如果超时，则为 0
         """
-        if event_id in self._pending_txs:
-            logger.warning("duplicate event_id: {}, overwritten.", event_id)
-
-        _future = asyncio.get_running_loop().create_future()
         with self._lock:
+            # Check if result already arrived
+            if event_id in self._early_results:
+                return self._early_results.pop(event_id), 0.0
+
+            if event_id in self._pending_txs:
+                logger.warning("duplicate event_id: {}, overwritten.", event_id)
+
+            _future = asyncio.get_running_loop().create_future()
             self._pending_txs[event_id] = _future
 
         try:
@@ -134,4 +140,5 @@ class AbstractBroker(Broker):
                     if not loop.is_closed():
                         loop.call_soon_threadsafe(future.set_result, result)
             else:
-                logger.warning("event_id not found: {}", event_id)
+                # Store for later
+                self._early_results[event_id] = result
