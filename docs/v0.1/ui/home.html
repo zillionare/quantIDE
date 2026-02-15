@@ -37,7 +37,7 @@
                     <a href="#" class="px-4 py-2 text-blue-600 dark:text-blue-400 font-medium border-b-2 border-blue-600 dark:border-blue-400">
                         首页
                     </a>
-                    <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
+                    <a href="livetrade-default.html" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
                         交易
                     </a>
                     <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
@@ -70,10 +70,10 @@
                     </svg>
                 </button>
 
-                <!-- 用户头像 -->
+                <!-- 用户头像 + 账号选择 -->
                 <div class="flex items-center">
-                    <div class="relative">
-                        <button class="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                    <div class="relative" id="user-menu">
+                        <button onclick="toggleUserMenu()" class="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                             <div class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">
                                 张
                             </div>
@@ -82,8 +82,53 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                             </svg>
                         </button>
+                        <!-- 下拉菜单 -->
+                        <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                            <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+                                <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">当前账号</div>
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-yellow-500">★</span>
+                                        <span class="text-sm font-medium text-gray-900 dark:text-white">华泰证券(实盘)</span>
+                                    </div>
+                                    <span class="text-xs text-green-500">已连接</span>
+                                </div>
+                            </div>
+                            <div class="p-2 border-b border-gray-200 dark:border-gray-700">
+                                <div class="text-xs text-gray-500 dark:text-gray-400 px-2 py-1">切换账号</div>
+                                <button onclick="switchAccount('sim1')" class="w-full flex items-center space-x-2 px-2 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                    <span class="text-sm text-gray-700 dark:text-gray-300">仿真账号A</span>
+                                    <span class="text-xs text-gray-400">仿真</span>
+                                </button>
+                                <button onclick="switchAccount('sim2')" class="w-full flex items-center space-x-2 px-2 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                    <span class="text-sm text-gray-700 dark:text-gray-300">仿真账号B</span>
+                                    <span class="text-xs text-gray-400">仿真</span>
+                                </button>
+                            </div>
+                            <div class="p-2">
+                                <a href="account.html" class="block px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">账号管理</a>
+                                <a href="#" class="block px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">退出登录</a>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                <script>
+                function toggleUserMenu() {
+                    const dropdown = document.getElementById('user-dropdown');
+                    dropdown.classList.toggle('hidden');
+                }
+                function switchAccount(accountId) {
+                    console.log('切换账号:', accountId);
+                    document.getElementById('user-dropdown').classList.add('hidden');
+                }
+                document.addEventListener('click', function(e) {
+                    const menu = document.getElementById('user-menu');
+                    const dropdown = document.getElementById('user-dropdown');
+                    if (!menu.contains(e.target)) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
+                </script>
             </div>
         </div>
     </header>
@@ -107,55 +152,19 @@
                         </button>
                     </div>
 
-                    <!-- 菜单项 2 - 仿真交易 -->
+                    <!-- 菜单项 2 -->
                     <div>
-                        <button class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <a href="account.html" class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                             <div class="flex items-center space-x-3">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                                 </svg>
-                                <span>仿真交易</span>
+                                <span>账号管理</span>
                             </div>
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
-                        </button>
-                        <!-- 子菜单 -->
-                        <div class="ml-8 mt-1 space-y-1">
-                            <a href="#" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                                账户列表
-                            </a>
-                            <a href="#" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                                创建账户
-                            </a>
-                        </div>
+                        </a>
                     </div>
 
-                    <!-- 菜单项 3 - 实盘交易 -->
-                    <div>
-                        <button class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                            <div class="flex items-center space-x-3">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                                </svg>
-                                <span>实盘交易</span>
-                            </div>
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
-                        </button>
-                        <!-- 子菜单 -->
-                        <div class="ml-8 mt-1 space-y-1">
-                            <a href="#" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                                账户列表
-                            </a>
-                            <a href="#" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                                创建账户
-                            </a>
-                        </div>
-                    </div>
-
-                    <!-- 菜单项 4 -->
+                    <!-- 菜单项 3 -->
                     <div>
                         <button class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                             <div class="flex items-center space-x-3">
