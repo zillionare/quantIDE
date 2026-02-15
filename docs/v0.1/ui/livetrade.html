@@ -252,27 +252,26 @@
                     <!-- 左边：下单输入区（2/5） -->
                     <div class="col-span-2 space-y-3">
                         <!-- a. 代码输入框 -->
-                        <div>
-                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">股票代码</label>
-                            <input type="text" id="stock-code-input" placeholder="输入股票代码、名称或拼音"
-                                class="w-full px-3 py-2 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
+                        <div class="flex items-center">
+                            <label class="w-16 text-sm font-medium text-gray-700 dark:text-gray-300">代码</label>
+                            <input type="text" id="stock-code-input" placeholder="输入代码/名称/拼音"
+                                class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white">
                         </div>
 
 
                         <!-- c. 价格输入区 -->
-                        <div>
-                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                价格 <span class="text-xs text-gray-500 dark:text-gray-400">(实时: <span id="realtime-price">0.00</span>)</span>
-                            </label>
+                        <div class="flex items-center">
+                            <label class="w-16 text-sm font-medium text-gray-700 dark:text-gray-300">价格</label>
                             <input type="text" id="price-input" value="0.00"
-                                class="w-full px-3 py-2 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white text-right text-lg font-medium">
+                                class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white text-right text-lg font-medium">
                         </div>
 
-                        <!-- d. 委买金额输入框 -->
-                        <div>
-                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">金额 <span class="text-xs text-gray-500">(万元)</span></label>
+                        <!-- d. 金额输入框 -->
+                        <div class="flex items-center">
+                            <label class="w-16 text-sm font-medium text-gray-700 dark:text-gray-300">金额</label>
                             <input type="text" id="amount-input" value="0"
-                                class="w-full px-3 py-2 mt-1 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white text-right text-lg font-medium">
+                                class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 dark:bg-gray-700 dark:text-white text-right text-lg font-medium">
+                            <span class="ml-2 text-xs text-gray-500">万元</span>
                         </div>
 
                         <!-- e. 仓位选择 -->
@@ -299,28 +298,23 @@
 
                     <!-- 中间列：价格快捷输入区（1/5） -->
                     <div class="space-y-2">
-                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">价格快捷</label>
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">快捷价格</label>
+                            <span class="text-xs text-gray-500 dark:text-gray-400">实时: <span id="realtime-price" class="font-medium text-gray-700 dark:text-gray-300">0.00</span></span>
+                        </div>
                         <div class="grid grid-cols-3 gap-1">
-                            <!-- 第一列：1%到10% -->
+                            <!-- 第一列：1%到涨停 -->
                             <div class="space-y-1">
-                                <button onclick="adjustPrice(1)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+1%</button>
-                                <button onclick="adjustPrice(2)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+2%</button>
-                                <button onclick="adjustPrice(3)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+3%</button>
-                                <button onclick="adjustPrice(4)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+4%</button>
-                                <button onclick="adjustPrice(5)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+5%</button>
-                                <button onclick="adjustPrice(6)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+6%</button>
-                                <button onclick="adjustPrice(7)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+7%</button>
-                                <button onclick="adjustPrice(8)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+8%</button>
-                                <button onclick="adjustPrice(9)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+9%</button>
-                                <button onclick="adjustPrice(10)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">+10%</button>
+                                <button onclick="adjustPrice(1)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">1%</button>
+                                <button onclick="adjustPrice(2)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">2%</button>
+                                <button onclick="adjustPrice(3)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">3%</button>
+                                <button onclick="adjustPrice(4)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">4%</button>
+                                <button onclick="adjustPrice(5)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">5%</button>
+                                <button onclick="adjustPrice(10)" class="w-full px-1 py-1.5 text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-800 font-medium">涨停</button>
                             </div>
-                            <!-- 第二列：-10%到-1% -->
+                            <!-- 第二列：跌停到-1% -->
                             <div class="space-y-1">
-                                <button onclick="adjustPrice(-10)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-10%</button>
-                                <button onclick="adjustPrice(-9)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-9%</button>
-                                <button onclick="adjustPrice(-8)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-8%</button>
-                                <button onclick="adjustPrice(-7)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-7%</button>
-                                <button onclick="adjustPrice(-6)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-6%</button>
+                                <button onclick="adjustPrice(-10)" class="w-full px-1 py-1.5 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 font-medium">跌停</button>
                                 <button onclick="adjustPrice(-5)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-5%</button>
                                 <button onclick="adjustPrice(-4)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-4%</button>
                                 <button onclick="adjustPrice(-3)" class="w-full px-1 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 font-medium">-3%</button>
