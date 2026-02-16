@@ -6,11 +6,12 @@ from pyqmt.data.models.stocks import stock_list
 from pyqmt.data.sqlite import db
 
 
-def init_data(home: str | Path) -> None:
+def init_data(home: str | Path, init_db: bool = True) -> None:
     """初始化数据层对象：stocklist、calendar、daily_bars，并进行模块级导出。
 
     Args:
         home (str | Path | None): 指定Alpha的主目录。
+        init_db (bool): 是否初始化数据库。默认为True。
 
     Returns:
         tuple[StockList, Calendar, DailyBars, SQLiteDB]: 依次返回 stocklist, calendar, daily_bars, db
@@ -35,4 +36,5 @@ def init_data(home: str | Path) -> None:
 
     daily_bars.connect(str(daily_bars_path), str(calendar_path))
 
-    db.init(db_path)
+    if init_db:
+        db.init(db_path)

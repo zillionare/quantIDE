@@ -4,6 +4,7 @@ from fasthtml.common import fast_app
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from pyqmt.config import cfg, get_config_dir, init_config
+from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import TradeError, TradeErrors
 from pyqmt.data import init_data
 from pyqmt.data.sqlite import Asset
@@ -480,7 +481,7 @@ async def run_backtest_job(req):
             config=config,
             start_date=start,
             end_date=end,
-            interval=interval,
+            frame_type=FrameType(interval),
             initial_cash=initial_cash,
             portfolio_id=portfolio_id
         )

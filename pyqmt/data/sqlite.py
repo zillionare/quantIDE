@@ -578,6 +578,45 @@ class SQLiteDB:
 
         self["strategy_logs"].insert_all([log.to_dict() for log in logs], ignore=True)  # type: ignore
 
+    def get_strategy_logs(
+        self, portfolio_id: str | None = None, start: datetime.date | None = None, end: datetime.date | None = None
+    ) -> pl.DataFrame:
+        """获取策略日志
+
+        Args:
+            portfolio_id: 组合 ID
+            start: 开始日期
+            end: 结束日期
+
+        Returns:
+            策略日志 DataFrame
+        """
+        where_clauses = []
+        params = []
+
+        if portfolio_id:
+            where_clauses.append("portfolio_id = ?")
+            params.append(portfolio_id)
+        if start:
+            where_clauses.append("dt >= ?")
+            params.append(start)
+        if end:
+            where_clauses.append("dt <= ?")
+            params.append(end)
+
+        where = " AND ".join(where_clauses) if where_clauses else None
+
+        if where:
+            rows = self["strategy_logs"].rows_where(where, params)
+        else:
+            rows = self["strategy_logs"].rows
+
+        df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return pl.DataFrame()
+
+        return df.with_columns(pl.col("dt").cast(pl.Datetime))
+
     def get_trade(self, tid: str) -> Trade | None:
         """根据 tid 获取成交
 

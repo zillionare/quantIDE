@@ -220,7 +220,7 @@ async def test_backtest_logging_and_annotations(caplog, db, mock_calendar, mock_
                     config={"universe": ["000001.SZ"]},
                     start_date=start_date,
                     end_date=end_date,
-                    interval="1d",
+                    frame_type=FrameType.DAY,
                     initial_cash=100000
                 )
 
