@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略列表 - 匡醍</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.0.0/dist/css/core.min.css">
+    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@2.0.0/dist/js/core.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'selector',
+        }
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <div class="max-w-[1400px] mx-auto">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 h-16 sticky top-0 z-50">
+            <div class="h-full flex items-center justify-between px-4">
+                <div class="flex items-center space-x-3">
+                    <img src="/static/logo.png" alt="Logo" class="h-8 w-8 rounded">
+                    <span class="text-xl font-bold text-gray-900 dark:text-white">匡醍</span>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <nav class="flex items-center space-x-1">
+                        <a href="home.html" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">首页</a>
+                        <a href="livetrade-default.html" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">交易</a>
+                        <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">行情</a>
+                        <a href="strategy-list.html" class="px-4 py-2 text-blue-600 dark:text-blue-400 font-medium border-b-2 border-blue-600 dark:border-blue-400">策略</a>
+                        <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">分析</a>
+                    </nav>
+                    <div class="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+                    <button class="relative p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                        <span class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                        <div class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">张</div>
+                        <span class="text-sm text-gray-700 dark:text-gray-300">张三</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 fixed left-0 top-16 bottom-0 overflow-y-auto">
+                <div class="p-4">
+                    <nav class="space-y-1">
+                        <div>
+                            <a href="strategy-list.html" class="w-full flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                    </svg>
+                                    <span>策略列表</span>
+                                </div>
+                            </a>
+                        </div>
+                        <div>
+                            <button onclick="toggleReportMenu()" class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                    </svg>
+                                    <span>回测报告</span>
+                                </div>
+                                <svg id="report-arrow" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                            <div id="report-submenu" class="hidden ml-8 mt-1 space-y-1">
+                                <a href="backtest-report.html" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">收益概述</a>
+                                <a href="backtest-report.html#trades" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">交易详情</a>
+                                <a href="backtest-report.html#positions" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">每日持仓&收益</a>
+                                <a href="backtest-report.html#logs" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">日志输出</a>
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 ml-64 p-6">
+                <div class="mb-4">
+                    <nav class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                        <a href="home.html" class="hover:text-blue-600 dark:hover:text-blue-400">首页</a>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        <a href="strategy-list.html" class="hover:text-blue-600 dark:hover:text-blue-400">策略</a>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        <span class="text-gray-900 dark:text-white font-medium">策略列表</span>
+                    </nav>
+                </div>
+
+                <!-- 策略列表 -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+                    <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">策略列表</h2>
+                        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            <span>新建策略</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left text-sm text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                    <th class="px-6 py-3 font-medium w-20">操作</th>
+                                    <th class="px-6 py-3 font-medium">名称</th>
+                                    <th class="px-6 py-3 font-medium">简介</th>
+                                    <th class="px-6 py-3 font-medium">版本</th>
+                                    <th class="px-6 py-3 font-medium">历史回测</th>
+                                    <th class="px-6 py-3 font-medium">最新回测</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4">
+                                        <button onclick="showBacktestDialog('dual_thrust')" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700">运行</button>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">Dual Thrust</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">经典区间突破策略，适用于趋势行情</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">v1.2.0</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">12次</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">2024-01-15</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4">
+                                        <button onclick="showBacktestDialog('turtle')" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700">运行</button>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">海龟交易</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">趋势跟踪策略，采用唐奇安通道突破</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">v2.0.1</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">8次</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">2024-01-10</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4">
+                                        <button onclick="showBacktestDialog('macd')" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700">运行</button>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">MACD动量</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">基于MACD指标的动量策略</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">v1.0.0</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">5次</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">2024-01-08</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4">
+                                        <button onclick="showBacktestDialog('grid')" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700">运行</button>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">网格交易</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">震荡市场网格套利策略</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">v1.5.0</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">20次</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">2024-01-12</a>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 回测列表 -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">回测列表</h2>
+                            <div class="flex items-center space-x-4">
+                                <div class="relative">
+                                    <input type="text" placeholder="按策略名过滤..." class="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </div>
+                                <select class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+                                    <option>按年化收益排序</option>
+                                    <option>按夏普比率排序</option>
+                                    <option>按最大回撤排序</option>
+                                    <option>按索提诺排序</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left text-sm text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                    <th class="px-6 py-3 font-medium">策略名</th>
+                                    <th class="px-6 py-3 font-medium">版本</th>
+                                    <th class="px-6 py-3 font-medium">回测时间</th>
+                                    <th class="px-6 py-3 font-medium">年化收益</th>
+                                    <th class="px-6 py-3 font-medium">夏普</th>
+                                    <th class="px-6 py-3 font-medium">最大回撤</th>
+                                    <th class="px-6 py-3 font-medium">索提诺</th>
+                                    <th class="px-6 py-3 font-medium">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">Dual Thrust</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">v1.2.0</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">2024-01-15 10:30</td>
+                                    <td class="px-6 py-4 text-green-600 dark:text-green-400 font-medium">+18.5%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">1.85</td>
+                                    <td class="px-6 py-4 text-red-600 dark:text-red-400">-12.3%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">2.12</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">查看报告</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">网格交易</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">v1.5.0</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">2024-01-12 14:20</td>
+                                    <td class="px-6 py-4 text-green-600 dark:text-green-400 font-medium">+15.2%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">1.62</td>
+                                    <td class="px-6 py-4 text-red-600 dark:text-red-400">-8.5%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">1.95</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">查看报告</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">海龟交易</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">v2.0.1</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">2024-01-10 09:15</td>
+                                    <td class="px-6 py-4 text-green-600 dark:text-green-400 font-medium">+22.8%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">2.15</td>
+                                    <td class="px-6 py-4 text-red-600 dark:text-red-400">-18.2%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">2.45</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">查看报告</a>
+                                    </td>
+                                </tr>
+                                <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">MACD动量</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">v1.0.0</td>
+                                    <td class="px-6 py-4 text-gray-600 dark:text-gray-400">2024-01-08 16:45</td>
+                                    <td class="px-6 py-4 text-red-600 dark:text-red-400 font-medium">-5.3%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">0.42</td>
+                                    <td class="px-6 py-4 text-red-600 dark:text-red-400">-22.1%</td>
+                                    <td class="px-6 py-4 text-gray-900 dark:text-white">0.58</td>
+                                    <td class="px-6 py-4">
+                                        <a href="backtest-report.html" class="text-blue-600 dark:text-blue-400 hover:underline">查看报告</a>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 创建回测对话框 -->
+    <div id="backtest-dialog" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[500px]">
+            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">创建回测</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">策略名称</label>
+                    <input type="text" id="dialog-strategy-name" readonly class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">开始日期</label>
+                        <input type="date" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">结束日期</label>
+                        <input type="date" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">初始资金</label>
+                    <input type="number" value="1000000" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">手续费率</label>
+                    <input type="number" step="0.0001" value="0.0003" class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+                <button onclick="hideBacktestDialog()" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">取消</button>
+                <button onclick="startBacktest()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">开始回测</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function toggleReportMenu() {
+        const submenu = document.getElementById('report-submenu');
+        const arrow = document.getElementById('report-arrow');
+        submenu.classList.toggle('hidden');
+        arrow.classList.toggle('rotate-180');
+    }
+
+    function showBacktestDialog(strategyId) {
+        const dialog = document.getElementById('backtest-dialog');
+        const nameInput = document.getElementById('dialog-strategy-name');
+        const strategyNames = {
+            'dual_thrust': 'Dual Thrust',
+            'turtle': '海龟交易',
+            'macd': 'MACD动量',
+            'grid': '网格交易'
+        };
+        nameInput.value = strategyNames[strategyId] || strategyId;
+        dialog.classList.remove('hidden');
+    }
+
+    function hideBacktestDialog() {
+        document.getElementById('backtest-dialog').classList.add('hidden');
+    }
+
+    function startBacktest() {
+        alert('回测已启动，请稍后查看结果');
+        hideBacktestDialog();
+    }
+
+    document.getElementById('backtest-dialog').addEventListener('click', function(e) {
+        if (e.target === this) {
+            hideBacktestDialog();
+        }
+    });
+    </script>
+</body>
+</html>

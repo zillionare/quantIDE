@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>回测报告 - 匡醍</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.0.0/dist/css/core.min.css">
+    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@2.0.0/dist/js/core.iife.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'selector',
+        }
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <div class="max-w-[1400px] mx-auto">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 h-16 sticky top-0 z-50">
+            <div class="h-full flex items-center justify-between px-4">
+                <div class="flex items-center space-x-3">
+                    <img src="/static/logo.png" alt="Logo" class="h-8 w-8 rounded">
+                    <span class="text-xl font-bold text-gray-900 dark:text-white">匡醍</span>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <nav class="flex items-center space-x-1">
+                        <a href="home.html" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">首页</a>
+                        <a href="livetrade-default.html" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">交易</a>
+                        <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">行情</a>
+                        <a href="strategy-list.html" class="px-4 py-2 text-blue-600 dark:text-blue-400 font-medium border-b-2 border-blue-600 dark:border-blue-400">策略</a>
+                        <a href="#" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">分析</a>
+                    </nav>
+                    <div class="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+                    <button class="relative p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                        <span class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                        <div class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">张</div>
+                        <span class="text-sm text-gray-700 dark:text-gray-300">张三</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 fixed left-0 top-16 bottom-0 overflow-y-auto">
+                <div class="p-4">
+                    <nav class="space-y-1">
+                        <div>
+                            <a href="strategy-list.html" class="w-full flex items-center justify-between px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                    </svg>
+                                    <span>策略列表</span>
+                                </div>
+                            </a>
+                        </div>
+                        <div>
+                            <button onclick="toggleReportMenu()" class="w-full flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                    </svg>
+                                    <span>回测报告</span>
+                                </div>
+                                <svg id="report-arrow" class="w-4 h-4 transform rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                            <div id="report-submenu" class="ml-8 mt-1 space-y-1">
+                                <a href="#overview" onclick="switchTab('overview')" id="tab-overview" class="block px-3 py-2 text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg">收益概述</a>
+                                <a href="#trades" onclick="switchTab('trades')" id="tab-trades" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">交易详情</a>
+                                <a href="#positions" onclick="switchTab('positions')" id="tab-positions" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">每日持仓&收益</a>
+                                <a href="#logs" onclick="switchTab('logs')" id="tab-logs" class="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">日志输出</a>
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 ml-64 p-6">
+                <div class="mb-4">
+                    <nav class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                        <a href="home.html" class="hover:text-blue-600 dark:hover:text-blue-400">首页</a>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        <a href="strategy-list.html" class="hover:text-blue-600 dark:hover:text-blue-400">策略</a>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        <span class="text-gray-900 dark:text-white font-medium">回测报告</span>
+                    </nav>
+                </div>
+
+                <!-- 回测信息头部 -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6 p-6">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Dual Thrust - 回测报告</h1>
+                            <div class="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                                <span>版本: v1.2.0</span>
+                                <span>|</span>
+                                <span>回测周期: 2023-01-01 ~ 2023-12-31</span>
+                                <span>|</span>
+                                <span>初始资金: 1,000,000</span>
+                            </div>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                                <span>导出报告</span>
+                            </button>
+                            <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                <span>重新回测</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 收益概述 Tab -->
+                <div id="content-overview" class="tab-content">
+                    <!-- 核心指标卡片 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">总收益率</p>
+                            <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">+18.52%</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">期末资产: 1,185,200</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">年化收益率</p>
+                            <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">+18.52%</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">基准收益: +5.23%</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">最大回撤</p>
+                            <p class="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">-12.34%</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">发生于: 2023-06-15</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">夏普比率</p>
+                            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">1.85</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">索提诺: 2.12</p>
+                        </div>
+                    </div>
+
+                    <!-- 收益曲线图表 -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+                        <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">收益曲线</h3>
+                        </div>
+                        <div class="p-6">
+                            <canvas id="returnChart" height="300"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 回撤分析图表 -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+                        <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">回撤分析</h3>
+                        </div>
+                        <div class="p-6">
+                            <canvas id="drawdownChart" height="200"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 详细指标 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">收益统计</h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="space-y-3">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">总交易次数</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">156</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">盈利次数</span>
+                                        <span class="text-green-600 dark:text-green-400 font-medium">98 (62.8%)</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">亏损次数</span>
+                                        <span class="text-red-600 dark:text-red-400 font-medium">58 (37.2%)</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">胜率</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">62.8%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">盈亏比</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">1.85</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">风险指标</h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="space-y-3">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">年化波动率</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">15.23%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">下行波动率</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">8.76%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">Beta</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">0.72</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">Alpha</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">12.5%</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600 dark:text-gray-400">信息比率</span>
+                                        <span class="text-gray-900 dark:text-white font-medium">1.23</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 交易详情 Tab -->
+                <div id="content-trades" class="tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                        <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">交易记录</h3>
+                                <div class="flex items-center space-x-4">
+                                    <select class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                                        <option>全部</option>
+                                        <option>买入</option>
+                                        <option>卖出</option>
+                                    </select>
+                                    <button class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                        </svg>
+                                        <span>导出</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-sm text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                        <th class="px-6 py-3 font-medium">成交时间</th>
+                                        <th class="px-6 py-3 font-medium">股票代码</th>
+                                        <th class="px-6 py-3 font-medium">股票名称</th>
+                                        <th class="px-6 py-3 font-medium">方向</th>
+                                        <th class="px-6 py-3 font-medium">价格</th>
+                                        <th class="px-6 py-3 font-medium">数量</th>
+                                        <th class="px-6 py-3 font-medium">金额</th>
+                                        <th class="px-6 py-3 font-medium">手续费</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm">
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-28 14:35:22</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">000001.SZ</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">平安银行</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded text-xs">卖出</span></td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">13.85</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">1,000</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">13,850</td>
+                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-400">4.16</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-25 09:42:15</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">600519.SH</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">贵州茅台</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-xs">买入</span></td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">1,756.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">100</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">175,600</td>
+                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-400">52.68</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-20 10:15:08</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">000858.SZ</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">五粮液</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded text-xs">卖出</span></td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">168.50</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">500</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">84,250</td>
+                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-400">25.28</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-18 13:28:45</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">000001.SZ</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">平安银行</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-xs">买入</span></td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">12.35</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2,000</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">24,700</td>
+                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-400">7.41</td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-15 09:31:22</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">601318.SH</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">中国平安</td>
+                                        <td class="px-6 py-4"><span class="px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-xs">买入</span></td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">45.80</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">1,000</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">45,800</td>
+                                        <td class="px-6 py-4 text-gray-600 dark:text-gray-400">13.74</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <span class="text-sm text-gray-600 dark:text-gray-400">共 156 条记录</span>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">上一页</button>
+                                <button class="px-3 py-1 bg-blue-600 text-white rounded text-sm">1</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">2</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">3</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">下一页</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 每日持仓&收益 Tab -->
+                <div id="content-positions" class="tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                        <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">每日持仓与收益</h3>
+                                <div class="flex items-center space-x-4">
+                                    <input type="date" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                                    <span class="text-gray-500">至</span>
+                                    <input type="date" class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                                    <button class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                        </svg>
+                                        <span>导出</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-sm text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                                        <th class="px-6 py-3 font-medium">日期</th>
+                                        <th class="px-6 py-3 font-medium">现金</th>
+                                        <th class="px-6 py-3 font-medium">持仓市值</th>
+                                        <th class="px-6 py-3 font-medium">总资产</th>
+                                        <th class="px-6 py-3 font-medium">日收益</th>
+                                        <th class="px-6 py-3 font-medium">累计收益</th>
+                                        <th class="px-6 py-3 font-medium">持仓明细</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm">
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-29</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">325,680.50</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">859,519.50</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">1,185,200.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+5,230.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+185,200.00</td>
+                                        <td class="px-6 py-4">
+                                            <button onclick="showPositionDetail('2023-12-29')" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-28</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">339,450.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">840,520.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">1,179,970.00</td>
+                                        <td class="px-6 py-4 text-red-600 dark:text-red-400">-3,280.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+179,970.00</td>
+                                        <td class="px-6 py-4">
+                                            <button onclick="showPositionDetail('2023-12-28')" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-27</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">339,450.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">843,800.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">1,183,250.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+8,650.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+183,250.00</td>
+                                        <td class="px-6 py-4">
+                                            <button onclick="showPositionDetail('2023-12-27')" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-26</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">339,450.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">835,150.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">1,174,600.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+2,180.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+174,600.00</td>
+                                        <td class="px-6 py-4">
+                                            <button onclick="showPositionDetail('2023-12-26')" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">2023-12-25</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">163,850.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white">1,008,570.00</td>
+                                        <td class="px-6 py-4 text-gray-900 dark:text-white font-medium">1,172,420.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+12,350.00</td>
+                                        <td class="px-6 py-4 text-green-600 dark:text-green-400">+172,420.00</td>
+                                        <td class="px-6 py-4">
+                                            <button onclick="showPositionDetail('2023-12-25')" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <span class="text-sm text-gray-600 dark:text-gray-400">共 242 条记录</span>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">上一页</button>
+                                <button class="px-3 py-1 bg-blue-600 text-white rounded text-sm">1</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">2</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">3</button>
+                                <button class="px-3 py-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">下一页</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 日志输出 Tab -->
+                <div id="content-logs" class="tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                        <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">策略日志</h3>
+                                <div class="flex items-center space-x-4">
+                                    <select class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                                        <option>全部级别</option>
+                                        <option>DEBUG</option>
+                                        <option>INFO</option>
+                                        <option>WARNING</option>
+                                        <option>ERROR</option>
+                                    </select>
+                                    <button class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                        </svg>
+                                        <span>导出</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-6 bg-gray-900 dark:bg-gray-950 font-mono text-sm max-h-[600px] overflow-y-auto">
+                            <div class="space-y-1">
+                                <div class="text-gray-400">[2023-12-29 15:00:00] <span class="text-green-400">INFO</span> 策略执行完成，当日收益: +0.44%</div>
+                                <div class="text-gray-400">[2023-12-29 14:35:22] <span class="text-blue-400">DEBUG</span> 卖出信号触发: 000001.SZ, 价格: 13.85</div>
+                                <div class="text-gray-400">[2023-12-29 14:35:22] <span class="text-green-400">INFO</span> 执行卖出: 000001.SZ 平安银行, 数量: 1000股, 价格: 13.85</div>
+                                <div class="text-gray-400">[2023-12-29 14:35:22] <span class="text-green-400">INFO</span> 成交确认: 成交金额 13850.00, 手续费 4.16</div>
+                                <div class="text-gray-400">[2023-12-29 09:30:05] <span class="text-green-400">INFO</span> 开盘检查持仓...</div>
+                                <div class="text-gray-400">[2023-12-29 09:30:00] <span class="text-green-400">INFO</span> ========== 交易日开始 ==========</div>
+                                <div class="text-gray-400">[2023-12-28 15:00:00] <span class="text-green-400">INFO</span> 策略执行完成，当日收益: -0.28%</div>
+                                <div class="text-gray-400">[2023-12-28 14:50:00] <span class="text-yellow-400">WARNING</span> 持仓股票 600519.SH 接近止损线，当前亏损: -5.2%</div>
+                                <div class="text-gray-400">[2023-12-28 09:30:00] <span class="text-green-400">INFO</span> ========== 交易日开始 ==========</div>
+                                <div class="text-gray-400">[2023-12-27 15:00:00] <span class="text-green-400">INFO</span> 策略执行完成，当日收益: +0.74%</div>
+                                <div class="text-gray-400">[2023-12-27 10:15:33] <span class="text-blue-400">DEBUG</span> Dual Thrust 上轨: 1758.50, 下轨: 1720.30</div>
+                                <div class="text-gray-400">[2023-12-27 10:15:33] <span class="text-blue-400">DEBUG</span> 检测到突破上轨，生成买入信号</div>
+                                <div class="text-gray-400">[2023-12-27 10:15:35] <span class="text-green-400">INFO</span> 执行买入: 600519.SH 贵州茅台, 数量: 100股, 价格: 1756.00</div>
+                                <div class="text-gray-400">[2023-12-27 10:15:35] <span class="text-green-400">INFO</span> 成交确认: 成交金额 175600.00, 手续费 52.68</div>
+                                <div class="text-gray-400">[2023-12-27 09:30:00] <span class="text-green-400">INFO</span> ========== 交易日开始 ==========</div>
+                                <div class="text-gray-400">[2023-12-26 15:00:00] <span class="text-green-400">INFO</span> 策略执行完成，当日收益: +0.19%</div>
+                                <div class="text-gray-400">[2023-12-26 09:30:00] <span class="text-green-400">INFO</span> ========== 交易日开始 ==========</div>
+                                <div class="text-gray-400">[2023-12-25 15:00:00] <span class="text-green-400">INFO</span> 策略执行完成，当日收益: +1.06%</div>
+                                <div class="text-gray-400">[2023-12-25 14:30:00] <span class="text-red-400">ERROR</span> 订单超时未成交，自动撤单: 订单ID qtide-abc12345</div>
+                                <div class="text-gray-400">[2023-12-25 14:25:00] <span class="text-yellow-400">WARNING</span> 订单等待成交中... 已等待 5 分钟</div>
+                                <div class="text-gray-400">[2023-12-25 09:45:12] <span class="text-blue-400">DEBUG</span> 计算仓位: 可用资金 163850.00, 目标仓位 30%</div>
+                                <div class="text-gray-400">[2023-12-25 09:45:12] <span class="text-green-400">INFO</span> 执行买入: 000001.SZ 平安银行, 数量: 2000股, 价格: 12.35</div>
+                                <div class="text-gray-400">[2023-12-25 09:45:12] <span class="text-green-400">INFO</span> 成交确认: 成交金额 24700.00, 手续费 7.41</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 持仓明细弹窗 -->
+    <div id="position-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[600px]">
+            <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">持仓明细 - <span id="modal-date"></span></h3>
+                <button onclick="hidePositionModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                            <th class="pb-3 font-medium">股票代码</th>
+                            <th class="pb-3 font-medium">股票名称</th>
+                            <th class="pb-3 font-medium">持仓数量</th>
+                            <th class="pb-3 font-medium">成本价</th>
+                            <th class="pb-3 font-medium">市值</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <td class="py-3 text-gray-900 dark:text-white">600519.SH</td>
+                            <td class="py-3 text-gray-900 dark:text-white">贵州茅台</td>
+                            <td class="py-3 text-gray-900 dark:text-white">100</td>
+                            <td class="py-3 text-gray-900 dark:text-white">1,756.00</td>
+                            <td class="py-3 text-gray-900 dark:text-white">175,600.00</td>
+                        </tr>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <td class="py-3 text-gray-900 dark:text-white">000001.SZ</td>
+                            <td class="py-3 text-gray-900 dark:text-white">平安银行</td>
+                            <td class="py-3 text-gray-900 dark:text-white">1,000</td>
+                            <td class="py-3 text-gray-900 dark:text-white">12.35</td>
+                            <td class="py-3 text-gray-900 dark:text-white">13,850.00</td>
+                        </tr>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <td class="py-3 text-gray-900 dark:text-white">601318.SH</td>
+                            <td class="py-3 text-gray-900 dark:text-white">中国平安</td>
+                            <td class="py-3 text-gray-900 dark:text-white">1,000</td>
+                            <td class="py-3 text-gray-900 dark:text-white">45.80</td>
+                            <td class="py-3 text-gray-900 dark:text-white">45,800.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function toggleReportMenu() {
+        const submenu = document.getElementById('report-submenu');
+        const arrow = document.getElementById('report-arrow');
+        submenu.classList.toggle('hidden');
+        arrow.classList.toggle('rotate-180');
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.getElementById('content-' + tabName).classList.remove('hidden');
+        
+        document.querySelectorAll('#report-submenu a').forEach(el => {
+            el.classList.remove('text-blue-600', 'dark:text-blue-400', 'bg-blue-50', 'dark:bg-blue-900/30');
+            el.classList.add('text-gray-600', 'dark:text-gray-400');
+        });
+        const activeTab = document.getElementById('tab-' + tabName);
+        activeTab.classList.remove('text-gray-600', 'dark:text-gray-400');
+        activeTab.classList.add('text-blue-600', 'dark:text-blue-400', 'bg-blue-50', 'dark:bg-blue-900/30');
+        
+        if (tabName === 'overview') {
+            initCharts();
+        }
+    }
+
+    function showPositionDetail(date) {
+        document.getElementById('modal-date').textContent = date;
+        document.getElementById('position-modal').classList.remove('hidden');
+    }
+
+    function hidePositionModal() {
+        document.getElementById('position-modal').classList.add('hidden');
+    }
+
+    document.getElementById('position-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            hidePositionModal();
+        }
+    });
+
+    function initCharts() {
+        const returnCtx = document.getElementById('returnChart');
+        if (returnCtx && !returnCtx.chart) {
+            returnCtx.chart = new Chart(returnCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                    datasets: [{
+                        label: '策略收益',
+                        data: [2.1, 4.5, 3.8, 8.2, 12.5, 8.3, 10.2, 14.8, 12.5, 15.2, 16.8, 18.5],
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }, {
+                        label: '基准收益',
+                        data: [1.2, 2.5, 1.8, 3.2, 4.5, 3.3, 4.2, 4.8, 4.5, 4.8, 5.0, 5.2],
+                        borderColor: 'rgb(156, 163, 175)',
+                        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        const drawdownCtx = document.getElementById('drawdownChart');
+        if (drawdownCtx && !drawdownCtx.chart) {
+            drawdownCtx.chart = new Chart(drawdownCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                    datasets: [{
+                        label: '回撤',
+                        data: [0, -1.2, -2.5, -1.8, -3.2, -12.3, -8.5, -5.2, -6.8, -4.2, -3.5, -2.1],
+                        borderColor: 'rgb(239, 68, 68)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initCharts();
+        
+        if (window.location.hash) {
+            const tab = window.location.hash.substring(1);
+            if (['overview', 'trades', 'positions', 'logs'].includes(tab)) {
+                switchTab(tab);
+            }
+        }
+    });
+    </script>
+</body>
+</html>
