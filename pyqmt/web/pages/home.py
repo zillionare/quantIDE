@@ -1,9 +1,11 @@
+import datetime
+
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
 
-from pyqmt.core.enums import OrderSide
-from pyqmt.data.sqlite import Position
+from pyqmt.core.enums import BrokerKind, OrderSide, OrderStatus
+from pyqmt.data.sqlite import Position, db
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
@@ -243,17 +245,345 @@ def BrokerList(items: list[dict]):
     )
 
 
-def main_block(asset_overview: dict | None = None, brokers: list[dict] | None = None, positions: list[Position] | None = None):
+def _format_amount(value: float | None) -> str:
+    """格式化金额数值。
+
+    Args:
+        value: 金额数值
+
+    Returns:
+        str: 格式化文本
+    """
+    if value is None:
+        return "--"
+    return f"{value:,.2f}"
+
+
+def _format_amount_wan(value: float | None) -> str:
+    """格式化万元显示。
+
+    Args:
+        value: 金额数值
+
+    Returns:
+        str: 格式化文本
+    """
+    if value is None:
+        return "--"
+    return f"{value / 10000:,.2f}"
+
+
+def _format_percent(value: float | None) -> str:
+    """格式化百分比显示。
+
+    Args:
+        value: 百分比数值
+
+    Returns:
+        str: 格式化文本
+    """
+    if value is None:
+        return "--"
+    return f"{value * 100:.2f}%"
+
+
+def _position_tag(profit_pct: float) -> tuple[str, str]:
+    """生成持仓预警标签。
+
+    Args:
+        profit_pct: 盈亏比例
+
+    Returns:
+        tuple[str, str]: 标签文本和样式
+    """
+    if profit_pct <= -0.05:
+        return "风险", "bg-red-100 text-red-800"
+    if profit_pct <= 0:
+        return "关注", "bg-yellow-100 text-yellow-800"
+    return "正常", "bg-green-100 text-green-800"
+
+
+def OverviewCards(asset_overview: dict | None = None):
+    """构建首页资产概览卡片。
+
+    Args:
+        asset_overview: 资产概览数据
+
+    Returns:
+        Div: 资产概览卡片区域
+    """
+    asset_overview = asset_overview or {}
+    total = asset_overview.get("total")
+    market_value = asset_overview.get("market_value")
+    cash = asset_overview.get("cash")
+    pnl = asset_overview.get("pnl")
+    pnl_pct = asset_overview.get("pnl_pct")
+    cash_pct = None
+    if total and total != 0:
+        cash_pct = cash / total if cash is not None else None
+
     return Div(
-        BrokerList(brokers or []),
-        AccountTabs(),
-        AssetSummary(asset_overview),
         Div(
-            Div(PositionInfo(positions), cls="w-3/4 pr-4"),
-            Div(TradePanel(), cls="w-1/4"),
-            cls="flex",
+            Div(
+                P("总资产", cls="text-sm text-gray-600"),
+                P(f"{_format_amount_wan(total)}万", cls="text-2xl font-bold text-gray-900 mt-1"),
+            ),
+            Div(
+                Span(f"↑ {_format_percent(pnl_pct)}", cls="text-green-600"),
+                Span("较昨日", cls="ml-2 text-gray-600"),
+                cls="mt-4 flex items-center text-sm",
+            ),
+            cls="bg-white rounded-lg shadow p-6",
         ),
-        cls="p-2 h-full",
+        Div(
+            Div(
+                P("持仓市值", cls="text-sm text-gray-600"),
+                P(f"{_format_amount_wan(market_value)}万", cls="text-2xl font-bold text-gray-900 mt-1"),
+            ),
+            Div(
+                Span(f"↑ {_format_percent(pnl_pct)}", cls="text-green-600"),
+                Span("较昨日", cls="ml-2 text-gray-600"),
+                cls="mt-4 flex items-center text-sm",
+            ),
+            cls="bg-white rounded-lg shadow p-6",
+        ),
+        Div(
+            Div(
+                P("可用资金", cls="text-sm text-gray-600"),
+                P(f"{_format_amount_wan(cash)}万", cls="text-2xl font-bold text-gray-900 mt-1"),
+            ),
+            Div(
+                Span(f"占比 {_format_percent(cash_pct)}", cls="text-gray-600"),
+                cls="mt-4 flex items-center text-sm",
+            ),
+            cls="bg-white rounded-lg shadow p-6",
+        ),
+        Div(
+            Div(
+                P("今日盈亏", cls="text-sm text-gray-600"),
+                P(f"{_format_amount_wan(pnl)}万", cls="text-2xl font-bold text-green-600 mt-1"),
+            ),
+            Div(
+                Span(f"↑ {_format_percent(pnl_pct)}", cls="text-green-600"),
+                Span("收益率", cls="ml-2 text-gray-600"),
+                cls="mt-4 flex items-center text-sm",
+            ),
+            cls="bg-white rounded-lg shadow p-6",
+        ),
+        cls="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6",
+    )
+
+
+def PositionTable(positions: list[Position] | None = None):
+    """构建持仓明细表格。
+
+    Args:
+        positions: 持仓列表
+
+    Returns:
+        Div: 持仓表格区域
+    """
+    rows = []
+    if positions:
+        for p in positions:
+            cost = p.mv - p.profit
+            profit_pct = p.profit / cost if cost else 0
+            tag_text, tag_cls = _position_tag(profit_pct)
+            current_price = p.mv / p.shares if p.shares else 0
+            rows.append(
+                Tr(
+                    Td(Span(tag_text, cls=f"inline-flex items-center px-2 py-1 rounded text-xs font-medium {tag_cls}")),
+                    Td(p.asset, cls="text-gray-900"),
+                    Td(p.asset, cls="text-gray-900"),
+                    Td(f"{p.shares:,.0f}", cls="text-gray-900"),
+                    Td(f"{p.avail:,.0f}", cls="text-gray-900"),
+                    Td(f"{p.price:,.2f}", cls="text-gray-900"),
+                    Td(f"{current_price:,.2f}", cls="text-gray-900"),
+                    Td(f"{p.mv / 10000:,.2f}", cls="text-gray-900"),
+                    Td(
+                        f"{p.profit / 10000:,.2f} ({profit_pct * 100:.2f}%)",
+                        cls="text-green-600" if p.profit >= 0 else "text-red-600",
+                    ),
+                    Td(Button("卖出", cls="text-blue-600 hover:underline")),
+                    cls="border-t border-gray-200",
+                )
+            )
+    else:
+        rows.append(
+            Tr(
+                Td("暂无持仓", colspan="10", cls="py-6 text-center text-gray-500"),
+                cls="border-t border-gray-200",
+            )
+        )
+
+    return Div(
+        Div(
+            H2("持仓明细", cls="text-lg font-semibold text-gray-900"),
+            cls="p-6 border-b border-gray-200",
+        ),
+        Div(
+            Div(
+                Table(
+                    Thead(
+                        Tr(
+                            Th("AI预警", cls="pb-3 font-medium w-16"),
+                            Th("股票代码", cls="pb-3 font-medium"),
+                            Th("股票名称", cls="pb-3 font-medium"),
+                            Th("持仓数量", cls="pb-3 font-medium"),
+                            Th("可用", cls="pb-3 font-medium"),
+                            Th("成本价", cls="pb-3 font-medium"),
+                            Th("现价", cls="pb-3 font-medium"),
+                            Th("市值(万)", cls="pb-3 font-medium"),
+                            Th("盈亏(万)", cls="pb-3 font-medium"),
+                            Th("操作", cls="pb-3 font-medium"),
+                            cls="text-left text-sm text-gray-600",
+                        )
+                    ),
+                    Tbody(*rows, cls="text-sm"),
+                    cls="w-full",
+                ),
+                cls="overflow-x-auto",
+            ),
+            cls="p-6",
+        ),
+        cls="bg-white rounded-lg shadow mb-6",
+    )
+
+
+def _order_status_badge(status: OrderStatus) -> tuple[str, str]:
+    """构建订单状态标签。
+
+    Args:
+        status: 订单状态
+
+    Returns:
+        tuple[str, str]: 文本与样式
+    """
+    if status == OrderStatus.SUCCEEDED:
+        return "已成交", "bg-green-100 text-green-800"
+    if status == OrderStatus.PART_SUCC:
+        return "部分成交", "bg-blue-100 text-blue-800"
+    if status == OrderStatus.CANCELED:
+        return "已撤单", "bg-gray-100 text-gray-600"
+    if status == OrderStatus.JUNK:
+        return "废单", "bg-red-100 text-red-800"
+    return "待成交", "bg-yellow-100 text-yellow-800"
+
+
+def OrderTable(orders: list[dict] | None = None):
+    """构建当日委托表格。
+
+    Args:
+        orders: 订单数据
+
+    Returns:
+        Div: 当日委托区域
+    """
+    rows = []
+    if orders:
+        for order in orders:
+            side = order.get("side", OrderSide.BUY)
+            if isinstance(side, int):
+                side = OrderSide(side)
+            status = order.get("status", OrderStatus.UNREPORTED)
+            if isinstance(status, int):
+                status = OrderStatus(status)
+            status_text, status_cls = _order_status_badge(status)
+            rows.append(
+                Tr(
+                    Td(order.get("tm", ""), cls="py-4 text-gray-900"),
+                    Td(order.get("asset", ""), cls="py-4 text-gray-900"),
+                    Td(order.get("asset", ""), cls="py-4 text-gray-900"),
+                    Td(
+                        Span(
+                            "买入" if side == OrderSide.BUY else "卖出",
+                            cls="text-red-600 font-medium"
+                            if side == OrderSide.BUY
+                            else "text-green-600 font-medium",
+                        )
+                    ),
+                    Td(_format_amount(order.get("price")), cls="py-4 text-gray-900"),
+                    Td(f"{order.get('shares', 0):,.0f}", cls="py-4 text-gray-900"),
+                    Td(f"{order.get('filled', 0):,.0f}", cls="py-4 text-gray-900"),
+                    Td(
+                        Span(
+                            status_text,
+                            cls=f"inline-flex items-center px-2 py-1 rounded text-xs font-medium {status_cls}",
+                        ),
+                        cls="py-4",
+                    ),
+                    Td(
+                        Button(
+                            "撤单",
+                            cls="text-blue-600 hover:underline" if status not in [OrderStatus.SUCCEEDED, OrderStatus.CANCELED] else "text-gray-400 cursor-not-allowed",
+                            disabled=status in [OrderStatus.SUCCEEDED, OrderStatus.CANCELED],
+                        ),
+                        cls="py-4",
+                    ),
+                    cls="border-t border-gray-200",
+                )
+            )
+    else:
+        rows.append(
+            Tr(
+                Td("暂无委托", colspan="9", cls="py-6 text-center text-gray-500"),
+                cls="border-t border-gray-200",
+            )
+        )
+
+    return Div(
+        Div(
+            H2("当日委托", cls="text-lg font-semibold text-gray-900"),
+            cls="p-6 border-b border-gray-200",
+        ),
+        Div(
+            Div(
+                Table(
+                    Thead(
+                        Tr(
+                            Th("时间", cls="pb-3 font-medium"),
+                            Th("股票代码", cls="pb-3 font-medium"),
+                            Th("股票名称", cls="pb-3 font-medium"),
+                            Th("方向", cls="pb-3 font-medium"),
+                            Th("委托价", cls="pb-3 font-medium"),
+                            Th("委托量", cls="pb-3 font-medium"),
+                            Th("成交量", cls="pb-3 font-medium"),
+                            Th("状态", cls="pb-3 font-medium"),
+                            Th("操作", cls="pb-3 font-medium"),
+                            cls="text-left text-sm text-gray-600",
+                        )
+                    ),
+                    Tbody(*rows, cls="text-sm"),
+                    cls="w-full",
+                ),
+                cls="overflow-x-auto",
+            ),
+            cls="p-6",
+        ),
+        cls="bg-white rounded-lg shadow",
+    )
+
+
+def main_block(
+    asset_overview: dict | None = None,
+    brokers: list[dict] | None = None,
+    positions: list[Position] | None = None,
+    orders: list[dict] | None = None,
+):
+    return Div(
+        Div(
+            Nav(
+                A("首页", href="#", cls="hover:text-blue-600"),
+                Span(" / ", cls="text-gray-400"),
+                Span("概览", cls="text-gray-900 font-medium"),
+                cls="flex items-center space-x-2 text-sm text-gray-600",
+            ),
+            cls="mb-4",
+        ),
+        OverviewCards(asset_overview),
+        PositionTable(positions),
+        OrderTable(orders),
+        cls="max-w-[1400px] mx-auto w-full",
     )
 
 def _get_broker(req):
@@ -274,24 +604,60 @@ def _get_broker(req):
 @rt("/", methods="get")
 def index(req, session):
     layout = MainLayout(
-        title="交易",
+        title="首页",
         user=session.get("auth"),
     )
 
     asset_overview = None
     brokers = []
     positions = []
+    orders = []
+    accounts = []
+    active_account = None
     reg: BrokerRegistry | None = req.scope.get("registry")
     if reg is not None:
         brokers = reg.list()
+        default_account = reg.get_default()
+        for kind in [BrokerKind.QMT, BrokerKind.SIMULATION]:
+            for info in reg.list_by_kind(kind):
+                account = {
+                    "id": info.get("id"),
+                    "name": info.get("name") or info.get("id"),
+                    "kind": kind.value,
+                    "label": "实盘" if kind == BrokerKind.QMT else "仿真",
+                    "status": info.get("status", False),
+                    "is_live": kind == BrokerKind.QMT,
+                    "switch_url": f"/home?kind={kind.value}&id={info.get('id')}",
+                }
+                accounts.append(account)
+                if default_account and default_account[0] == kind.value and default_account[1] == info.get("id"):
+                    active_account = account
         broker = _get_broker(req)
         if broker is not None:
             if hasattr(broker, "asset"):
                 asset_overview = build_asset_overview(broker.asset)  # type: ignore
             if hasattr(broker, "positions"):
                 positions = broker.positions
+            portfolio_id = broker.portfolio_id if hasattr(broker, "portfolio_id") else None
+            if portfolio_id:
+                orders_df = db.get_orders(datetime.date.today(), portfolio_id)
+                if orders_df is not None and not orders_df.is_empty():
+                    orders = [
+                        {
+                            "tm": str(row.get("tm", ""))[:19],
+                            "asset": row.get("asset", ""),
+                            "side": row.get("side", OrderSide.BUY),
+                            "price": row.get("price", 0.0),
+                            "shares": row.get("shares", 0),
+                            "filled": row.get("filled", 0),
+                            "status": row.get("status", OrderStatus.UNREPORTED),
+                        }
+                        for row in orders_df.iter_rows(named=True)
+                    ]
 
-    layout.main_block = lambda: main_block(asset_overview, brokers, positions)
+    layout.header_accounts = accounts
+    layout.active_account = active_account
+    layout.main_block = lambda: main_block(asset_overview, brokers, positions, orders)
 
     return layout.render()
 
