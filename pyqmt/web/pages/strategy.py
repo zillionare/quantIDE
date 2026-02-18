@@ -7,8 +7,10 @@ import arrow
 import polars as pl
 from fasthtml.common import *
 from monsterui.all import *
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from pyqmt.core.enums import FrameType
+from pyqmt.core.enums import FrameType, OrderSide
+from pyqmt.data.models.calendar import calendar
 from pyqmt.data.sqlite import db
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.grid_search import GridSearch
@@ -62,22 +64,112 @@ def _to_number(value) -> float:
         return 0.0
 
 
-def _build_chart_data(portfolio_id: str) -> list[list[float]]:
-    """构建资产曲线数据。
+def _build_date_axis(portfolio_id: str) -> list[str]:
+    """构建完整时间轴。
 
     Args:
         portfolio_id: 组合 ID
 
     Returns:
-        list[list[float]]: [timestamp_ms, total] 数据
+        list[str]: 日期字符串列表
+    """
+    portfolio = db.get_portfolio(portfolio_id)
+    if portfolio:
+        start_date = portfolio.start
+        end_date = portfolio.end or portfolio.start
+    else:
+        assets_df = db.query_assets(portfolio_id)
+        if assets_df.is_empty():
+            return []
+        assets_df = assets_df.sort("dt")
+        start_date = assets_df.row(0, named=True)["dt"]
+        end_date = assets_df.row(-1, named=True)["dt"]
+    dates = calendar.get_frames(start_date, end_date, FrameType.DAY)
+    return [arrow.get(dt).format("YYYY-MM-DD") for dt in dates]
+
+
+def _build_series_payload(portfolio_id: str, date_axis: list[str]) -> dict:
+    """构建曲线及日度序列。
+
+    Args:
+        portfolio_id: 组合 ID
+        date_axis: 时间轴
+
+    Returns:
+        dict: 序列数据
     """
     assets_df = db.query_assets(portfolio_id)
-    chart_data = []
-    if not assets_df.is_empty():
-        for row in assets_df.iter_rows(named=True):
-            ts = arrow.get(row["dt"]).timestamp() * 1000
-            chart_data.append([ts, row["total"]])
-    return chart_data
+    if assets_df.is_empty() or not date_axis:
+        return {
+            "date_axis": date_axis,
+            "total": [None for _ in date_axis],
+            "daily_pnl": [None for _ in date_axis],
+            "buy_amount": [0 for _ in date_axis],
+            "sell_amount": [0 for _ in date_axis],
+        }
+
+    assets_df = assets_df.sort("dt")
+    asset_rows = assets_df.iter_rows(named=True)
+    total_by_date = {}
+    last_date = None
+    totals = []
+    for row in asset_rows:
+        dt = arrow.get(row["dt"]).format("YYYY-MM-DD")
+        total_by_date[dt] = row["total"]
+        last_date = dt
+        totals.append(row["total"])
+
+    buy_by_date: dict[str, float] = {}
+    sell_by_date: dict[str, float] = {}
+    trades_df = db.trades_all(portfolio_id)
+    if not trades_df.is_empty():
+        for row in trades_df.iter_rows(named=True):
+            tm = row.get("tm")
+            if tm is None:
+                continue
+            dt = arrow.get(tm).format("YYYY-MM-DD")
+            amount = row.get("amount")
+            if amount is None:
+                price = row.get("price") or 0
+                shares = row.get("shares") or 0
+                amount = price * shares
+            side = row.get("side")
+            if isinstance(side, OrderSide):
+                side_value = side.value
+            else:
+                side_value = int(side) if side is not None else 0
+            if side_value == OrderSide.BUY:
+                buy_by_date[dt] = buy_by_date.get(dt, 0.0) + float(amount)
+            elif side_value == OrderSide.SELL:
+                sell_by_date[dt] = sell_by_date.get(dt, 0.0) + float(amount)
+
+    total_series = []
+    daily_pnl_series = []
+    buy_series = []
+    sell_series = []
+    prev_total = None
+    for dt in date_axis:
+        if last_date is not None and dt > last_date:
+            total_series.append(None)
+            daily_pnl_series.append(None)
+        else:
+            total = total_by_date.get(dt)
+            total_series.append(total)
+            if total is None or prev_total is None:
+                daily_pnl_series.append(0.0)
+            else:
+                daily_pnl_series.append(total - prev_total)
+            prev_total = total if total is not None else prev_total
+        buy_series.append(buy_by_date.get(dt, 0.0))
+        sell_series.append(-sell_by_date.get(dt, 0.0))
+
+    return {
+        "date_axis": date_axis,
+        "total": total_series,
+        "daily_pnl": daily_pnl_series,
+        "buy_amount": buy_series,
+        "sell_amount": sell_series,
+    }
 
 
 def _build_metrics_payload(portfolio_id: str) -> dict:
@@ -102,12 +194,151 @@ def _build_metrics_payload(portfolio_id: str) -> dict:
             stats_dict.get("total_return", stats_dict.get("total_returns", 0.0)),
         )
     )
+    volatility = _to_number(
+        stats_dict.get("volatility_ann", stats_dict.get("volatility", 0.0))
+    )
+    sortino = _to_number(stats_dict.get("sortino", 0.0))
+    calmar = _to_number(stats_dict.get("calmar", 0.0))
+    win_rate = _to_number(stats_dict.get("win_rate", 0.0))
+    profit_factor = _to_number(stats_dict.get("profit_factor", 0.0))
     return {
         "annual_return": annual_return,
-        "sharpe": sharpe,
-        "max_drawdown": max_drawdown,
         "total_returns": total_returns,
+        "max_drawdown": max_drawdown,
+        "sharpe": sharpe,
+        "volatility": volatility,
+        "sortino": sortino,
+        "calmar": calmar,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
     }
+
+
+def _build_trade_rows(portfolio_id: str, limit: int = 200) -> list[dict]:
+    """构建交易明细行。
+
+    Args:
+        portfolio_id: 组合 ID
+        limit: 最大行数
+
+    Returns:
+        list[dict]: 交易明细
+    """
+    trades_df = db.trades_all(portfolio_id)
+    if trades_df.is_empty():
+        return []
+    trades_df = trades_df.sort("tm", descending=True).head(limit)
+    rows = []
+    for row in trades_df.iter_rows(named=True):
+        side = row.get("side")
+        if isinstance(side, OrderSide):
+            side_text = str(side)
+            side_value = side.value
+        else:
+            side_value = int(side) if side is not None else 0
+            side_text = "买入" if side_value == OrderSide.BUY else "卖出"
+        rows.append(
+            {
+                "tm": str(row.get("tm", "")),
+                "asset": row.get("asset", ""),
+                "side": side_text,
+                "side_value": side_value,
+                "price": float(row.get("price") or 0),
+                "shares": float(row.get("shares") or 0),
+                "amount": float(row.get("amount") or 0),
+                "fee": float(row.get("fee") or 0),
+            }
+        )
+    return rows
+
+
+def _build_daily_positions(portfolio_id: str) -> list[dict]:
+    """构建每日持仓明细。
+
+    Args:
+        portfolio_id: 组合 ID
+
+    Returns:
+        list[dict]: 持仓明细
+    """
+    positions_df = db.positions_all(portfolio_id)
+    if positions_df.is_empty():
+        return []
+    positions_df = positions_df.sort(["dt", "asset"])
+    rows = []
+    for row in positions_df.iter_rows(named=True):
+        rows.append(
+            {
+                "dt": str(row.get("dt", "")),
+                "asset": row.get("asset", ""),
+                "shares": float(row.get("shares") or 0),
+                "avail": float(row.get("avail") or 0),
+                "price": float(row.get("price") or 0),
+                "mv": float(row.get("mv") or 0),
+                "profit": float(row.get("profit") or 0),
+            }
+        )
+    return rows
+
+
+def _build_daily_summary(portfolio_id: str) -> list[dict]:
+    """构建每日收益概览。
+
+    Args:
+        portfolio_id: 组合 ID
+
+    Returns:
+        list[dict]: 每日收益概览
+    """
+    assets_df = db.query_assets(portfolio_id)
+    if assets_df.is_empty():
+        return []
+    assets_df = assets_df.sort("dt")
+    rows = []
+    prev_total = None
+    for row in assets_df.iter_rows(named=True):
+        total = float(row.get("total") or 0)
+        daily_pnl = 0.0 if prev_total is None else total - prev_total
+        daily_return = 0.0 if prev_total in (None, 0) else daily_pnl / prev_total
+        rows.append(
+            {
+                "dt": str(row.get("dt", "")),
+                "cash": float(row.get("cash") or 0),
+                "market_value": float(row.get("market_value") or 0),
+                "total": total,
+                "daily_pnl": daily_pnl,
+                "daily_return": daily_return,
+            }
+        )
+        prev_total = total
+    return rows
+
+
+def _build_log_rows(portfolio_id: str, limit: int = 200) -> list[dict]:
+    """构建日志行。
+
+    Args:
+        portfolio_id: 组合 ID
+        limit: 最大行数
+
+    Returns:
+        list[dict]: 日志行
+    """
+    logs_df = db.get_strategy_logs(portfolio_id)
+    if logs_df.is_empty():
+        return []
+    logs_df = logs_df.sort("dt", descending=True).head(limit)
+    rows = []
+    for row in logs_df.iter_rows(named=True):
+        rows.append(
+            {
+                "dt": str(row.get("dt", "")),
+                "key": row.get("key", ""),
+                "value": row.get("value"),
+                "extra": row.get("extra", ""),
+            }
+        )
+    return rows
 
 
 def StrategyList(strategies: dict):
@@ -559,32 +790,118 @@ def backtest_result(req, session, portfolio_id: str):
     metrics_payload = _build_metrics_payload(portfolio_id)
     is_running = status == "running"
 
-    chart_data = _build_chart_data(portfolio_id)
+    date_axis = _build_date_axis(portfolio_id)
+    series_payload = _build_series_payload(portfolio_id, date_axis)
+
+    metrics_items = [
+        ("annual_return", "年化收益", "percent"),
+        ("total_returns", "累计收益", "percent"),
+        ("max_drawdown", "最大回撤", "percent"),
+        ("sharpe", "夏普比率", "number"),
+        ("volatility", "波动率", "percent"),
+        ("sortino", "索提诺比率", "number"),
+        ("calmar", "卡玛比率", "number"),
+        ("win_rate", "胜率", "percent"),
+        ("profit_factor", "盈亏比", "number"),
+    ]
 
     metrics_cards = Grid(
-        Card(CardBody(H2(Span(f"{metrics_payload['annual_return']:.2%}", id="annual_return_val"), cls="text-2xl font-bold text-red-500"), P("年化收益", cls="text-xs text-gray-500"))),
-        Card(CardBody(H2(Span(f"{metrics_payload['sharpe']:.2f}", id="sharpe_val"), cls="text-2xl font-bold"), P("夏普比率", cls="text-xs text-gray-500"))),
-        Card(CardBody(H2(Span(f"{metrics_payload['max_drawdown']:.2%}", id="max_drawdown_val"), cls="text-2xl font-bold text-green-500"), P("最大回撤", cls="text-xs text-gray-500"))),
-        Card(CardBody(H2(Span(f"{metrics_payload['total_returns']:.2%}", id="total_returns_val"), cls="text-2xl font-bold"), P("累计收益", cls="text-xs text-gray-500"))),
-        cols=2, cols_md=4, gap=4
+        *[
+            Card(
+                CardBody(
+                    H2(
+                        Span(
+                            f"{metrics_payload.get(key, 0.0):.2%}"
+                            if fmt == "percent"
+                            else f"{metrics_payload.get(key, 0.0):.2f}",
+                            id=f"metric_{key}",
+                        ),
+                        cls="text-2xl font-bold",
+                    ),
+                    P(label, cls="text-xs text-gray-500"),
+                )
+            )
+            for key, label, fmt in metrics_items
+        ],
+        cols=2,
+        cols_md=3,
+        gap=4,
     )
 
     # Chart Script (ECharts)
     chart_id = f"chart_{portfolio_id}"
+    date_axis_json = json.dumps(series_payload["date_axis"])
+    total_series_json = json.dumps(series_payload["total"])
+    daily_pnl_json = json.dumps(series_payload["daily_pnl"])
+    buy_series_json = json.dumps(series_payload["buy_amount"])
+    sell_series_json = json.dumps(series_payload["sell_amount"])
+    metric_format_json = json.dumps({key: fmt for key, _, fmt in metrics_items})
     chart_script = Script(f"""
         var chart = echarts.init(document.getElementById('{chart_id}'));
+        var dateAxis = {date_axis_json};
+        var totalSeries = {total_series_json};
+        var dailyPnlSeries = {daily_pnl_json};
+        var buySeries = {buy_series_json};
+        var sellSeries = {sell_series_json};
         var option = {{
-            title: {{ text: '资产曲线' }},
+            title: {{ text: '收益曲线' }},
             tooltip: {{ trigger: 'axis' }},
-            xAxis: {{ type: 'time' }},
-            yAxis: {{ type: 'value', scale: true }},
-            series: [{{
-                name: '总资产',
-                type: 'line',
-                data: {json.dumps(chart_data)},
-                smooth: true,
-                itemStyle: {{ color: '#d9534f' }}
-            }}]
+            grid: [
+                {{ left: 60, right: 20, top: 40, height: 200 }},
+                {{ left: 60, right: 20, top: 260, height: 110 }},
+                {{ left: 60, right: 20, top: 400, height: 120 }}
+            ],
+            xAxis: [
+                {{ type: 'category', data: dateAxis, boundaryGap: false, axisLabel: {{ show: false }} }},
+                {{ type: 'category', data: dateAxis, boundaryGap: true, axisLabel: {{ show: false }}, gridIndex: 1 }},
+                {{ type: 'category', data: dateAxis, boundaryGap: true, axisLabel: {{ show: true }}, gridIndex: 2 }}
+            ],
+            yAxis: [
+                {{ type: 'value', scale: true }},
+                {{ type: 'value', scale: true, gridIndex: 1 }},
+                {{ type: 'value', scale: true, gridIndex: 2 }}
+            ],
+            dataZoom: [
+                {{ type: 'inside', xAxisIndex: [0, 1, 2] }},
+                {{ type: 'slider', xAxisIndex: [0, 1, 2], bottom: 0 }}
+            ],
+            series: [
+                {{
+                    name: '总资产',
+                    type: 'line',
+                    data: totalSeries,
+                    smooth: true,
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    itemStyle: {{ color: '#d9534f' }}
+                }},
+                {{
+                    name: '每日盈亏',
+                    type: 'bar',
+                    data: dailyPnlSeries,
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    itemStyle: {{ color: '#5b8ff9' }}
+                }},
+                {{
+                    name: '每日买入',
+                    type: 'bar',
+                    data: buySeries,
+                    xAxisIndex: 2,
+                    yAxisIndex: 2,
+                    stack: 'trade',
+                    itemStyle: {{ color: '#f4664a' }}
+                }},
+                {{
+                    name: '每日卖出',
+                    type: 'bar',
+                    data: sellSeries,
+                    xAxisIndex: 2,
+                    yAxisIndex: 2,
+                    stack: 'trade',
+                    itemStyle: {{ color: '#30bf78' }}
+                }}
+            ]
         }};
         chart.setOption(option);
         window.addEventListener('resize', function() {{ chart.resize(); }});
@@ -599,41 +916,141 @@ def backtest_result(req, session, portfolio_id: str):
             return Number(v).toFixed(2);
         }}
 
-        async function refreshBacktest() {{
+        function fmtValue(v, fmt) {{
+            if (fmt === "percent") return fmtPercent(v);
+            return fmtNumber(v);
+        }}
+
+        function renderTrades(trades) {{
+            var body = document.getElementById('trade_table_body');
+            if (!body) return;
+            var html = "";
+            for (var i = 0; i < trades.length; i++) {{
+                var t = trades[i];
+                var color = t.side_value === 1 ? "text-red-500" : "text-green-500";
+                html += "<tr>" +
+                    "<td>" + t.tm + "</td>" +
+                    "<td>" + t.asset + "</td>" +
+                    "<td class='" + color + "'>" + t.side + "</td>" +
+                    "<td>" + fmtNumber(t.price) + "</td>" +
+                    "<td>" + fmtNumber(t.shares) + "</td>" +
+                    "<td>" + fmtNumber(t.amount) + "</td>" +
+                    "<td>" + fmtNumber(t.fee) + "</td>" +
+                    "</tr>";
+            }}
+            body.innerHTML = html;
+        }}
+
+        function renderDailySummary(rows) {{
+            var body = document.getElementById('daily_summary_body');
+            if (!body) return;
+            var html = "";
+            for (var i = 0; i < rows.length; i++) {{
+                var r = rows[i];
+                html += "<tr>" +
+                    "<td>" + r.dt + "</td>" +
+                    "<td>" + fmtNumber(r.cash) + "</td>" +
+                    "<td>" + fmtNumber(r.market_value) + "</td>" +
+                    "<td>" + fmtNumber(r.total) + "</td>" +
+                    "<td>" + fmtNumber(r.daily_pnl) + "</td>" +
+                    "<td>" + fmtPercent(r.daily_return) + "</td>" +
+                    "</tr>";
+            }}
+            body.innerHTML = html;
+        }}
+
+        function renderPositions(rows) {{
+            var body = document.getElementById('positions_body');
+            if (!body) return;
+            var html = "";
+            var lastDate = null;
+            for (var i = 0; i < rows.length; i++) {{
+                var r = rows[i];
+                if (lastDate !== r.dt) {{
+                    html += "<tr><td colspan='6' class='bg-gray-50 font-semibold'>" + r.dt + "</td></tr>";
+                    lastDate = r.dt;
+                }}
+                html += "<tr>" +
+                    "<td>" + r.asset + "</td>" +
+                    "<td>" + fmtNumber(r.shares) + "</td>" +
+                    "<td>" + fmtNumber(r.avail) + "</td>" +
+                    "<td>" + fmtNumber(r.price) + "</td>" +
+                    "<td>" + fmtNumber(r.mv) + "</td>" +
+                    "<td>" + fmtNumber(r.profit) + "</td>" +
+                    "</tr>";
+            }}
+            body.innerHTML = html;
+        }}
+
+        function renderLogs(rows) {{
+            var logEl = document.getElementById('log_output');
+            if (!logEl) return;
+            var lines = [];
+            for (var i = 0; i < rows.length; i++) {{
+                var r = rows[i];
+                lines.push(r.dt + " | " + r.key + " | " + r.value + " " + (r.extra || ""));
+            }}
+            logEl.textContent = lines.join("\\n");
+        }}
+
+        var wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+        var wsUrl = wsScheme + "://" + window.location.host + "/strategy/backtest/{portfolio_id}/ws";
+        var ws = new WebSocket(wsUrl);
+
+        ws.onmessage = function(event) {{
             try {{
-                var resp = await fetch('/strategy/backtest/{portfolio_id}/live');
-                if (!resp.ok) return;
-                var data = await resp.json();
-                if (data.chart_data) {{
-                    chart.setOption({{ series: [{{ data: data.chart_data }}] }});
+                var data = JSON.parse(event.data);
+                if (data.series) {{
+                    var series = data.series;
+                    chart.setOption({{
+                        xAxis: [
+                            {{ data: series.date_axis }},
+                            {{ data: series.date_axis }},
+                            {{ data: series.date_axis }}
+                        ],
+                        series: [
+                            {{ data: series.total }},
+                            {{ data: series.daily_pnl }},
+                            {{ data: series.buy_amount }},
+                            {{ data: series.sell_amount }}
+                        ]
+                    }});
                 }}
                 if (data.metrics) {{
-                    var annualEl = document.getElementById('annual_return_val');
-                    var sharpeEl = document.getElementById('sharpe_val');
-                    var mddEl = document.getElementById('max_drawdown_val');
-                    var totalEl = document.getElementById('total_returns_val');
-                    if (annualEl) annualEl.textContent = fmtPercent(data.metrics.annual_return);
-                    if (sharpeEl) sharpeEl.textContent = fmtNumber(data.metrics.sharpe);
-                    if (mddEl) mddEl.textContent = fmtPercent(data.metrics.max_drawdown);
-                    if (totalEl) totalEl.textContent = fmtPercent(data.metrics.total_returns);
+                    var formats = {metric_format_json};
+                    for (var key in formats) {{
+                        var el = document.getElementById('metric_' + key);
+                        if (el) {{
+                            el.textContent = fmtValue(data.metrics[key], formats[key]);
+                        }}
+                    }}
+                }}
+                if (data.trades) {{
+                    renderTrades(data.trades);
+                }}
+                if (data.daily_summary) {{
+                    renderDailySummary(data.daily_summary);
+                }}
+                if (data.positions) {{
+                    renderPositions(data.positions);
+                }}
+                if (data.logs) {{
+                    renderLogs(data.logs);
                 }}
                 var statusEl = document.getElementById('backtest_status');
                 if (statusEl && data.status) {{
-                    statusEl.textContent = data.status === 'running' ? '回测进行中，页面每 3 秒自动刷新' : '回测已完成';
+                    statusEl.textContent = data.status === 'running' ? '回测进行中，实时推送中' : '回测已完成';
                 }}
                 if (data.status && data.status !== 'running') {{
-                    clearInterval(window.__bt_timer__);
+                    ws.close();
                 }}
             }} catch (e) {{}}
-        }}
-
-        window.__bt_timer__ = setInterval(refreshBacktest, 3000);
-        refreshBacktest();
+        }};
     """)
 
     status_badge = Div(
         Div(
-            "回测进行中，页面每 3 秒自动刷新"
+            "回测进行中，实时推送中"
             if is_running
             else "回测已完成",
             id="backtest_status",
@@ -642,33 +1059,109 @@ def backtest_result(req, session, portfolio_id: str):
         cls="mb-4"
     )
 
-    # Trades Table
-    trades_df = db.trades_all(portfolio_id)
-    trade_rows = []
-    if not trades_df.is_empty():
-        # Limit to last 50 trades
-        trades_df = trades_df.sort("tm", descending=True).head(50)
-        for row in trades_df.iter_rows(named=True):
-            color = "text-red-500" if row["side"] == "BUY" else "text-green-500"
-            trade_rows.append(
+    trade_rows = _build_trade_rows(portfolio_id, limit=200)
+    trade_table = Table(
+        Thead(Tr(Th("时间"), Th("标的"), Th("方向"), Th("价格"), Th("数量"), Th("成交额"), Th("费用"))),
+        Tbody(
+            *[
                 Tr(
-                    Td(str(row["tm"])),
+                    Td(row["tm"]),
                     Td(row["asset"]),
-                    Td(row["side"], cls=color),
+                    Td(
+                        row["side"],
+                        cls="text-red-500"
+                        if row["side_value"] == OrderSide.BUY
+                        else "text-green-500",
+                    ),
                     Td(f"{row['price']:.2f}"),
-                    Td(str(row["shares"])),
+                    Td(f"{row['shares']:.2f}"),
+                    Td(f"{row['amount']:.2f}"),
                     Td(f"{row['fee']:.2f}"),
                 )
-            )
-
-    trade_table = Table(
-        Thead(Tr(Th("时间"), Th("标的"), Th("方向"), Th("价格"), Th("数量"), Th("费用"))),
-        Tbody(*trade_rows),
+                for row in trade_rows
+            ],
+            id="trade_table_body",
+        ),
         cls=TableT.striped + " text-xs"
     )
 
+    daily_summary_rows = _build_daily_summary(portfolio_id)
+    daily_summary_table = Table(
+        Thead(
+            Tr(
+                Th("日期"),
+                Th("现金"),
+                Th("市值"),
+                Th("总资产"),
+                Th("每日盈亏"),
+                Th("每日收益率"),
+            )
+        ),
+        Tbody(
+            *[
+                Tr(
+                    Td(row["dt"]),
+                    Td(f"{row['cash']:.2f}"),
+                    Td(f"{row['market_value']:.2f}"),
+                    Td(f"{row['total']:.2f}"),
+                    Td(f"{row['daily_pnl']:.2f}"),
+                    Td(f"{row['daily_return']:.2%}"),
+                )
+                for row in daily_summary_rows
+            ],
+            id="daily_summary_body",
+        ),
+        cls=TableT.striped + " text-xs"
+    )
+
+    position_rows = _build_daily_positions(portfolio_id)
+    position_table_rows = []
+    last_position_date = None
+    for row in position_rows:
+        if last_position_date != row["dt"]:
+            position_table_rows.append(
+                Tr(
+                    Td(row["dt"], colspan="6", cls="bg-gray-50 font-semibold"),
+                )
+            )
+            last_position_date = row["dt"]
+        position_table_rows.append(
+            Tr(
+                Td(row["asset"]),
+                Td(f"{row['shares']:.2f}"),
+                Td(f"{row['avail']:.2f}"),
+                Td(f"{row['price']:.2f}"),
+                Td(f"{row['mv']:.2f}"),
+                Td(f"{row['profit']:.2f}"),
+            )
+        )
+    positions_table = Table(
+        Thead(
+            Tr(
+                Th("标的"),
+                Th("持仓"),
+                Th("可用"),
+                Th("成本价"),
+                Th("市值"),
+                Th("浮动盈亏"),
+            )
+        ),
+        Tbody(
+            *position_table_rows,
+            id="positions_body",
+        ),
+        cls=TableT.striped + " text-xs"
+    )
+
+    log_rows = _build_log_rows(portfolio_id, limit=200)
+    log_text = "\n".join(
+        [
+            f"{row['dt']} | {row['key']} | {row['value']} {row['extra']}"
+            for row in log_rows
+        ]
+    )
+
     layout.main_block = lambda: Div(
-        # ECharts CDN
         Script(src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"),
 
         Div(
@@ -677,14 +1170,39 @@ def backtest_result(req, session, portfolio_id: str):
                 H1("回测报告", cls="text-3xl font-bold mb-2"),
                 status_badge,
 
-                metrics_cards,
-
-                Div(id=chart_id, cls="w-full h-[400px] bg-white p-4 rounded-xl shadow-sm border border-gray-100 mt-6"),
-                chart_script,
+                Div(
+                    H3("收益概述", cls="text-xl font-bold mb-4"),
+                    metrics_cards,
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100"
+                ),
 
                 Div(
-                    H3("最近交易 (Top 50)", cls="text-xl font-bold mb-4"),
+                    H3("收益曲线", cls="text-xl font-bold mb-4"),
+                    Div(id=chart_id, cls="w-full h-[560px] bg-white p-4 rounded-xl shadow-sm border border-gray-100"),
+                    chart_script,
+                    cls="mt-6"
+                ),
+
+                Div(
+                    H3("交易详情", cls="text-xl font-bold mb-4"),
                     trade_table,
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
+                ),
+
+                Div(
+                    H3("每日持仓 & 收益", cls="text-xl font-bold mb-4"),
+                    daily_summary_table,
+                    Div(positions_table, cls="mt-4"),
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
+                ),
+
+                Div(
+                    H3("日志输出", cls="text-xl font-bold mb-4"),
+                    Pre(
+                        log_text,
+                        id="log_output",
+                        cls="bg-black text-green-400 text-xs p-4 rounded-lg overflow-auto h-[320px]",
+                    ),
                     cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
                 ),
                 cls="max-w-6xl mx-auto py-8"
@@ -695,24 +1213,38 @@ def backtest_result(req, session, portfolio_id: str):
     return layout.render()
 
 
-@rt("/backtest/{portfolio_id}/live")
-def backtest_live(req, session, portfolio_id: str):
-    """返回回测实时数据。
+async def backtest_ws(websocket: WebSocket):
+    """回测报告 websocket 推送。
 
     Args:
-        req: 请求对象
-        session: 会话对象
-        portfolio_id: 组合 ID
-
-    Returns:
-        JSONResponse: 实时数据
+        websocket: WebSocket 连接
     """
-    portfolio = db.get_portfolio(portfolio_id)
-    status = "running" if portfolio is None or portfolio.status else "finished"
-    return JSONResponse(
-        {
-            "status": status,
-            "metrics": _build_metrics_payload(portfolio_id),
-            "chart_data": _build_chart_data(portfolio_id),
-        }
-    )
+    await websocket.accept()
+    portfolio_id = websocket.path_params.get("portfolio_id")
+    if not portfolio_id:
+        await websocket.close(code=1008)
+        return
+    try:
+        while True:
+            portfolio = db.get_portfolio(portfolio_id)
+            status = "running" if portfolio is None or portfolio.status else "finished"
+            date_axis = _build_date_axis(portfolio_id)
+            payload = {
+                "status": status,
+                "metrics": _build_metrics_payload(portfolio_id),
+                "series": _build_series_payload(portfolio_id, date_axis),
+                "trades": _build_trade_rows(portfolio_id, limit=200),
+                "daily_summary": _build_daily_summary(portfolio_id),
+                "positions": _build_daily_positions(portfolio_id),
+                "logs": _build_log_rows(portfolio_id, limit=200),
+            }
+            await websocket.send_text(json.dumps(payload))
+            if status != "running":
+                await websocket.close()
+                return
+            await asyncio.sleep(3)
+    except WebSocketDisconnect:
+        return
+
+
+strategy_app.add_websocket_route("/backtest/{portfolio_id}/ws", backtest_ws)
