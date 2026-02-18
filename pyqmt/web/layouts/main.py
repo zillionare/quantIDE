@@ -13,7 +13,7 @@ class MainLayout(BaseLayout):
         super().__init__(title)
         self.user = user
         self.header_menu = [
-            ("交易", "/trade"),
+            ("交易", "/trade/simulation"),
             ("策略", "/strategy"),
             ("系统", "/system"),
         ]
@@ -37,15 +37,19 @@ class MainLayout(BaseLayout):
 
     def render(self):
         """渲染主页面"""
+        # FastHTML will automatically wrap this in Html/Head/Body if we return Title/Meta/etc as tuple
+        # But since we want to control the layout structure (Header, Sidebar, Main), we construct Body content
 
-        return Html(
-            Head(
-                Meta(charset="utf-8"),
-                Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
-                Title(self.title),
-                *(Theme.blue.headers())
-            ),
-            Body(
+        return (
+            Title(self.title),
+            # Meta tags are handled by FastHTML default if we don't use Html() wrapper
+            # But we might want custom ones
+
+            # Explicitly add Theme headers
+            *Theme.blue.headers(),
+
+            # Body content
+            Div(
                 # Header
                 header_component(
                     logo="/static/logo.png",
@@ -53,14 +57,15 @@ class MainLayout(BaseLayout):
                     nav_items=self.header_menu,
                     user=self.user,
                 ),
+                # Main content area (Sidebar + Main)
                 Div(
-                    Div(
-                        sidebar_component(self.sidebar_menu),
-                        Main(self.main_block(), cls="flex-1 p-6"),
-                        cls="flex",
-                    ),
-                    cls="max-w-[1280px] mx-auto w-full flex-1",
+                    # Sidebar
+                    sidebar_component(self.sidebar_menu),
+                    # Main content
+                    Main(self.main_block(), cls="flex-1 p-6 w-full"),
+
+                    cls="flex max-w-[1280px] mx-auto w-full flex-1",
                 ),
                 cls="flex flex-col min-h-screen",
-            ),
+            )
         )

@@ -56,12 +56,7 @@ class LoginLayout(BaseLayout):
 
     def render(self):
         """渲染登录页面"""
-        return Html(
-            Head(
-                Meta(charset="utf-8"),
-                Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
-                Title(self.title),
-                *(Theme.blue.headers())
-            ),
-            Body(self.main_block()),
+        return (
+            Title(self.title),
+            self.main_block()
         )

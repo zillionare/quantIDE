@@ -1,10 +1,10 @@
 import datetime
-from abc import ABC, abstractmethod
+from typing import Protocol
 
 import polars as pl
 
 
-class DataFeed(ABC):
+class DataFeed(Protocol):
     """用以回测、模拟盘获取用以撮合的价格数据。
 
     实现类需要根据情况，选择实现其中的接口。比如, simulation broker 就不需要实现get_bars 接口
@@ -14,7 +14,6 @@ class DataFeed(ABC):
 
 
 
-    @abstractmethod
     def get_trade_price_limits(
         self, asset: str, dt: datetime.date
     ) -> tuple[float, float]:
@@ -29,7 +28,6 @@ class DataFeed(ABC):
         """
         ...
 
-    @abstractmethod
     def get_price_for_match(
         self, asset: str, tm: datetime.datetime
     ) -> pl.DataFrame | None:
@@ -49,8 +47,7 @@ class DataFeed(ABC):
         """
         ...
 
-    @abstractmethod
-    def get_close_factor(
+    def get_close_adjust_factor(
         self, assets: list[str], start: datetime.date, end: datetime.date
     ) -> pl.DataFrame:
         """获取指定日期范围内的收盘价和复权因子，用以计算市值和除权。
@@ -61,6 +58,6 @@ class DataFeed(ABC):
             end: 结束日期
 
         Returns:
-            pl.DataFrame: 包含字段 [dt, asset, close, factor]
+            pl.DataFrame: 包含字段 [date, asset, close, adjust]
         """
         ...

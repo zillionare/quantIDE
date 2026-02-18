@@ -665,7 +665,7 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
-    def trades_all(self, portfolio_id: str | None = None) -> pl.DataFrame | None:
+    def trades_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有成交信息"""
         if portfolio_id:
             rows = self["trades"].rows_where("portfolio_id = ?", (portfolio_id,))
@@ -674,7 +674,7 @@ class SQLiteDB:
 
         df = pl.DataFrame(rows)
         if len(df) == 0:
-            return None
+            return pl.DataFrame()
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
@@ -798,11 +798,28 @@ class SQLiteDB:
         if len(rows) == 0:
             return None
         else:
-            return Portfolio(**rows[0])
+            # Filter unknown fields (e.g. strategy_name which was removed)
+            row = rows[0]
+            valid_fields = {f.name for f in fields(Portfolio)}
+            row = {k: v for k, v in row.items() if k in valid_fields}
+            return Portfolio(**row)
 
     def portfolios_all(self) -> pl.DataFrame:
         """获取所有组合信息"""
         return pl.DataFrame(self["portfolios"].rows)
+
+    def get_portfolios_by_strategy(self, strategy_name: str) -> pl.DataFrame:
+        """根据策略名称获取组合信息"""
+        rows = self["portfolios"].rows_where("name = ?", (strategy_name,))
+        df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return pl.DataFrame()
+        # Convert date strings to date objects if necessary, though sqlite_utils might return strings
+        # Polars handles string to date conversion if we cast
+        return df.with_columns([
+            pl.col("start").cast(pl.Date),
+            pl.col("end").cast(pl.Date)
+        ])
 
     def update_portfolio(self, portfolio_id: str, **updates) -> None:
         """更新组合信息

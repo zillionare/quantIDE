@@ -7,10 +7,12 @@ This file sets up the FastHTML application with MonsterUI styling.
 
 from pathlib import Path
 
-from starlette.staticfiles import StaticFiles
 from fasthtml.common import *
 from monsterui.all import *
 from starlette.middleware import Middleware
+from starlette.responses import RedirectResponse
+from starlette.routing import Route
+from starlette.staticfiles import StaticFiles
 
 from pyqmt.config import cfg, init_config
 from pyqmt.core.enums import BrokerKind
@@ -18,16 +20,16 @@ from pyqmt.core.errors import BaseTradeError
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
 from pyqmt.service.livequote import live_quote
-
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.pages.home import home_app
-from pyqmt.web.pages.login import login_app
-from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.live import live_app
+from pyqmt.web.pages.login import login_app
+from pyqmt.web.pages.strategy import strategy_app
+from pyqmt.web.pages.trade import trade_app
 
 
 def init():
@@ -57,17 +59,17 @@ def init():
             BaseTradeError: exception_handler,
         },
         routes=[
+            Mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "web" / "static")), name="static"),
             Mount("/login", login_app),
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),
             Mount("/trade/live", live_app),
+            Route("/strategy", lambda req: RedirectResponse("/strategy/")),
+            Mount("/strategy", strategy_app),
             Mount("/broker", broker_api_app),
             Mount("/", home_app),
         ],
     )
-
-    static_dir = Path(__file__).resolve().parent / "web" / "static"
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     auth.initialize(app, prefix="/auth")
 

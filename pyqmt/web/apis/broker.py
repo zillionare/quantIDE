@@ -7,9 +7,10 @@ from pyqmt.config import cfg, get_config_dir, init_config
 from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import TradeError, TradeErrors
 from pyqmt.data import init_data
-from pyqmt.data.sqlite import Asset
+from pyqmt.data.sqlite import Asset, db
 from pyqmt.service.base_broker import Broker
 from pyqmt.service.discovery import strategy_loader
+from pyqmt.service.grid_search import GridSearch
 from pyqmt.service.runner import BacktestRunner
 
 # 确保配置和数据已初始化 (方便单独运行 broker app)
@@ -437,11 +438,89 @@ async def list_strategies(req):
 
     result = []
     for name, cls in strategies.items():
+        # 获取策略参数定义
+        params = getattr(cls, "PARAMS", {})
+
+        # 获取回测历史
+        portfolios = db.get_portfolios_by_strategy(name)
+        history = []
+        if not portfolios.is_empty():
+            # select columns: portfolio_id, start, end, info, metrics (need to fetch metrics separately or from info?)
+            # metrics are not in portfolio table. We might need to fetch them.
+            # For summary, maybe just basic info.
+            history_df = portfolios.select(["portfolio_id", "start", "end", "info"])
+
+            # Fetch metrics for each portfolio? That might be slow.
+            # Let's just return basic info for now.
+            history = history_df.to_dicts()
+
+            # Enrich with metrics if possible (maybe just sharpe or total return)
+            # StrategyLog? No.
+            # We can use metrics() function but that calculates on the fly.
+            # Ideally metrics should be stored.
+            # But for now, let's just return what we have.
+
         result.append({
             "name": name,
             "doc": cls.__doc__ or "",
+            "params": params,
+            "history": history
         })
     return result
+
+
+@rt("/grid_search/run", methods=["POST"])
+async def run_grid_search_job(req):
+    """启动网格搜索"""
+    try:
+        params = await req.json()
+    except Exception:
+        params = {}
+
+    strategy_name = params.get("strategy_name")
+    base_config = params.get("base_config", {})
+    param_grid = params.get("param_grid", {})
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+    interval = params.get("interval", "1d")
+    initial_cash = params.get("initial_cash", 1_000_000)
+    max_workers = params.get("max_workers", None)
+
+    workspace = "pyqmt/strategies"
+    strategies = strategy_loader.load(workspace)
+
+    if strategy_name not in strategies:
+        return Response(f"Strategy {strategy_name} not found", status_code=404)
+
+    strategy_cls = strategies[strategy_name]
+
+    try:
+        start = arrow.get(start_date).date()
+        end = arrow.get(end_date).date()
+    except Exception as e:
+        return Response(f"Invalid date format: {e}", status_code=400)
+
+    gs = GridSearch(
+        strategy_cls=strategy_cls,
+        base_config=base_config,
+        param_grid=param_grid,
+        start_date=start,
+        end_date=end,
+        interval=interval,
+        initial_cash=initial_cash,
+        max_workers=max_workers
+    )
+
+    try:
+        # Run grid search (this is blocking, should be async or in background task)
+        # For now, we run it directly (it uses ProcessPoolExecutor internally)
+        # save_logs=True to persist results
+        results_df = gs.run(save_logs=True)
+
+        # Return top results
+        return Response(results_df.to_json(orient="records"), media_type="application/json")
+    except Exception as e:
+        return Response(f"Grid search failed: {str(e)}", status_code=500)
 
 
 @rt("/backtest/run", methods=["POST"])

@@ -68,6 +68,22 @@ def _run_task(
             # Convert to list of dicts for safe serialization/transport
             result["strategy_logs"] = logs_df.to_dicts()
 
+        # 3. Get Assets (Equity Curve)
+        assets_df = db.query_assets(portfolio_id)
+        if not assets_df.is_empty():
+            result["assets"] = assets_df.to_dicts()
+
+        # 4. Get Trades
+        trades_df = db.query_trades(portfolio_id)
+        if not trades_df.is_empty():
+            result["trades"] = trades_df.to_dicts()
+
+        # 5. Get Positions (Final or All?)
+        # Let's get all positions history
+        pos_df = db.get_positions(dt=None, portfolio_id=portfolio_id)
+        if not pos_df.is_empty():
+            result["positions"] = pos_df.to_dicts()
+
     return result
 
 
@@ -114,7 +130,7 @@ class GridSearch:
         logger.info(f"Starting grid search with {len(configs)} combinations...")
 
         results = []
-        from pyqmt.data.sqlite import StrategyLog, db
+        from pyqmt.data.sqlite import Asset, Portfolio, Position, StrategyLog, Trade, db
 
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_config = {
@@ -144,7 +160,6 @@ class GridSearch:
                         if "portfolio" in res:
                             pf_data = res["portfolio"]
                             if pf_data:
-                                from pyqmt.data.sqlite import Portfolio
                                 pf = Portfolio(**pf_data)
                                 # Check if portfolio already exists to avoid duplicates
                                 existing_pf = db.get_portfolio(pf.portfolio_id)
@@ -157,6 +172,27 @@ class GridSearch:
                             if logs_data:
                                 logs = [StrategyLog(**log) for log in logs_data]
                                 db.insert_strategy_logs(logs)
+
+                        # 3. Insert Assets
+                        if "assets" in res:
+                            assets_data = res["assets"]
+                            if assets_data:
+                                assets = [Asset(**a) for a in assets_data]
+                                db.upsert_asset(assets)
+
+                        # 4. Insert Trades
+                        if "trades" in res:
+                            trades_data = res["trades"]
+                            if trades_data:
+                                trades = [Trade(**t) for t in trades_data]
+                                db.insert_trades(trades)
+
+                        # 5. Insert Positions
+                        if "positions" in res:
+                            pos_data = res["positions"]
+                            if pos_data:
+                                positions = [Position(**p) for p in pos_data]
+                                db.upsert_positions(positions)
 
                     # Add config params to result
                     row = metrics.copy()

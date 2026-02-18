@@ -16,6 +16,26 @@ from pyqmt.service.metrics import metrics
 class BacktestRunner:
     """回测运行器，负责管理回测的生命周期和时间循环。"""
 
+    def _align_backtest_dates(
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> tuple[datetime.date, datetime.date]:
+        """对齐回测起止日期到交易日。
+
+        Args:
+            start_date: 回测开始日期
+            end_date: 回测结束日期
+
+        Returns:
+            tuple[datetime.date, datetime.date]: 对齐后的起止日期
+        """
+        start_date = calendar.ceiling(start_date, FrameType.DAY)
+        end_date = calendar.floor(end_date, FrameType.DAY)
+        if start_date > end_date:
+            raise ValueError(f"回测开始日期 {start_date} 不能晚于结束日期 {end_date}")
+        return start_date, end_date
+
     def _init_backtest(
         self,
         strategy_cls: Type[BaseStrategy],
@@ -61,6 +81,7 @@ class BacktestRunner:
             data_feed=daily_bars,  # type: ignore
             principal=initial_cash,
             match_level="day" if frame_type == FrameType.DAY else "minute",
+            portfolio_name=strategy_cls.__name__,
         )
 
         # 2. Init Strategy
@@ -166,6 +187,7 @@ class BacktestRunner:
         Returns:
             Dict[str, Any]: 回测结果，包含 metrics 和 portfolio_id
         """
+        start_date, end_date = self._align_backtest_dates(start_date, end_date)
         portfolio_id, broker, strategy = self._init_backtest(
             strategy_cls,
             config,

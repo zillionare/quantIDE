@@ -62,7 +62,7 @@ class BacktestBroker(AbstractBroker):
             portfolio_name=portfolio_name,
         )
 
-        self._data_feed = data_feed
+        self._data_feed: DataFeed = data_feed
         self._match_level = match_level
         self._bt_start: datetime.datetime = calendar.replace_time(bt_start, 9, 30)
         # End time should cover the closing operations
@@ -222,14 +222,12 @@ class BacktestBroker(AbstractBroker):
         assets = latest_pos["asset"].unique().to_list()
         start, end = fill_dates[0], fill_dates[-1]
 
-        # 1. 获取行情与复权因子
-        prices_df = self._data_feed.get_close_factor(assets, start, end)
-
-        # 2. 获取上一个交易日 (old_dt) 的 factor 作为初始基准
-        old_dt = calendar.day_shift(start, -1)
-        base_factors = self._data_feed.get_close_factor(assets, old_dt, old_dt).select([
+        # 1. 获取行情与复权因子（包含前一交易日，用于基准）
+        old_date = calendar.day_shift(start, -1)
+        prices_df = self._data_feed.get_close_adjust_factor(assets, old_date, end)
+        base_factors = prices_df.filter(pl.col("date") == old_date).select([
             pl.col("asset"),
-            pl.col("factor").alias("base_factor")
+            pl.col("adjust").alias("base_adjust")
         ])
 
         # 3. 构造填充模板
@@ -239,38 +237,38 @@ class BacktestBroker(AbstractBroker):
             pl.col("price"),
             (pl.col("mv") / pl.col("shares")).alias("last_mkt_price")
         ]).join(base_factors, on="asset", how="left").with_columns(
-            pl.col("base_factor").fill_null(1.0)
+            pl.col("base_adjust").fill_null(1.0)
         )
 
-        fill_df = pl.DataFrame({"dt": fill_dates}).join(pos_template, how="cross")
+        fill_df = pl.DataFrame({"date": fill_dates}).join(pos_template, how="cross")
 
         # 4. 合并行情并处理缺失值
         fill_df = fill_df.join(
-            prices_df, on=["dt", "asset"], how="left"
-        ).sort(["asset", "dt"])
+            prices_df, on=["date", "asset"], how="left"
+        ).sort(["asset", "date"])
 
         fill_df = fill_df.with_columns([
             pl.col("close").fill_null(strategy="forward").over("asset"),
-            pl.col("factor").fill_null(strategy="forward").over("asset"),
+            pl.col("adjust").fill_null(strategy="forward").over("asset"),
         ]).with_columns([
             pl.col("close").fill_null(pl.col("last_mkt_price")).over("asset"),
-            pl.col("factor").fill_null(pl.col("base_factor")).over("asset"),
+            pl.col("adjust").fill_null(pl.col("base_adjust")).over("asset"),
         ])
 
         # 5. 计算复权变动比例及产生的现金补偿
-        # 补偿公式：(new_factor - prev_factor) * shares * close
+        # 补偿公式：(new_adjust - prev_adjust) * shares * close
         fill_df = fill_df.with_columns(
-            pl.col("factor").shift(1).over("asset").fill_null(pl.col("base_factor")).alias("prev_factor")
+            pl.col("adjust").shift(1).over("asset").fill_null(pl.col("base_adjust")).alias("prev_adjust")
         ).with_columns([
-            ((pl.col("factor") - pl.col("prev_factor")) * pl.col("shares") * pl.col("close")).alias("cash_adj"),
+            ((pl.col("adjust") - pl.col("prev_adjust")) * pl.col("shares") * pl.col("close")).alias("cash_adj"),
             (pl.col("shares") * pl.col("close")).alias("mv") # 新增 mv 列
         ])
 
         # 6. 汇总每日统计量
-        daily_stats = fill_df.group_by("dt").agg([
+        daily_stats = fill_df.group_by("date").agg([
             pl.col("mv").sum().alias("market_value"),
             pl.col("cash_adj").sum().alias("daily_cash_adj")
-        ]).sort("dt")
+        ]).sort("date")
 
         # 核心：计算展仓期间每日的现金余额 (累加复权补偿)
         # 每一天的现金 = 初始现金 + 到该日为止的所有复权补偿之和
@@ -290,7 +288,7 @@ class BacktestBroker(AbstractBroker):
         positions_to_insert = [
             Position(
                 portfolio_id=self._portfolio_id,
-                dt=row["dt"],
+                dt=row["date"],
                 asset=row["asset"],
                 shares=row["shares"],
                 price=row["price"],
@@ -306,7 +304,7 @@ class BacktestBroker(AbstractBroker):
         assets_to_insert = [
             Asset(
                 portfolio_id=self._portfolio_id,
-                dt=row["dt"],
+                dt=row["date"],
                 principal=last_asset.principal,
                 cash=row["new_cash"], # 正确反映每日现金变动
                 frozen_cash=last_asset.frozen_cash,

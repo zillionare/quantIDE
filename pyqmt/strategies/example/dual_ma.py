@@ -20,8 +20,8 @@ class DualMAStrategy(BaseStrategy):
             f"DualMAStrategy Initialized: {self.symbol} Fast={self.fast_window} Slow={self.slow_window}"
         )
 
-    async def on_day_open(self):
-        # self.log(f"Day Open: {self.broker._clock}")
+    async def on_day_open(self, tm: datetime.datetime):
+        """开盘回调。"""
         pass
 
     async def on_bar(

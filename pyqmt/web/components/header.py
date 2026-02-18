@@ -6,42 +6,54 @@ def header_component(
     logo: str, brand: str, nav_items: list[tuple], user: str | None = None
 ):
     nav_links = []
-    for title, url in reversed(nav_items or []):
-        nav_links.append(
+    # nav_items is passed as list of (title, url)
+    # But wait, logic below seems wrong if nav_items is [("交易", "/trade/simulation"), ...]
+    # The reversed loop logic is strange if it was building a right-aligned menu, but let's check structure.
+
+    # Original code:
+    # for title, url in reversed(nav_items or []):
+    #    nav_links.append(A(title, href=url, ...))
+
+    # If we want them in order left-to-right, we should iterate normally.
+    for title, url in (nav_items or []):
+         nav_links.append(
             A(
                 title,
                 href=url,
-                cls="text-white hover:text-gray-200 px-3 py-2 text-sm font-medium",
+                cls="text-white hover:text-white/80 px-3 py-2 text-sm font-medium transition-colors",
             )
         )
+
     user_menu = (
-        Div()
+        Div(cls="hidden") # Return empty div if no user
         if not user
         else Div(
-            Div(
-                Span("用户", cls="text-white text-sm"),
-                A("退出", href="/auth/logout", cls="text-white text-xs ml-3"),
-                cls="flex items-center gap-2",
-            ),
-            cls="flex items-center",
+             Span(f"User: {user}", cls="text-white/80 text-xs mr-2"),
+             A("Logout", href="/auth/logout", cls="btn btn-xs btn-ghost text-white"),
+             cls="flex items-center"
         )
     )
-    return Header(
-        Div(
-            Div(
-                A(Img(src=logo, alt=brand, cls="h-8 w-8 rounded"), href="/home"),
-                cls="flex items-center",
-            ),
-            Div(
-                Span(brand, cls="text-white text-xl font-bold"),
-                cls="flex justify-center",
-            ),
-            Div(
-                Nav(*nav_links, cls="hidden md:flex items-center gap-4"),
-                user_menu,
-                cls="flex items-center gap-4 justify-end",
-            ),
-            cls="max-w-[1280px] mx-auto grid grid-cols-3 items-center px-4 py-3",
+
+    # Simplified header structure using MonsterUI/DaisyUI classes
+    return NavBar(
+        # Brand/Logo area
+        A(
+            Img(src=logo, alt=brand, cls="h-8 w-8 mr-2 rounded-md"),
+            Span(brand, cls="text-xl font-bold tracking-tight"),
+            href="/",
+            cls="btn btn-ghost text-white normal-case text-xl px-2 flex items-center"
         ),
-        cls="bg-blue-600 shadow-md",
+
+        # Navigation Links (Center/Left)
+        Div(
+            *nav_links,
+            cls="flex items-center gap-1 mx-4"
+        ),
+
+        # Right side (User menu)
+        Div(
+            user_menu,
+            cls="ml-auto"
+        ),
+        cls="bg-blue-600 text-white shadow-lg px-4 flex items-center"
     )

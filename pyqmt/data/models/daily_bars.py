@@ -121,6 +121,23 @@ class DailyBars(Bars):
         row = df.row(0, named=True)
         return row.get("down_limit", 0.0), row.get("up_limit", 0.0)
 
+    def get_close_adjust_factor(
+        self, assets: list[str], start: datetime.date, end: datetime.date
+    ) -> pl.DataFrame:
+        """获取指定日期范围内的收盘价和复权因子。
+
+        Args:
+            assets: 资产列表
+            start: 开始日期
+            end: 结束日期
+
+        Returns:
+            pl.DataFrame: 包含字段 [date, asset, close, adjust]
+        """
+        cols = ["date", "asset", "close", "adjust"]
+        lf = self.store.get(assets, start, end, cols=cols, eager_mode=False)
+        return lf.with_columns(pl.col("date").cast(pl.Date)).collect()
+
     def get_price_for_match(self, asset: str, tm: datetime.datetime) -> pl.DataFrame:
         """获取用于撮合的行情数据。"""
         # 对于日线级别，返回当天的 bar
