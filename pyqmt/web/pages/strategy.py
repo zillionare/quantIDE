@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import re
 import uuid
@@ -9,7 +10,7 @@ from fasthtml.common import *
 from monsterui.all import *
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from pyqmt.core.enums import FrameType, OrderSide
+from pyqmt.core.enums import BrokerKind, FrameType, OrderSide
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.sqlite import db
@@ -384,74 +385,386 @@ def _build_log_rows(portfolio_id: str, limit: int = 200) -> list[dict]:
     return rows
 
 
-def StrategyList(strategies: dict):
-    cards = []
+def _format_date(value) -> str:
+    """格式化日期。
+
+    Args:
+        value: 日期值
+
+    Returns:
+        str: 格式化后的日期文本
+    """
+    if value is None:
+        return "--"
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
+
+
+def _format_range(start, end) -> str:
+    """格式化回测区间。
+
+    Args:
+        start: 开始日期
+        end: 结束日期
+
+    Returns:
+        str: 回测区间文本
+    """
+    if start is None and end is None:
+        return "--"
+    return f"{_format_date(start)} ~ {_format_date(end)}"
+
+
+def _format_percent(value) -> str:
+    """格式化百分比值。
+
+    Args:
+        value: 百分比数值
+
+    Returns:
+        str: 百分比文本
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "--"
+    return f"{number * 100:.1f}%"
+
+
+def _format_number(value) -> str:
+    """格式化数值。
+
+    Args:
+        value: 数值
+
+    Returns:
+        str: 格式化后的数字文本
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "--"
+    return f"{number:.2f}"
+
+
+def _params_to_text(params: dict) -> str:
+    """格式化参数显示文本。
+
+    Args:
+        params: 参数字典
+
+    Returns:
+        str: 参数文本
+    """
+    if not params:
+        return "--"
+    items = []
+    for key, value in params.items():
+        text_value = value
+        if isinstance(value, dict):
+            text_value = value.get("default", "")
+        items.append(f"{key}={text_value}")
+    return ", ".join(items) if items else "--"
+
+
+def _extract_params_from_info(info) -> dict:
+    """从回测信息中提取参数。
+
+    Args:
+        info: 组合信息字段
+
+    Returns:
+        dict: 参数字典
+    """
+    if not info:
+        return {}
+    if isinstance(info, dict):
+        return info
+    if isinstance(info, str):
+        try:
+            payload = json.loads(info)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(payload, dict):
+            config = payload.get("config")
+            if isinstance(config, dict):
+                return config
+            return payload
+    return {}
+
+
+def _strategy_version(strategy_cls) -> str:
+    """获取策略版本。
+
+    Args:
+        strategy_cls: 策略类
+
+    Returns:
+        str: 版本文本
+    """
+    if strategy_cls is None:
+        return "v1.0.0"
+    return getattr(strategy_cls, "VERSION", getattr(strategy_cls, "__version__", "v1.0.0"))
+
+
+def _build_strategy_rows(strategies: dict) -> list:
+    """构建策略列表行。
+
+    Args:
+        strategies: 策略字典
+
+    Returns:
+        list: 行数据
+    """
+    rows = []
     for name, cls in strategies.items():
         doc = cls.__doc__ or "暂无描述"
-        params = getattr(cls, "PARAMS", {})
+        version = _strategy_version(cls)
+        portfolios = db.get_portfolios_by_strategy(name)
+        history_count = portfolios.height if hasattr(portfolios, "height") else 0
+        latest_link = None
+        latest_date = "--"
+        if not portfolios.is_empty():
+            portfolios = portfolios.sort("start", descending=True)
+            latest_row = portfolios.row(0, named=True)
+            latest_date = _format_date(latest_row.get("end") or latest_row.get("start"))
+            latest_link = latest_row.get("portfolio_id")
 
-        # 历史回测数量
-        # portfolios = db.get_portfolios_by_strategy(name)
-        history_count = 0 # len(portfolios) if not portfolios.is_empty() else 0
+        latest_cell = (
+            A(latest_date, href=f"/strategy/backtest/{latest_link}", cls="text-blue-600 hover:underline")
+            if latest_link
+            else Span("--", cls="text-gray-400")
+        )
 
-        cards.append(
-            Card(
-                CardHeader(
-                    H3(name, cls="text-lg font-bold"),
-                    P(doc, cls="text-sm text-gray-500 line-clamp-2"),
-                ),
-                CardBody(
-                    Div(
-                        P(f"参数: {', '.join(params.keys())}", cls="text-xs text-gray-400 mb-2"),
-                        P(f"历史回测: {history_count} 次", cls="text-xs text-blue-500"),
+        rows.append(
+            Tr(
+                Td(
+                    Button(
+                        UkIcon("play", size=16, cls="text-blue-600"),
+                        title="重新运行回测",
+                        hx_get=f"/strategy/{name}/backtest/modal",
+                        hx_target="#modal-container",
+                        cls="w-8 h-8 flex items-center justify-center bg-transparent border-0 shadow-none p-0 hover:text-blue-800",
+                        type="button",
                     )
                 ),
-                CardFooter(
-                    Div(
-                        Button("运行回测", type="submit",
-                               hx_get=f"/strategy/{name}/backtest/modal",
-                               hx_target="#modal-container",
-                               cls=ButtonT.primary),
-                        Button("网格搜索", type="submit",
-                               hx_get=f"/strategy/{name}/grid_search/modal",
-                               hx_target="#modal-container",
-                               cls=ButtonT.secondary + " ml-2"),
-                        cls="flex"
-                    ),
-                    Div(
-                        A("查看详情", href=f"/strategy/{name}", cls="text-sm text-blue-600 hover:underline"),
-                        cls="mt-2 text-right"
-                    )
-                ),
-                cls="hover:shadow-lg transition-shadow duration-200"
+                Td(name, cls="text-gray-900 font-medium"),
+                Td(doc, cls="text-gray-600"),
+                Td(version, cls="text-gray-900"),
+                Td(f"{history_count}次", cls="text-gray-900"),
+                Td(latest_cell),
+                cls="border-b border-gray-200 hover:bg-gray-50",
             )
         )
+    return rows
 
-    if not cards:
-        return Div(
-            Div(UkIcon("info", size=48), cls="text-gray-300 mb-4"),
-            H3("暂无策略", cls="text-xl text-gray-500"),
-            P("请在 pyqmt/strategies 目录下添加策略文件", cls="text-gray-400"),
-            cls="flex flex-col items-center justify-center py-20 border-2 border-dashed border-gray-200 rounded-xl"
+
+def _build_backtest_rows(strategies: dict) -> list:
+    """构建回测报告列表行。
+
+    Args:
+        strategies: 策略字典
+
+    Returns:
+        list: 行数据
+    """
+    rows = []
+    portfolios = db.portfolios_all()
+    if portfolios.is_empty():
+        return rows
+    if "start" in portfolios.columns:
+        portfolios = portfolios.sort("start", descending=True)
+    for row in portfolios.iter_rows(named=True):
+        kind = row.get("kind")
+        if isinstance(kind, str):
+            try:
+                kind = BrokerKind(kind)
+            except ValueError:
+                continue
+        if kind != BrokerKind.BACKTEST:
+            continue
+        portfolio_id = row.get("portfolio_id")
+        name = row.get("name") or "--"
+        strategy_cls = strategies.get(name)
+        version = _strategy_version(strategy_cls)
+        info_params = _extract_params_from_info(row.get("info"))
+        if not info_params and strategy_cls:
+            info_params = getattr(strategy_cls, "PARAMS", {})
+        params_text = _params_to_text(info_params)
+        range_text = _format_range(row.get("start"), row.get("end"))
+        metrics_payload = _build_metrics_payload(portfolio_id)
+        annual_return = metrics_payload.get("annual_return", 0.0)
+        sharpe = metrics_payload.get("sharpe", 0.0)
+        max_drawdown = metrics_payload.get("max_drawdown", 0.0)
+        sortino = metrics_payload.get("sortino", 0.0)
+        annual_cls = "text-green-600" if annual_return >= 0 else "text-red-600"
+        drawdown_cls = "text-red-600" if max_drawdown < 0 else "text-gray-900"
+
+        rows.append(
+            Tr(
+                Td(name, cls="text-gray-900 font-medium"),
+                Td(version, cls="text-gray-600"),
+                Td(params_text, cls="text-gray-600"),
+                Td(range_text, cls="text-gray-600"),
+                Td(_format_percent(annual_return), cls=f"{annual_cls} font-medium"),
+                Td(_format_number(sharpe), cls="text-gray-900"),
+                Td(_format_percent(max_drawdown), cls=drawdown_cls),
+                Td(_format_number(sortino), cls="text-gray-900"),
+                Td(
+                    A("查看报告", href=f"/strategy/backtest/{portfolio_id}", cls="text-blue-600 hover:underline")
+                ),
+                cls="border-b border-gray-200 hover:bg-gray-50",
+            )
         )
-
-    return Grid(*cards, cols=1, cols_md=2, cols_lg=3, gap=6)
+    return rows
 
 @rt("/")
 def index(req, session):
     layout = MainLayout(title="策略列表", user=session.get("auth"))
+    layout.header_active = "策略"
+    layout.sidebar_menu = [
+        {
+            "title": "策略列表",
+            "url": "/strategy",
+            "icon_path": "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+            "active": True,
+        },
+        {
+            "title": "回测报告",
+            "url": "/strategy#backtest-list",
+            "icon_path": "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+        },
+    ]
 
-    # Load strategies
     workspace = "pyqmt/strategies"
     strategies = strategy_loader.load(workspace)
+    strategy_rows = _build_strategy_rows(strategies)
+    backtest_rows = _build_backtest_rows(strategies)
+
+    strategy_table = Table(
+        Thead(
+            Tr(
+                Th("操作", cls="px-6 py-3 font-medium w-20"),
+                Th("名称", cls="px-6 py-3 font-medium"),
+                Th("简介", cls="px-6 py-3 font-medium"),
+                Th("版本", cls="px-6 py-3 font-medium"),
+                Th("历史回测", cls="px-6 py-3 font-medium"),
+                Th("最新回测", cls="px-6 py-3 font-medium"),
+                cls="text-left text-sm text-gray-600 border-b border-gray-200",
+            )
+        ),
+        Tbody(*strategy_rows, cls="text-sm"),
+        cls="w-full",
+    )
+
+    backtest_table = Table(
+        Thead(
+            Tr(
+                Th("策略名", cls="px-6 py-3 font-medium"),
+                Th("版本", cls="px-6 py-3 font-medium"),
+                Th("参数", cls="px-6 py-3 font-medium"),
+                Th("回测区间", cls="px-6 py-3 font-medium"),
+                Th("年化收益", cls="px-6 py-3 font-medium"),
+                Th("夏普", cls="px-6 py-3 font-medium"),
+                Th("最大回撤", cls="px-6 py-3 font-medium"),
+                Th("索提诺", cls="px-6 py-3 font-medium"),
+                Th("操作", cls="px-6 py-3 font-medium"),
+                cls="text-left text-sm text-gray-600 border-b border-gray-200",
+            )
+        ),
+        Tbody(*backtest_rows, cls="text-sm"),
+        cls="w-full",
+    )
 
     layout.main_block = lambda: Div(
         Div(
-            H2("我的策略", cls="text-2xl font-bold mb-6"),
-            StrategyList(strategies),
-            Div(id="modal-container"),
-            cls="p-6"
-        )
+            Nav(
+                A("首页", href="/", cls="hover:text-blue-600"),
+                Span(">", cls="text-gray-400"),
+                A("策略", href="/strategy", cls="hover:text-blue-600"),
+                Span(">", cls="text-gray-400"),
+                Span("策略列表", cls="text-gray-900 font-medium"),
+                cls="flex items-center space-x-2 text-sm text-gray-600",
+            ),
+            cls="mb-4",
+        ),
+        Div(
+            Div(
+                H2("策略列表", cls="text-lg font-semibold text-gray-900"),
+                Button(
+                    Span(
+                        Svg(
+                            Path(
+                                d="M12 4v16m8-8H4",
+                                **{
+                                    "stroke-linecap": "round",
+                                    "stroke-linejoin": "round",
+                                    "stroke-width": "2",
+                                },
+                            ),
+                            cls="w-5 h-5",
+                            fill="none",
+                            stroke="currentColor",
+                            viewBox="0 0 24 24",
+                        ),
+                        cls="flex items-center",
+                    ),
+                    Span("新建策略"),
+                    cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2",
+                    type="button",
+                ),
+                cls="p-6 border-b border-gray-200 flex justify-between items-center",
+            ),
+            Div(strategy_table, cls="overflow-x-auto"),
+            cls="bg-white rounded-lg shadow mb-6",
+        ),
+        Div(
+            Div(
+                Div(
+                    H2("回测报告列表", cls="text-lg font-semibold text-gray-900"),
+                    cls="flex items-center",
+                ),
+                Div(
+                    Div(
+                        Input(
+                            type="text",
+                            placeholder="按策略名过滤...",
+                            cls="pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        ),
+                        Svg(
+                            Path(
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+                                **{
+                                    "stroke-linecap": "round",
+                                    "stroke-linejoin": "round",
+                                    "stroke-width": "2",
+                                },
+                            ),
+                            cls="w-5 h-5 text-gray-400 absolute left-3 top-2.5",
+                            fill="none",
+                            stroke="currentColor",
+                            viewBox="0 0 24 24",
+                        ),
+                        cls="relative",
+                    ),
+                    Select(
+                        Option("按年化收益排序", value="annual", selected=True),
+                        Option("按夏普比率排序", value="sharpe"),
+                        Option("按最大回撤排序", value="drawdown"),
+                        Option("按索提诺排序", value="sortino"),
+                        cls="px-4 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none",
+                    ),
+                    cls="flex items-center space-x-4",
+                ),
+                cls="p-6 border-b border-gray-200 flex justify-between items-center",
+            ),
+            Div(backtest_table, cls="overflow-x-auto"),
+            cls="bg-white rounded-lg shadow",
+            id="backtest-list",
+        ),
+        Div(id="modal-container"),
+        cls="space-y-6",
     )
 
     return layout.render()
@@ -827,6 +1140,26 @@ async def run_grid_search(req, name: str):
 @rt("/backtest/{portfolio_id}")
 def backtest_result(req, session, portfolio_id: str):
     layout = MainLayout(title="回测报告", user=session.get("auth"))
+    layout.header_active = "策略"
+    layout.sidebar_menu = [
+        {
+            "title": "策略列表",
+            "url": "/strategy",
+            "icon_path": "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
+        },
+        {
+            "title": "回测报告",
+            "url": f"/strategy/backtest/{portfolio_id}",
+            "icon_path": "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+            "active": True,
+            "children": [
+                {"title": "收益概述", "url": "#overview", "active": True},
+                {"title": "交易详情", "url": "#trades"},
+                {"title": "每日持仓", "url": "#positions"},
+                {"title": "日志输出", "url": "#logs"},
+            ],
+        },
+    ]
 
     portfolio = db.get_portfolio(portfolio_id)
     status = "running" if portfolio is None or portfolio.status else "finished"
@@ -1180,6 +1513,8 @@ def backtest_result(req, session, portfolio_id: str):
     )
 
     trade_rows = _build_trade_rows(portfolio_id, limit=200)
+    positions_rows = _build_daily_positions(portfolio_id)
+    log_rows = _build_log_rows(portfolio_id, limit=200)
     trade_table = Table(
         Thead(Tr(Th("时间"), Th("标的"), Th("方向"), Th("价格"), Th("数量"), Th("成交额"), Th("费用"))),
         Tbody(
@@ -1204,6 +1539,34 @@ def backtest_result(req, session, portfolio_id: str):
         ),
         cls=TableT.striped + " text-xs"
     )
+    position_trs = []
+    last_date = None
+    for row in positions_rows:
+        dt = row.get("dt")
+        if dt != last_date:
+            position_trs.append(
+                Tr(Td(dt, colspan="6", cls="bg-gray-50 font-semibold"))
+            )
+            last_date = dt
+        position_trs.append(
+            Tr(
+                Td(row.get("asset", "")),
+                Td(f"{row.get('shares', 0):.2f}"),
+                Td(f"{row.get('avail', 0):.2f}"),
+                Td(f"{row.get('price', 0):.2f}"),
+                Td(f"{row.get('mv', 0):.2f}"),
+                Td(f"{row.get('profit', 0):.2f}"),
+            )
+        )
+    positions_table = Table(
+        Thead(Tr(Th("标的"), Th("持仓"), Th("可用"), Th("价格"), Th("市值"), Th("浮盈"))),
+        Tbody(*position_trs, id="positions_body"),
+        cls=TableT.striped + " text-xs"
+    )
+    log_lines = [
+        f"{row.get('dt', '')} | {row.get('key', '')} | {row.get('value', '')} {row.get('extra', '')}"
+        for row in log_rows
+    ]
 
     layout.main_block = lambda: Div(
         Script(src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"),
@@ -1217,7 +1580,8 @@ def backtest_result(req, session, portfolio_id: str):
                 Div(
                     H3("收益概述", cls="text-xl font-bold mb-3"),
                     metrics_text,
-                    cls="mb-4"
+                    cls="mb-4",
+                    id="overview"
                 ),
 
                 Div(
@@ -1253,7 +1617,22 @@ def backtest_result(req, session, portfolio_id: str):
                 Div(
                     H3("交易详情", cls="text-xl font-bold mb-4"),
                     trade_table,
-                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6",
+                    id="trades"
+                ),
+
+                Div(
+                    H3("每日持仓", cls="text-xl font-bold mb-4"),
+                    positions_table,
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6",
+                    id="positions"
+                ),
+
+                Div(
+                    H3("日志输出", cls="text-xl font-bold mb-4"),
+                    Pre("\n".join(log_lines), id="log_output", cls="text-xs whitespace-pre-wrap"),
+                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6",
+                    id="logs"
                 ),
 
                 cls="max-w-6xl mx-auto py-8"

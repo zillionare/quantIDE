@@ -17,6 +17,7 @@ class MainLayout(BaseLayout):
         self.user = user
         self.header_accounts: list[dict] = []
         self.active_account: dict | None = None
+        self.header_active = "首页"
         self.header_menu = [
             ("首页", "/"),
             ("交易", "/trade/simulation"),
@@ -86,6 +87,7 @@ class MainLayout(BaseLayout):
                     user=self.user,
                     accounts=accounts,
                     active_account=active_account,
+                    active_title=self.header_active,
                 ),
                 Div(
                     sidebar_component(self.sidebar_menu),

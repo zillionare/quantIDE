@@ -9,6 +9,7 @@ def header_component(
     user: str | None = None,
     accounts: list[dict] | None = None,
     active_account: dict | None = None,
+    active_title: str = "首页",
 ):
     """构建主导航栏。
 
@@ -19,10 +20,11 @@ def header_component(
         user: 用户名
         accounts: 账号列表
         active_account: 当前选中账号
+        active_title: 当前选中的导航标题
     """
     nav_links = []
     for title, url in (nav_items or []):
-        is_active = title == "首页"
+        is_active = title == active_title
         active_cls = "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
         inactive_cls = "text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
         nav_links.append(

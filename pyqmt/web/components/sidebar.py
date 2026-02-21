@@ -48,6 +48,24 @@ def sidebar_component(menu_items: list[dict] | None = None):
                 cls=base_cls,
             )
         )
+        children = item.get("children", [])
+        if children:
+            child_items = []
+            for child in children:
+                child_active = child.get("active", False)
+                child_cls = "block px-3 py-2 rounded-lg text-sm"
+                if child_active:
+                    child_cls += " bg-blue-50 text-blue-600"
+                else:
+                    child_cls += " text-gray-600 hover:bg-gray-100"
+                child_items.append(
+                    A(
+                        child.get("title", ""),
+                        href=child.get("url", "#"),
+                        cls=child_cls,
+                    )
+                )
+            items.append(Div(*child_items, cls="pl-9 space-y-1"))
 
     return Aside(
         Nav(Div(*items, cls="p-4 space-y-1")),
