@@ -11,6 +11,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from pyqmt.core.enums import FrameType, OrderSide
 from pyqmt.data.models.calendar import calendar
+from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.sqlite import db
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.grid_search import GridSearch
@@ -19,6 +20,8 @@ from pyqmt.service.runner import BacktestRunner
 from pyqmt.web.layouts.main import MainLayout
 
 strategy_app, rt = fast_app()
+
+BENCHMARK_ASSET = "000300.SH"
 
 def _normalize_stats(stats):
     """规范化 quantstats 指标名称并返回字典。
@@ -103,9 +106,9 @@ def _build_series_payload(portfolio_id: str, date_axis: list[str]) -> dict:
         return {
             "date_axis": date_axis,
             "total": [None for _ in date_axis],
+            "benchmark": [None for _ in date_axis],
             "daily_pnl": [None for _ in date_axis],
-            "buy_amount": [0 for _ in date_axis],
-            "sell_amount": [0 for _ in date_axis],
+            "trade_count": [0 for _ in date_axis],
         }
 
     assets_df = assets_df.sort("dt")
@@ -119,8 +122,7 @@ def _build_series_payload(portfolio_id: str, date_axis: list[str]) -> dict:
         last_date = dt
         totals.append(row["total"])
 
-    buy_by_date: dict[str, float] = {}
-    sell_by_date: dict[str, float] = {}
+    trade_count_by_date: dict[str, int] = {}
     trades_df = db.trades_all(portfolio_id)
     if not trades_df.is_empty():
         for row in trades_df.iter_rows(named=True):
@@ -128,25 +130,11 @@ def _build_series_payload(portfolio_id: str, date_axis: list[str]) -> dict:
             if tm is None:
                 continue
             dt = arrow.get(tm).format("YYYY-MM-DD")
-            amount = row.get("amount")
-            if amount is None:
-                price = row.get("price") or 0
-                shares = row.get("shares") or 0
-                amount = price * shares
-            side = row.get("side")
-            if isinstance(side, OrderSide):
-                side_value = side.value
-            else:
-                side_value = int(side) if side is not None else 0
-            if side_value == OrderSide.BUY:
-                buy_by_date[dt] = buy_by_date.get(dt, 0.0) + float(amount)
-            elif side_value == OrderSide.SELL:
-                sell_by_date[dt] = sell_by_date.get(dt, 0.0) + float(amount)
+            trade_count_by_date[dt] = trade_count_by_date.get(dt, 0) + 1
 
     total_series = []
     daily_pnl_series = []
-    buy_series = []
-    sell_series = []
+    trade_count_series = []
     prev_total = None
     for dt in date_axis:
         if last_date is not None and dt > last_date:
@@ -160,15 +148,49 @@ def _build_series_payload(portfolio_id: str, date_axis: list[str]) -> dict:
             else:
                 daily_pnl_series.append(total - prev_total)
             prev_total = total if total is not None else prev_total
-        buy_series.append(buy_by_date.get(dt, 0.0))
-        sell_series.append(-sell_by_date.get(dt, 0.0))
+        trade_count_series.append(trade_count_by_date.get(dt, 0))
+
+    benchmark_series = [None for _ in date_axis]
+    try:
+        start_date = arrow.get(date_axis[0]).date()
+        end_date = arrow.get(date_axis[-1]).date()
+        benchmark_df = daily_bars.get_bars_in_range(
+            start_date,
+            end_date,
+            assets=[BENCHMARK_ASSET],
+            eager_mode=True,
+        )
+    except Exception:
+        benchmark_df = pl.DataFrame()
+
+    if not benchmark_df.is_empty():
+        benchmark_df = benchmark_df.sort("date")
+        close_by_date = {}
+        for row in benchmark_df.iter_rows(named=True):
+            dt = arrow.get(row["date"]).format("YYYY-MM-DD")
+            close_by_date[dt] = row.get("close")
+        first_total = next((v for v in total_series if v is not None), None)
+        first_close = next(
+            (close_by_date.get(dt) for dt in date_axis if close_by_date.get(dt)),
+            None,
+        )
+        if first_total is None:
+            first_total = 1.0
+        if first_close:
+            benchmark_series = []
+            for dt in date_axis:
+                close = close_by_date.get(dt)
+                if close is None:
+                    benchmark_series.append(None)
+                else:
+                    benchmark_series.append(first_total * float(close) / float(first_close))
 
     return {
         "date_axis": date_axis,
         "total": total_series,
+        "benchmark": benchmark_series,
         "daily_pnl": daily_pnl_series,
-        "buy_amount": buy_series,
-        "sell_amount": sell_series,
+        "trade_count": trade_count_series,
     }
 
 
@@ -183,24 +205,32 @@ def _build_metrics_payload(portfolio_id: str) -> dict:
     """
     stats = metrics(portfolio_id)
     stats_dict = _normalize_stats(stats)
-    annual_return = _to_number(
-        stats_dict.get("annual_return", stats_dict.get("cagr", 0.0))
-    )
+    annual_return = _to_number(stats_dict.get("annual_return", stats_dict.get("cagr", 0.0)))
     sharpe = _to_number(stats_dict.get("sharpe", 0.0))
     max_drawdown = _to_number(stats_dict.get("max_drawdown", 0.0))
     total_returns = _to_number(
-        stats_dict.get(
-            "cumulative_return",
-            stats_dict.get("total_return", stats_dict.get("total_returns", 0.0)),
-        )
+        stats_dict.get("cumulative_return", stats_dict.get("total_return", stats_dict.get("total_returns", 0.0)))
     )
-    volatility = _to_number(
-        stats_dict.get("volatility_ann", stats_dict.get("volatility", 0.0))
-    )
+    volatility = _to_number(stats_dict.get("volatility_ann", stats_dict.get("volatility", 0.0)))
     sortino = _to_number(stats_dict.get("sortino", 0.0))
     calmar = _to_number(stats_dict.get("calmar", 0.0))
     win_rate = _to_number(stats_dict.get("win_rate", 0.0))
     profit_factor = _to_number(stats_dict.get("profit_factor", 0.0))
+    alpha = _to_number(stats_dict.get("alpha", 0.0))
+    beta = _to_number(stats_dict.get("beta", 0.0))
+    payoff_ratio = _to_number(stats_dict.get("payoff_ratio", 0.0))
+    avg_return = _to_number(stats_dict.get("avg_return", 0.0))
+    avg_win = _to_number(stats_dict.get("avg_win", 0.0))
+    avg_loss = _to_number(stats_dict.get("avg_loss", 0.0))
+    best_day = _to_number(stats_dict.get("best_day", 0.0))
+    worst_day = _to_number(stats_dict.get("worst_day", 0.0))
+    tail_ratio = _to_number(stats_dict.get("tail_ratio", 0.0))
+    skew = _to_number(stats_dict.get("skew", 0.0))
+    kurtosis = _to_number(stats_dict.get("kurtosis", 0.0))
+    value_at_risk = _to_number(
+        stats_dict.get("daily_value_at_risk", stats_dict.get("value_at_risk", 0.0))
+    )
+    information_ratio = _to_number(stats_dict.get("information_ratio", 0.0))
     return {
         "annual_return": annual_return,
         "total_returns": total_returns,
@@ -211,6 +241,19 @@ def _build_metrics_payload(portfolio_id: str) -> dict:
         "calmar": calmar,
         "win_rate": win_rate,
         "profit_factor": profit_factor,
+        "alpha": alpha,
+        "beta": beta,
+        "payoff_ratio": payoff_ratio,
+        "avg_return": avg_return,
+        "avg_win": avg_win,
+        "avg_loss": avg_loss,
+        "best_day": best_day,
+        "worst_day": worst_day,
+        "tail_ratio": tail_ratio,
+        "skew": skew,
+        "kurtosis": kurtosis,
+        "value_at_risk": value_at_risk,
+        "information_ratio": information_ratio,
     }
 
 
@@ -797,54 +840,71 @@ def backtest_result(req, session, portfolio_id: str):
         ("annual_return", "年化收益", "percent"),
         ("total_returns", "累计收益", "percent"),
         ("max_drawdown", "最大回撤", "percent"),
-        ("sharpe", "夏普比率", "number"),
         ("volatility", "波动率", "percent"),
+        ("sharpe", "夏普比率", "number"),
         ("sortino", "索提诺比率", "number"),
         ("calmar", "卡玛比率", "number"),
+        ("alpha", "Alpha", "number"),
+        ("beta", "Beta", "number"),
         ("win_rate", "胜率", "percent"),
         ("profit_factor", "盈亏比", "number"),
+        ("payoff_ratio", "收益风险比", "number"),
+        ("avg_return", "平均收益", "percent"),
+        ("avg_win", "平均盈利", "percent"),
+        ("avg_loss", "平均亏损", "percent"),
+        ("best_day", "最佳单日", "percent"),
+        ("worst_day", "最差单日", "percent"),
+        ("tail_ratio", "尾部比", "number"),
+        ("skew", "偏度", "number"),
+        ("kurtosis", "峰度", "number"),
+        ("value_at_risk", "VaR", "percent"),
+        ("information_ratio", "信息比率", "number"),
     ]
 
-    metrics_cards = Grid(
-        *[
-            Card(
-                CardBody(
-                    H2(
-                        Span(
-                            f"{metrics_payload.get(key, 0.0):.2%}"
-                            if fmt == "percent"
-                            else f"{metrics_payload.get(key, 0.0):.2f}",
-                            id=f"metric_{key}",
-                        ),
-                        cls="text-2xl font-bold",
-                    ),
-                    P(label, cls="text-xs text-gray-500"),
-                )
+    metrics_entries = []
+    for key, label, fmt in metrics_items:
+        value = metrics_payload.get(key, 0.0)
+        value_text = f"{value:.2%}" if fmt == "percent" else f"{value:.2f}"
+        if value > 0:
+            value_cls = "text-red-600"
+        elif value < 0:
+            value_cls = "text-green-600"
+        else:
+            value_cls = "text-gray-700"
+        metrics_entries.append(
+            Div(
+                Span(f"{label}:", cls="text-gray-500"),
+                Span(value_text, id=f"metric_{key}", cls=f"{value_cls} ml-1"),
+                cls="text-sm",
             )
-            for key, label, fmt in metrics_items
-        ],
-        cols=2,
-        cols_md=3,
-        gap=4,
-    )
+        )
+    metrics_text = Div(*metrics_entries, cls="flex flex-wrap gap-x-6 gap-y-2")
 
-    # Chart Script (ECharts)
+    filter_start_value = date_axis[0] if date_axis else ""
+    filter_end_value = date_axis[-1] if date_axis else ""
+
     chart_id = f"chart_{portfolio_id}"
     date_axis_json = json.dumps(series_payload["date_axis"])
     total_series_json = json.dumps(series_payload["total"])
+    benchmark_series_json = json.dumps(series_payload["benchmark"])
     daily_pnl_json = json.dumps(series_payload["daily_pnl"])
-    buy_series_json = json.dumps(series_payload["buy_amount"])
-    sell_series_json = json.dumps(series_payload["sell_amount"])
+    trade_count_json = json.dumps(series_payload["trade_count"])
     metric_format_json = json.dumps({key: fmt for key, _, fmt in metrics_items})
     chart_script = Script(f"""
         var chart = echarts.init(document.getElementById('{chart_id}'));
         var dateAxis = {date_axis_json};
         var totalSeries = {total_series_json};
+        var benchmarkSeries = {benchmark_series_json};
         var dailyPnlSeries = {daily_pnl_json};
-        var buySeries = {buy_series_json};
-        var sellSeries = {sell_series_json};
+        var tradeCountSeries = {trade_count_json};
+        var seriesData = {{
+            dateAxis: dateAxis,
+            total: totalSeries,
+            benchmark: benchmarkSeries,
+            dailyPnl: dailyPnlSeries,
+            tradeCount: tradeCountSeries
+        }};
         var option = {{
-            title: {{ text: '收益曲线' }},
             tooltip: {{ trigger: 'axis' }},
             grid: [
                 {{ left: 60, right: 20, top: 40, height: 200 }},
@@ -876,6 +936,16 @@ def backtest_result(req, session, portfolio_id: str):
                     itemStyle: {{ color: '#d9534f' }}
                 }},
                 {{
+                    name: '基准',
+                    type: 'line',
+                    data: benchmarkSeries,
+                    smooth: true,
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    lineStyle: {{ type: 'dashed' }},
+                    itemStyle: {{ color: '#9ca3af' }}
+                }},
+                {{
                     name: '每日盈亏',
                     type: 'bar',
                     data: dailyPnlSeries,
@@ -884,21 +954,11 @@ def backtest_result(req, session, portfolio_id: str):
                     itemStyle: {{ color: '#5b8ff9' }}
                 }},
                 {{
-                    name: '每日买入',
+                    name: '每日交易',
                     type: 'bar',
-                    data: buySeries,
+                    data: tradeCountSeries,
                     xAxisIndex: 2,
                     yAxisIndex: 2,
-                    stack: 'trade',
-                    itemStyle: {{ color: '#f4664a' }}
-                }},
-                {{
-                    name: '每日卖出',
-                    type: 'bar',
-                    data: sellSeries,
-                    xAxisIndex: 2,
-                    yAxisIndex: 2,
-                    stack: 'trade',
                     itemStyle: {{ color: '#30bf78' }}
                 }}
             ]
@@ -920,6 +980,74 @@ def backtest_result(req, session, portfolio_id: str):
             if (fmt === "percent") return fmtPercent(v);
             return fmtNumber(v);
         }}
+
+        function metricColor(v) {{
+            if (v > 0) return "text-red-600";
+            if (v < 0) return "text-green-600";
+            return "text-gray-700";
+        }}
+
+        function updateMetric(key, value, fmt) {{
+            var el = document.getElementById('metric_' + key);
+            if (!el) return;
+            el.textContent = fmtValue(value, fmt);
+            el.className = metricColor(value) + " ml-1";
+        }}
+
+        function getDateValue(id) {{
+            var el = document.getElementById(id);
+            return el ? el.value : "";
+        }}
+
+        function filterSeries(series) {{
+            var start = getDateValue("filter_start");
+            var end = getDateValue("filter_end");
+            var filtered = {{
+                dateAxis: [],
+                total: [],
+                benchmark: [],
+                dailyPnl: [],
+                tradeCount: []
+            }};
+            for (var i = 0; i < series.dateAxis.length; i++) {{
+                var dt = series.dateAxis[i];
+                if (start && dt < start) continue;
+                if (end && dt > end) continue;
+                filtered.dateAxis.push(dt);
+                filtered.total.push(series.total[i]);
+                filtered.benchmark.push(series.benchmark[i]);
+                filtered.dailyPnl.push(series.dailyPnl[i]);
+                filtered.tradeCount.push(series.tradeCount[i]);
+            }}
+            return filtered;
+        }}
+
+        function updateChart(series) {{
+            var filtered = filterSeries(series);
+            chart.setOption({{
+                xAxis: [
+                    {{ data: filtered.dateAxis }},
+                    {{ data: filtered.dateAxis }},
+                    {{ data: filtered.dateAxis }}
+                ],
+                series: [
+                    {{ data: filtered.total }},
+                    {{ data: filtered.benchmark }},
+                    {{ data: filtered.dailyPnl }},
+                    {{ data: filtered.tradeCount }}
+                ]
+            }});
+        }}
+
+        var filterStart = document.getElementById("filter_start");
+        if (filterStart) {{
+            filterStart.addEventListener("change", function() {{ updateChart(seriesData); }});
+        }}
+        var filterEnd = document.getElementById("filter_end");
+        if (filterEnd) {{
+            filterEnd.addEventListener("change", function() {{ updateChart(seriesData); }});
+        }}
+        updateChart(seriesData);
 
         function renderTrades(trades) {{
             var body = document.getElementById('trade_table_body');
@@ -1002,27 +1130,19 @@ def backtest_result(req, session, portfolio_id: str):
                 var data = JSON.parse(event.data);
                 if (data.series) {{
                     var series = data.series;
-                    chart.setOption({{
-                        xAxis: [
-                            {{ data: series.date_axis }},
-                            {{ data: series.date_axis }},
-                            {{ data: series.date_axis }}
-                        ],
-                        series: [
-                            {{ data: series.total }},
-                            {{ data: series.daily_pnl }},
-                            {{ data: series.buy_amount }},
-                            {{ data: series.sell_amount }}
-                        ]
-                    }});
+                    seriesData = {{
+                        dateAxis: series.date_axis,
+                        total: series.total,
+                        benchmark: series.benchmark,
+                        dailyPnl: series.daily_pnl,
+                        tradeCount: series.trade_count
+                    }};
+                    updateChart(seriesData);
                 }}
                 if (data.metrics) {{
                     var formats = {metric_format_json};
                     for (var key in formats) {{
-                        var el = document.getElementById('metric_' + key);
-                        if (el) {{
-                            el.textContent = fmtValue(data.metrics[key], formats[key]);
-                        }}
+                        updateMetric(key, data.metrics[key], formats[key]);
                     }}
                 }}
                 if (data.trades) {{
@@ -1085,82 +1205,6 @@ def backtest_result(req, session, portfolio_id: str):
         cls=TableT.striped + " text-xs"
     )
 
-    daily_summary_rows = _build_daily_summary(portfolio_id)
-    daily_summary_table = Table(
-        Thead(
-            Tr(
-                Th("日期"),
-                Th("现金"),
-                Th("市值"),
-                Th("总资产"),
-                Th("每日盈亏"),
-                Th("每日收益率"),
-            )
-        ),
-        Tbody(
-            *[
-                Tr(
-                    Td(row["dt"]),
-                    Td(f"{row['cash']:.2f}"),
-                    Td(f"{row['market_value']:.2f}"),
-                    Td(f"{row['total']:.2f}"),
-                    Td(f"{row['daily_pnl']:.2f}"),
-                    Td(f"{row['daily_return']:.2%}"),
-                )
-                for row in daily_summary_rows
-            ],
-            id="daily_summary_body",
-        ),
-        cls=TableT.striped + " text-xs"
-    )
-
-    position_rows = _build_daily_positions(portfolio_id)
-    position_table_rows = []
-    last_position_date = None
-    for row in position_rows:
-        if last_position_date != row["dt"]:
-            position_table_rows.append(
-                Tr(
-                    Td(row["dt"], colspan="6", cls="bg-gray-50 font-semibold"),
-                )
-            )
-            last_position_date = row["dt"]
-        position_table_rows.append(
-            Tr(
-                Td(row["asset"]),
-                Td(f"{row['shares']:.2f}"),
-                Td(f"{row['avail']:.2f}"),
-                Td(f"{row['price']:.2f}"),
-                Td(f"{row['mv']:.2f}"),
-                Td(f"{row['profit']:.2f}"),
-            )
-        )
-    positions_table = Table(
-        Thead(
-            Tr(
-                Th("标的"),
-                Th("持仓"),
-                Th("可用"),
-                Th("成本价"),
-                Th("市值"),
-                Th("浮动盈亏"),
-            )
-        ),
-        Tbody(
-            *position_table_rows,
-            id="positions_body",
-        ),
-        cls=TableT.striped + " text-xs"
-    )
-
-    log_rows = _build_log_rows(portfolio_id, limit=200)
-    log_text = "\n".join(
-        [
-            f"{row['dt']} | {row['key']} | {row['value']} {row['extra']}"
-            for row in log_rows
-        ]
-    )
-
     layout.main_block = lambda: Div(
         Script(src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"),
 
@@ -1171,13 +1215,36 @@ def backtest_result(req, session, portfolio_id: str):
                 status_badge,
 
                 Div(
-                    H3("收益概述", cls="text-xl font-bold mb-4"),
-                    metrics_cards,
-                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100"
+                    H3("收益概述", cls="text-xl font-bold mb-3"),
+                    metrics_text,
+                    cls="mb-4"
                 ),
 
                 Div(
                     H3("收益曲线", cls="text-xl font-bold mb-4"),
+                    Div(
+                        Div(
+                            Label("开始日期", cls="block text-xs text-gray-500 mb-1"),
+                            Input(
+                                id="filter_start",
+                                type="date",
+                                value=filter_start_value,
+                                cls="input input-sm",
+                            ),
+                            cls="flex flex-col"
+                        ),
+                        Div(
+                            Label("结束日期", cls="block text-xs text-gray-500 mb-1"),
+                            Input(
+                                id="filter_end",
+                                type="date",
+                                value=filter_end_value,
+                                cls="input input-sm",
+                            ),
+                            cls="flex flex-col"
+                        ),
+                        cls="flex flex-wrap gap-4 mb-4"
+                    ),
                     Div(id=chart_id, cls="w-full h-[560px] bg-white p-4 rounded-xl shadow-sm border border-gray-100"),
                     chart_script,
                     cls="mt-6"
@@ -1189,22 +1256,6 @@ def backtest_result(req, session, portfolio_id: str):
                     cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
                 ),
 
-                Div(
-                    H3("每日持仓 & 收益", cls="text-xl font-bold mb-4"),
-                    daily_summary_table,
-                    Div(positions_table, cls="mt-4"),
-                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
-                ),
-
-                Div(
-                    H3("日志输出", cls="text-xl font-bold mb-4"),
-                    Pre(
-                        log_text,
-                        id="log_output",
-                        cls="bg-black text-green-400 text-xs p-4 rounded-lg overflow-auto h-[320px]",
-                    ),
-                    cls="bg-white p-6 rounded-lg shadow-sm border border-gray-100 mt-6"
-                ),
                 cls="max-w-6xl mx-auto py-8"
             )
         )
