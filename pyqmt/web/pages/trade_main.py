@@ -119,26 +119,26 @@ def LightningTradePanel(portfolio_id: str, kind: str):
                 Div(
                     # 代码输入
                     Div(
-                        Label("代码", cls=label_cls),
+                        Span("代码", cls=label_cls),
                         Input(type="text", name="asset", placeholder="输入代码/名称/拼音", cls=input_cls),
                         cls="flex items-center mb-3",
                     ),
                     # 价格输入
                     Div(
-                        Label("价格", cls=label_cls),
+                        Span("价格", cls=label_cls),
                         Input(type="number", name="price", value="0.00", step="0.01", cls=f"{input_cls} text-right text-lg font-medium"),
                         cls="flex items-center mb-3",
                     ),
                     # 金额输入
                     Div(
-                        Label("金额", cls=label_cls),
+                        Span("金额", cls=label_cls),
                         Input(type="number", name="amount", value="0", cls=f"{input_cls} text-right text-lg font-medium"),
                         Span("万元", cls="ml-2 text-xs text-gray-500"),
                         cls="flex items-center mb-3",
                     ),
                     # 仓位选择
                     Div(
-                        Label("仓位", cls="text-sm font-medium text-gray-700 dark:text-gray-300"),
+                        Span("仓位", cls="text-sm font-medium text-gray-700 dark:text-gray-300"),
                         Div(
                             Button("全仓", type="button", cls="px-2 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 font-medium"),
                             Button("1/2", type="button", cls="px-2 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 font-medium"),
@@ -171,7 +171,7 @@ def LightningTradePanel(portfolio_id: str, kind: str):
                 # 中间：价格快捷输入区（1/5）
                 Div(
                     Div(
-                        Label("快捷价格", cls="text-sm font-medium text-gray-700 dark:text-gray-300"),
+                        Span("快捷价格", cls="text-sm font-medium text-gray-700 dark:text-gray-300"),
                         Span("实时: 0.00", cls="text-xs text-gray-500 dark:text-gray-400"),
                         cls="flex items-center justify-between mb-2",
                     ),
@@ -486,56 +486,59 @@ def SelectAccountView(accounts: list[dict]):
 def trade_main_page(request):
     """交易主页面 - 符合 livetrade-default.html 原型"""
     from starlette.responses import HTMLResponse
-    
+
     session = request.scope.get("session", {})
     layout = MainLayout(title="交易", user=session.get("auth"))
     layout.header_active = "交易"
     layout.sidebar_menu = [
+        {"title": "下单", "url": "/trade", "active": True, "icon": "chart-bar"},
+        {"title": "持仓管理", "url": "/trade/positions", "icon": "briefcase"},
         {
-            "title": "交易",
+            "title": "委托管理",
+            "url": "/trade/orders",
+            "icon": "clipboard",
             "children": [
-                {"title": "闪电交易", "url": "/trade", "active": True},
-                {"title": "持仓管理", "url": "/trade/positions"},
-                {"title": "委托管理", "url": "/trade/orders"},
-                {"title": "成交记录", "url": "/trade/records"},
-                {"title": "账号管理", "url": "/system/accounts"},
+                {"title": "当日委托", "url": "/trade/orders/today"},
+                {"title": "历史委托", "url": "/trade/orders/history"},
             ],
-        }
+        },
+        {"title": "成交记录", "url": "/trade/records", "icon": "chart-square-bar"},
+        {"title": "账号管理", "url": "/system/accounts", "icon": "users"},
     ]
-    
+
     reg = _get_registry(request)
-    
+
     # 获取所有账号
     accounts = _get_all_accounts(reg) if reg else []
-    
+
     # 如果没有配置任何账号
     if not accounts:
         def main_block():
             return Div(NoAccountView(), cls="p-6")
         layout.main_block = main_block
         return HTMLResponse(to_xml(layout.render()))
-    
+
     # 获取活动账号
     active_account = _get_active_account(reg, session)
-    
+
     # 如果没有活动账号，显示选择页面
     if not active_account:
         def main_block():
             return SelectAccountView(accounts)
         layout.main_block = main_block
         return HTMLResponse(to_xml(layout.render()))
-    
+
     # 获取账号数据
     portfolio_id = active_account["id"]
     kind = active_account["kind"]
-    
+
     broker = reg.get(BrokerKind(kind), portfolio_id) if reg else None
-    
+
     # 获取资产信息
     total = cash = market_value = 0
     positions = []
     orders = []
-    
+
     if broker:
         if hasattr(broker, "asset") and broker.asset:
             total = broker.asset.total
@@ -545,7 +548,7 @@ def trade_main_page(request):
             positions = list(broker.positions.values()) if isinstance(broker.positions, dict) else broker.positions
         if hasattr(broker, "orders"):
             orders = list(broker.orders.values()) if isinstance(broker.orders, dict) else broker.orders
-    
+
     def main_block():
         return Div(
             # 账号信息
@@ -567,7 +570,7 @@ def trade_main_page(request):
             TodayOrdersTable(orders),
             cls="p-6",
         )
-    
+
     layout.main_block = main_block
     return HTMLResponse(to_xml(layout.render()))
 
