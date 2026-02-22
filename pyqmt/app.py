@@ -25,11 +25,13 @@ from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
+from pyqmt.web.pages.accounts import accounts_app
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.live import live_app
 from pyqmt.web.pages.login import login_app
 from pyqmt.web.pages.strategy import strategy_app
 from pyqmt.web.pages.trade import trade_app
+from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
 
 
 def init():
@@ -64,6 +66,9 @@ def init():
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),
             Mount("/trade/live", live_app),
+            Route("/trade", trade_main_page),
+            Route("/trade/", trade_main_page),
+            Mount("/system/accounts", accounts_app),
             Route("/strategy", lambda req: RedirectResponse("/strategy/")),
             Mount("/strategy", strategy_app),
             Mount("/broker", broker_api_app),
@@ -72,6 +77,11 @@ def init():
     )
 
     auth.initialize(app, prefix="/auth")
+
+    # 添加交易页面路由
+    @rt("/trade/set-active", methods=["POST"])
+    async def trade_set_active(req, session):
+        return await set_active_account(req, session)
 
     return app
 

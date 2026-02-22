@@ -20,7 +20,7 @@ class MainLayout(BaseLayout):
         self.header_active = "首页"
         self.header_menu = [
             ("首页", "/"),
-            ("交易", "/trade/simulation"),
+            ("交易", "/trade"),
             ("行情", "/system/stocks"),
             ("策略", "/strategy"),
             ("分析", "/analysis"),
