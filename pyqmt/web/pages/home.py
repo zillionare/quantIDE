@@ -564,12 +564,54 @@ def OrderTable(orders: list[dict] | None = None):
     )
 
 
+def NoAccountDialog():
+    """无账户提示对话框"""
+    return Div(
+        Div(
+            Div(
+                # 图标
+                Div(
+                    UkIcon("alert-circle", size=48, cls="text-yellow-500"),
+                    cls="flex justify-center mb-4",
+                ),
+                # 标题
+                H3("欢迎使用匡醍", cls="text-xl font-semibold text-gray-900 text-center mb-2"),
+                # 说明
+                P("您还没有配置任何交易账号。请创建至少一个模拟交易账户或配置实盘账户，才能开始使用系统。",
+                  cls="text-gray-600 text-center mb-6"),
+                # 按钮组
+                Div(
+                    A(
+                        "跳转账号管理",
+                        href="/system/accounts",
+                        cls="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium",
+                    ),
+                    A(
+                        "创建模拟交易账户",
+                        href="/system/accounts?create_sim=1",
+                        cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium",
+                    ),
+                    cls="flex justify-center space-x-3",
+                ),
+                cls="bg-white p-8 rounded-lg shadow-lg max-w-md w-full mx-4",
+            ),
+            cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50",
+            id="no-account-dialog",
+        ),
+        cls="max-w-[1400px] mx-auto w-full",
+    )
+
+
 def main_block(
     asset_overview: dict | None = None,
     brokers: list[dict] | None = None,
     positions: list[Position] | None = None,
     orders: list[dict] | None = None,
+    show_no_account_dialog: bool = False,
 ):
+    if show_no_account_dialog:
+        return NoAccountDialog()
+
     return Div(
         Div(
             Nav(
@@ -601,6 +643,40 @@ def _get_broker(req):
         return reg.get(d[0], d[1])
     return None
 
+def _auto_select_account(reg: BrokerRegistry, session: dict) -> tuple[str, str] | None:
+    """自动选择活动账户
+
+    优先级：
+    1. 实盘账户（只允许一个）
+    2. 最后创建的模拟账户
+
+    Returns:
+        (kind, account_id) 或 None
+    """
+    if reg is None:
+        return None
+
+    # 检查是否有实盘账户
+    live_accounts = reg.list_by_kind(BrokerKind.QMT)
+    if live_accounts:
+        # 实盘账户只允许一个，选择第一个
+        info = live_accounts[0]
+        account_id = info.get("id")
+        if account_id:
+            return (BrokerKind.QMT.value, account_id)
+
+    # 检查模拟账户，选择最后创建的
+    sim_accounts = reg.list_by_kind(BrokerKind.SIMULATION)
+    if sim_accounts:
+        # 选择最后一个（最后创建的）
+        info = sim_accounts[-1]
+        account_id = info.get("id")
+        if account_id:
+            return (BrokerKind.SIMULATION.value, account_id)
+
+    return None
+
+
 @rt("/", methods="get")
 def index(req, session):
     layout = MainLayout(
@@ -615,9 +691,9 @@ def index(req, session):
     accounts = []
     active_account = None
     reg: BrokerRegistry | None = req.scope.get("registry")
+
     if reg is not None:
-        brokers = reg.list()
-        default_account = reg.get_default()
+        # 获取所有账户
         for kind in [BrokerKind.QMT, BrokerKind.SIMULATION]:
             for info in reg.list_by_kind(kind):
                 account = {
@@ -630,8 +706,40 @@ def index(req, session):
                     "switch_url": f"/home?kind={kind.value}&id={info.get('id')}",
                 }
                 accounts.append(account)
-                if default_account and default_account[0] == kind.value and default_account[1] == info.get("id"):
-                    active_account = account
+
+        # 检查是否有任何账户
+        show_no_account_dialog = not accounts
+
+        # 检查 session 中是否有活动账户
+        active_kind = session.get("active_account_kind")
+        active_id = session.get("active_account_id")
+
+        if active_kind and active_id:
+            # 验证活动账户是否仍然存在
+            broker = reg.get(BrokerKind(active_kind), active_id)
+            if broker is None:
+                # 活动账户已不存在，需要重新选择
+                selected = _auto_select_account(reg, session)
+                if selected:
+                    session["active_account_kind"] = selected[0]
+                    session["active_account_id"] = selected[1]
+                    active_kind, active_id = selected
+        else:
+            # 没有活动账户，自动选择
+            selected = _auto_select_account(reg, session)
+            if selected:
+                session["active_account_kind"] = selected[0]
+                session["active_account_id"] = selected[1]
+                active_kind, active_id = selected
+
+        # 获取当前活动账户信息
+        if active_kind and active_id:
+            for acc in accounts:
+                if acc["kind"] == active_kind and acc["id"] == active_id:
+                    active_account = acc
+                    break
+
+        # 获取经纪人数据
         broker = _get_broker(req)
         if broker is not None:
             if hasattr(broker, "asset"):
@@ -657,7 +765,7 @@ def index(req, session):
 
     layout.header_accounts = accounts
     layout.active_account = active_account
-    layout.main_block = lambda: main_block(asset_overview, brokers, positions, orders)
+    layout.main_block = lambda: main_block(asset_overview, brokers, positions, orders, show_no_account_dialog)
 
     return layout.render()
 

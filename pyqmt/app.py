@@ -25,7 +25,7 @@ from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
-from pyqmt.web.pages.accounts import accounts_list
+from pyqmt.web.pages.accounts import accounts_app, accounts_list
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.live import live_app
 from pyqmt.web.pages.login import login_app
@@ -44,11 +44,6 @@ def init():
     live_quote.start()
 
     reg = BrokerRegistry()
-    try:
-        sim_broker = SimulationBroker(portfolio_id="sim_demo", portfolio_name="演示账户", principal=1000000)
-        reg.register(BrokerKind.SIMULATION, "sim_demo", sim_broker)
-    except Exception as e:
-        print(f"Failed to create demo broker: {e}")
 
     auth = AuthManager(config={"login_path": "/login"})
 
@@ -68,8 +63,9 @@ def init():
             Mount("/trade/live", live_app),
             Route("/trade", trade_main_page),
             Route("/trade/", trade_main_page),
-            Route("/system/accounts", accounts_list),
-            Route("/system/accounts/", accounts_list),
+            Route("/system/accounts", accounts_list, methods=["GET"]),
+            Route("/system/accounts/", accounts_list, methods=["GET"]),
+            Mount("/system/accounts", accounts_app),
             Route("/strategy", lambda req: RedirectResponse("/strategy/")),
             Mount("/strategy", strategy_app),
             Mount("/broker", broker_api_app),
