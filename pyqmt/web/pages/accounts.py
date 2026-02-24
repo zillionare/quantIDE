@@ -226,20 +226,7 @@ def accounts_list(request):
     session = request.scope.get("session", {})
     layout = MainLayout(title="账号管理", user=session.get("auth"))
     layout.header_active = "交易"
-    layout.sidebar_menu = [
-        {"title": "概览", "url": "/system", "icon": "home"},
-        {
-            "title": "下单",
-            "url": "/trade",
-            "icon": "chart-bar",
-            "children": [
-                {"title": "闪电交易", "url": "/trade"},
-            ],
-        },
-        {"title": "账号管理", "url": "/system/accounts", "active": True, "icon": "users"},
-        {"title": "交易记录", "url": "/trade/records", "icon": "document-text"},
-        {"title": "系统设置", "url": "/system/settings", "icon": "cog"},
-    ]
+    layout.set_sidebar_active("/system/accounts")
 
     reg = _get_registry(request)
 

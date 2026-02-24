@@ -489,21 +489,7 @@ def trade_main_page(request):
     session = request.scope.get("session", {})
     layout = MainLayout(title="交易", user=session.get("auth"))
     layout.header_active = "交易"
-    layout.sidebar_menu = [
-        {"title": "下单", "url": "/trade", "active": True, "icon": "chart-bar"},
-        {"title": "持仓管理", "url": "/trade/positions", "icon": "briefcase"},
-        {
-            "title": "委托管理",
-            "url": "/trade/orders",
-            "icon": "clipboard",
-            "children": [
-                {"title": "当日委托", "url": "/trade/orders/today"},
-                {"title": "历史委托", "url": "/trade/orders/history"},
-            ],
-        },
-        {"title": "成交记录", "url": "/trade/records", "icon": "chart-square-bar"},
-        {"title": "账号管理", "url": "/system/accounts", "icon": "users"},
-    ]
+    layout.set_sidebar_active("/trade")
 
     reg = _get_registry(request)
 
