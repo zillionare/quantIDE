@@ -64,39 +64,13 @@ def header_component(
                 Nav(*nav_links, cls="flex items-center space-x-1"),
                 Div(cls="h-6 w-px bg-gray-300 dark:bg-gray-600"),
                 Button(
-                    Svg(
-                        Path(
-                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
-                            **{
-                                "stroke-linecap": "round",
-                                "stroke-linejoin": "round",
-                                "stroke-width": "2",
-                            },
-                        ),
-                        cls="w-6 h-6",
-                        fill="none",
-                        stroke="currentColor",
-                        viewBox="0 0 24 24",
-                    ),
+                    UkIcon("bell", size=24, cls="text-gray-600 dark:text-gray-400"),
                     Span(cls="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"),
                     cls="relative p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
                     type="button",
                 ),
                 Button(
-                    Svg(
-                        Path(
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
-                            **{
-                                "stroke-linecap": "round",
-                                "stroke-linejoin": "round",
-                                "stroke-width": "2",
-                            },
-                        ),
-                        cls="w-6 h-6",
-                        fill="none",
-                        stroke="currentColor",
-                        viewBox="0 0 24 24",
-                    ),
+                    UkIcon("search", size=24, cls="text-gray-600 dark:text-gray-400"),
                     cls="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
                     type="button",
                 ),
@@ -105,21 +79,7 @@ def header_component(
                         Button(
                             Div(
                                 Span(initial, cls="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium"),
-                                Span(user_name, cls="text-sm text-gray-700 dark:text-gray-300"),
-                                Svg(
-                                    Path(
-                                        d="M19 9l-7 7-7-7",
-                                        **{
-                                            "stroke-linecap": "round",
-                                            "stroke-linejoin": "round",
-                                            "stroke-width": "2",
-                                        },
-                                    ),
-                                    cls="w-4 h-4 text-gray-500",
-                                    fill="none",
-                                    stroke="currentColor",
-                                    viewBox="0 0 24 24",
-                                ),
+                                UkIcon("chevron-down", size=16, cls="text-gray-500"),
                                 cls="flex items-center space-x-2",
                             ),
                             cls="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700",
