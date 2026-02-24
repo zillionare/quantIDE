@@ -205,22 +205,27 @@ def AccountsPage(live_accounts: list[dict], sim_accounts: list[dict], active_kin
     )
 
 
-@rt("/")
-def accounts_list(req, session):
+def accounts_list(request):
     """账号管理主页面"""
+    session = request.scope.get("session", {})
     layout = MainLayout(title="账号管理", user=session.get("auth"))
     layout.header_active = "交易"
     layout.sidebar_menu = [
+        {"title": "概览", "url": "/system", "icon": "home"},
         {
-            "title": "系统",
+            "title": "下单",
+            "url": "/trade",
+            "icon": "chart-bar",
             "children": [
-                {"title": "账号管理", "url": "/system/accounts", "active": True},
-                {"title": "系统设置", "url": "/system"},
+                {"title": "闪电交易", "url": "/trade"},
             ],
-        }
+        },
+        {"title": "账号管理", "url": "/system/accounts", "active": True, "icon": "users"},
+        {"title": "交易记录", "url": "/trade/records", "icon": "document-text"},
+        {"title": "系统设置", "url": "/system/settings", "icon": "cog"},
     ]
 
-    reg = _get_registry(req)
+    reg = _get_registry(request)
 
     # 获取活动账号
     active_kind = session.get("active_account_kind", "")
@@ -264,7 +269,8 @@ def accounts_list(req, session):
         return AccountsPage(live_accounts, sim_accounts, active_kind, active_id)
 
     layout.main_block = main_block
-    return layout.render()
+    from starlette.responses import HTMLResponse
+    return HTMLResponse(to_xml(layout.render()))
 
 
 @rt("/live/{account_id}", methods=["DELETE"])

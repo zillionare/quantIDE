@@ -126,14 +126,13 @@ def LightningTradePanel(portfolio_id: str, kind: str):
                     # 价格输入
                     Div(
                         Span("价格", cls=label_cls),
-                        Input(type="number", name="price", value="0.00", step="0.01", cls=f"{input_cls} text-right text-lg font-medium"),
+                        Input(type="text", name="price", value="0.00", cls=f"{input_cls} text-right text-lg font-medium"),
                         cls="flex items-center mb-3",
                     ),
                     # 金额输入
                     Div(
                         Span("金额", cls=label_cls),
-                        Input(type="number", name="amount", value="0", cls=f"{input_cls} text-right text-lg font-medium"),
-                        Span("万元", cls="ml-2 text-xs text-gray-500"),
+                        Input(type="text", name="amount", placeholder="万元", cls=f"{input_cls} text-right text-lg font-medium"),
                         cls="flex items-center mb-3",
                     ),
                     # 仓位选择
