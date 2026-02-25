@@ -665,6 +665,49 @@ class SQLiteDB:
 
         return df.with_columns(pl.col("tm").cast(pl.Datetime))
 
+    def get_trades(
+        self, dt: datetime.date | None = None, portfolio_id: str | None = None
+    ) -> pl.DataFrame:
+        """获取成交信息
+
+        Args:
+            dt: 指定日期，如果为 None 则获取所有日期的成交
+            portfolio_id: 指定组合 ID
+        """
+        if dt is not None:
+            return self.query_trades_by_date(dt, portfolio_id)
+
+        return self.trades_all(portfolio_id)
+
+    def query_trades_by_date(
+        self, dt: datetime.date, portfolio_id: str | None = None
+    ) -> pl.DataFrame:
+        """根据日期查询成交
+
+        Args:
+            dt: 日期
+            portfolio_id: 组合 ID
+
+        Returns:
+            成交数据框
+        """
+        if isinstance(dt, datetime.datetime):
+            dt = dt.date()
+
+        where = "tm >= ? and tm < ?"
+        params = [dt, dt + datetime.timedelta(days=1)]
+
+        if portfolio_id:
+            where += " and portfolio_id = ?"
+            params.append(portfolio_id)
+
+        rows = self["trades"].rows_where(where, params)
+        df = pl.DataFrame(rows)
+        if len(df) == 0:
+            return pl.DataFrame()
+
+        return df.with_columns(pl.col("tm").cast(pl.Datetime))
+
     def trades_all(self, portfolio_id: str | None = None) -> pl.DataFrame:
         """获取所有成交信息"""
         if portfolio_id:

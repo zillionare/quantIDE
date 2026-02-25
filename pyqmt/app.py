@@ -26,6 +26,9 @@ from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.pages.accounts import accounts_app, accounts_list
+from pyqmt.web.pages.history_orders import history_orders_list
+from pyqmt.web.pages.history_positions import history_positions_list
+from pyqmt.web.pages.history_trades import history_trades_list
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.live import live_app
 from pyqmt.web.pages.login import login_app
@@ -86,6 +89,9 @@ def init():
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),
             Mount("/trade/live", live_app),
+            Route("/trade/positions/history", history_positions_list, methods=["GET"]),
+            Route("/trade/orders/history", history_orders_list, methods=["GET"]),
+            Route("/trade/records/history", history_trades_list, methods=["GET"]),
             Route("/trade", trade_main_page),
             Route("/trade/", trade_main_page),
             Route("/system/accounts", accounts_list, methods=["GET"]),
