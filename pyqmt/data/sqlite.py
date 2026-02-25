@@ -804,6 +804,21 @@ class SQLiteDB:
             row = {k: v for k, v in row.items() if k in valid_fields}
             return Portfolio(**row)
 
+    def get_all_portfolios(self) -> list[Portfolio]:
+        """获取所有组合信息"""
+        rows = list(self["portfolios"].rows)
+        valid_fields = {f.name for f in fields(Portfolio)}
+        portfolios = []
+        for row in rows:
+            # Filter unknown fields
+            row = {k: v for k, v in row.items() if k in valid_fields}
+            portfolios.append(Portfolio(**row))
+        return portfolios
+
+    def delete_portfolio(self, portfolio_id: str) -> None:
+        """删除组合信息"""
+        self["portfolios"].delete(portfolio_id)
+
     def portfolios_all(self) -> pl.DataFrame:
         """获取所有组合信息"""
         return pl.DataFrame(self["portfolios"].rows)

@@ -34,6 +34,23 @@ from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
 
 
+def _load_accounts_from_db(registry: BrokerRegistry):
+    """从数据库加载所有账户到 BrokerRegistry"""
+    from pyqmt.data.sqlite import db
+    from pyqmt.service.sim_broker import SimulationBroker
+
+    # 从数据库加载所有 portfolio
+    portfolios = db.get_all_portfolios()
+    for pf in portfolios:
+        if pf.kind == BrokerKind.SIMULATION:
+            try:
+                # 加载已存在的模拟账户
+                broker = SimulationBroker.load(pf.portfolio_id)
+                registry.register(BrokerKind.SIMULATION, pf.portfolio_id, broker)
+            except Exception as e:
+                print(f"Failed to load simulation account {pf.portfolio_id}: {e}")
+
+
 def init():
     init_config()
 
@@ -45,10 +62,18 @@ def init():
 
     reg = BrokerRegistry()
 
+    # 从数据库加载已有账户
+    _load_accounts_from_db(reg)
+
     auth = AuthManager(config={"login_path": "/login"})
 
+    # 合并 Theme headers 和 HTMX
+    from fasthtml.common import Script
+    htmx_script = Script(src="https://unpkg.com/htmx.org@1.9.12")
+    headers = list(Theme.blue.headers()) + [htmx_script]
+
     app, rt = fast_app(
-        hdrs=Theme.blue.headers(),
+        hdrs=headers,
         before=auth.create_beforeware(),
         middleware=[Middleware(BrokerRegistryMiddleware, registry=reg)],
         exception_handlers={

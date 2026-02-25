@@ -130,8 +130,12 @@ class SimulationBroker(AbstractBroker):
         if not pf:
             raise RuntimeError(f"Portfolio {portfolio_id} does not exist. Use create().")
 
-        # Initialize with default/dummy values, they will be overwritten by _init_or_sync_state
-        return cls(portfolio_id=portfolio_id)
+        # 从数据库读取账户信息
+        return cls(
+            portfolio_id=portfolio_id,
+            portfolio_name=pf.name or portfolio_id,
+            info=pf.info or "",
+        )
 
     def _on_limit_update(self, data: dict):
         """涨跌停更新回调。

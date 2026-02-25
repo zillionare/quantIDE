@@ -632,12 +632,23 @@ def _get_broker(req):
     reg = req.scope.get("registry")
     if not reg:
         return None
-    # Use query params or default
+    # Use query params first
     kind = req.query_params.get("kind")
     bid = req.query_params.get("id")
     if kind and bid:
         return reg.get(kind, bid)
 
+    # Then check session for active account
+    session = req.scope.get("session", {})
+    active_kind = session.get("active_account_kind")
+    active_id = session.get("active_account_id")
+    if active_kind and active_id:
+        from pyqmt.core.enums import BrokerKind
+        broker = reg.get(BrokerKind(active_kind), active_id)
+        if broker:
+            return broker
+
+    # Finally use default
     d = reg.get_default()
     if d:
         return reg.get(d[0], d[1])
