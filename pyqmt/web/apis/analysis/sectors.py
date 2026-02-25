@@ -3,7 +3,7 @@
 import datetime
 from pathlib import Path
 
-from fasthtml.common import APIRouter
+from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -11,7 +11,7 @@ from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.models.sector import Sector
 from pyqmt.data.sqlite import db
 
-router = APIRouter(prefix="/api/v1/sectors")
+app, rt = fast_app()
 
 
 def get_sector_dal() -> SectorDAL:
@@ -33,7 +33,7 @@ def sector_to_dict(sector: Sector, stock_count: int = 0) -> dict:
     }
 
 
-@router.get("/")
+@rt("/")
 async def list_sectors(
     request: Request,
     sector_type: str | None = None,
@@ -41,14 +41,7 @@ async def list_sectors(
     page: int = 1,
     size: int = 20,
 ):
-    """列出板块
-
-    Args:
-        sector_type: 板块类型过滤：custom/industry/concept
-        source: 来源过滤：user/tushare
-        page: 页码，默认1
-        size: 每页数量，默认20
-    """
+    """列出板块"""
     dal = get_sector_dal()
     sectors = dal.list_sectors(sector_type=sector_type, source=source)
 
@@ -76,7 +69,7 @@ async def list_sectors(
     })
 
 
-@router.post("/")
+@rt("/", methods=["POST"])
 async def create_sector(request: Request):
     """创建板块"""
     try:
@@ -128,7 +121,7 @@ async def create_sector(request: Request):
         )
 
 
-@router.get("/{sector_id}")
+@rt("/{sector_id}")
 async def get_sector(request: Request, sector_id: str):
     """获取板块详情"""
     dal = get_sector_dal()
@@ -148,7 +141,7 @@ async def get_sector(request: Request, sector_id: str):
     })
 
 
-@router.put("/{sector_id}")
+@rt("/{sector_id}", methods=["PUT"])
 async def update_sector(request: Request, sector_id: str):
     """更新板块"""
     dal = get_sector_dal()
@@ -195,7 +188,7 @@ async def update_sector(request: Request, sector_id: str):
         )
 
 
-@router.delete("/{sector_id}")
+@rt("/{sector_id}", methods=["DELETE"])
 async def delete_sector(request: Request, sector_id: str):
     """删除板块"""
     dal = get_sector_dal()
@@ -227,7 +220,7 @@ async def delete_sector(request: Request, sector_id: str):
         )
 
 
-@router.get("/{sector_id}/stocks")
+@rt("/{sector_id}/stocks")
 async def get_sector_stocks(request: Request, sector_id: str):
     """获取板块成分股"""
     dal = get_sector_dal()
@@ -255,7 +248,7 @@ async def get_sector_stocks(request: Request, sector_id: str):
     })
 
 
-@router.post("/{sector_id}/stocks")
+@rt("/{sector_id}/stocks", methods=["POST"])
 async def add_sector_stock(request: Request, sector_id: str):
     """添加成分股"""
     dal = get_sector_dal()
@@ -303,7 +296,7 @@ async def add_sector_stock(request: Request, sector_id: str):
         )
 
 
-@router.delete("/{sector_id}/stocks/{symbol}")
+@rt("/{sector_id}/stocks/{symbol}", methods=["DELETE"])
 async def remove_sector_stock(request: Request, sector_id: str, symbol: str):
     """删除成分股"""
     dal = get_sector_dal()
@@ -333,15 +326,9 @@ async def remove_sector_stock(request: Request, sector_id: str, symbol: str):
         )
 
 
-@router.post("/{sector_id}/import")
+@rt("/{sector_id}/import", methods=["POST"])
 async def import_stocks(request: Request, sector_id: str):
-    """从文件导入成分股
-
-    文件格式：每行一个股票代码，可选名称
-    示例：
-        000001.SZ 平安银行
-        000002.SZ
-    """
+    """从文件导入成分股"""
     dal = get_sector_dal()
     sector = dal.get_sector(sector_id)
 

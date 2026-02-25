@@ -1,6 +1,6 @@
 """指数管理 API"""
 
-from fasthtml.common import APIRouter
+from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -8,7 +8,7 @@ from pyqmt.data.dal.index_dal import IndexDAL
 from pyqmt.data.models.index import Index
 from pyqmt.data.sqlite import db
 
-router = APIRouter(prefix="/api/v1/indices")
+app, rt = fast_app()
 
 
 def get_index_dal() -> IndexDAL:
@@ -32,7 +32,7 @@ def index_to_dict(index: Index) -> dict:
     }
 
 
-@router.get("/")
+@rt("/")
 async def list_indices(
     request: Request,
     index_type: str | None = None,
@@ -40,14 +40,7 @@ async def list_indices(
     page: int = 1,
     size: int = 20,
 ):
-    """列出指数
-
-    Args:
-        index_type: 指数类型过滤：market/industry/concept
-        category: 分类过滤
-        page: 页码，默认1
-        size: 每页数量，默认20
-    """
+    """列出指数"""
     dal = get_index_dal()
     indices = dal.list_indices(index_type=index_type, category=category)
 
@@ -69,7 +62,7 @@ async def list_indices(
     })
 
 
-@router.get("/{symbol}")
+@rt("/{symbol}")
 async def get_index(request: Request, symbol: str):
     """获取指数详情"""
     dal = get_index_dal()

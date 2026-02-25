@@ -36,6 +36,20 @@ class Resampler:
         # 确保 dt 列是日期类型
         df = df.with_columns(pl.col("dt").cast(pl.Date))
 
+        # 构建聚合表达式
+        agg_exprs = [
+            pl.col("open").first().alias("open"),
+            pl.col("high").max().alias("high"),
+            pl.col("low").min().alias("low"),
+            pl.col("close").last().alias("close"),
+            pl.col("volume").sum().alias("volume"),
+            pl.col("amount").sum().alias("amount"),
+        ]
+
+        # 个股有 adjust 字段，指数没有
+        if "adjust" in df.columns:
+            agg_exprs.append(pl.col("adjust").last().alias("adjust"))
+
         # 按周聚合
         # 使用 group_by_dynamic 按周分组
         return df.sort("dt").group_by_dynamic(
@@ -44,14 +58,7 @@ class Resampler:
             period="1w",
             label="left",
             start_by="monday",
-        ).agg([
-            pl.col("open").first().alias("open"),
-            pl.col("high").max().alias("high"),
-            pl.col("low").min().alias("low"),
-            pl.col("close").last().alias("close"),
-            pl.col("volume").sum().alias("volume"),
-            pl.col("amount").sum().alias("amount"),
-        ])
+        ).agg(agg_exprs)
 
     @staticmethod
     def daily_to_monthly(df: pl.DataFrame) -> pl.DataFrame:
@@ -72,20 +79,27 @@ class Resampler:
         # 确保 dt 列是日期类型
         df = df.with_columns(pl.col("dt").cast(pl.Date))
 
-        # 按月聚合
-        return df.sort("dt").group_by_dynamic(
-            index_column="dt",
-            every="1mo",
-            period="1mo",
-            label="left",
-        ).agg([
+        # 构建聚合表达式
+        agg_exprs = [
             pl.col("open").first().alias("open"),
             pl.col("high").max().alias("high"),
             pl.col("low").min().alias("low"),
             pl.col("close").last().alias("close"),
             pl.col("volume").sum().alias("volume"),
             pl.col("amount").sum().alias("amount"),
-        ])
+        ]
+
+        # 个股有 adjust 字段，指数没有
+        if "adjust" in df.columns:
+            agg_exprs.append(pl.col("adjust").last().alias("adjust"))
+
+        # 按月聚合
+        return df.sort("dt").group_by_dynamic(
+            index_column="dt",
+            every="1mo",
+            period="1mo",
+            label="left",
+        ).agg(agg_exprs)
 
     @staticmethod
     def resample(df: pl.DataFrame, freq: str) -> pl.DataFrame:

@@ -44,24 +44,44 @@ class BarDAL:
         """
         if self.bars_store is None:
             logger.error("DailyBarsStore 未初始化")
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "symbol": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
         try:
             # 从 DailyBarsStore 获取日线数据
-            df = self.bars_store.read(symbol, start, end)
+            # 使用 get 方法，assets 参数传入 [symbol]
+            result = self.bars_store.get(assets=[symbol], start=start, end=end)
+
+            # 确保是 DataFrame
+            if isinstance(result, pl.LazyFrame):
+                df = result.collect()
+            else:
+                df = result
 
             if df.is_empty():
-                return pl.DataFrame()
+                return pl.DataFrame(schema={
+                    "dt": pl.Date,
+                    "symbol": pl.Utf8,
+                    "open": pl.Float64,
+                    "high": pl.Float64,
+                    "low": pl.Float64,
+                    "close": pl.Float64,
+                    "volume": pl.Int64,
+                    "amount": pl.Float64,
+                })
 
             # 重命名列以统一格式
             df = df.rename({
                 "date": "dt",
-                "open": "open",
-                "high": "high",
-                "low": "low",
-                "close": "close",
-                "volume": "volume",
-                "amount": "amount",
+                "asset": "symbol",
             })
 
             # 确保 dt 列是日期类型
@@ -75,7 +95,16 @@ class BarDAL:
 
         except Exception as e:
             logger.error(f"获取个股行情失败: {e}")
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "symbol": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
     def get_sector_bars(
         self,
@@ -98,7 +127,16 @@ class BarDAL:
         df = self.sector_dal.get_sector_bars(sector_id, start, end)
 
         if df.is_empty():
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "sector_id": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
         # 重采样
         if freq != "day":
@@ -127,7 +165,16 @@ class BarDAL:
         df = self.index_dal.get_index_bars(symbol, start, end)
 
         if df.is_empty():
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "symbol": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
         # 重采样
         if freq != "day":
@@ -182,7 +229,16 @@ class BarDAL:
             df = self.get_stock_bars(symbol, query_start, end, freq)
 
         if df.is_empty():
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "symbol": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
         # 计算均线
         if ma_periods:

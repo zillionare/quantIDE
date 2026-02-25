@@ -1,7 +1,7 @@
-"""分析导航 API"""
+"""分析导航 API 模块"""
 
-from .sectors import router as sector_router
-from .indices import router as index_router
-from .kline import router as kline_router
+from pyqmt.web.apis.analysis.indices import app as index_router
+from pyqmt.web.apis.analysis.kline import app as kline_router
+from pyqmt.web.apis.analysis.sectors import app as sector_router
 
 __all__ = ["sector_router", "index_router", "kline_router"]

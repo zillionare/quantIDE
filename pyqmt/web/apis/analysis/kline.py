@@ -2,22 +2,20 @@
 
 import datetime
 
-from fasthtml.common import APIRouter
+from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from pyqmt.data.dal.bar_dal import BarDAL
+from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.sqlite import db
-from pyqmt.data.stores.bars import DailyBarsStore
 
-router = APIRouter(prefix="/api/v1/kline")
+app, rt = fast_app()
 
 
 def get_bar_dal() -> BarDAL:
     """获取 BarDAL 实例"""
-    # TODO: 需要正确初始化 bars_store
-    bars_store = DailyBarsStore()
-    return BarDAL(db, bars_store)
+    return BarDAL(db, daily_bars.store)
 
 
 def bars_to_list(df) -> list[dict]:
@@ -67,7 +65,7 @@ def add_ma_to_list(df, ma_periods: list[int]) -> list[dict]:
     return result
 
 
-@router.get("/stock/{symbol}")
+@rt("/stock/{symbol}")
 async def get_stock_kline(
     request: Request,
     symbol: str,
@@ -76,15 +74,7 @@ async def get_stock_kline(
     freq: str = "day",
     ma: str | None = None,
 ):
-    """获取个股K线数据
-
-    Args:
-        symbol: 股票代码，如 '000001.SZ'
-        start: 开始日期 (YYYY-MM-DD)
-        end: 结束日期 (YYYY-MM-DD)
-        freq: 周期：day/week/month
-        ma: 均线周期，逗号分隔，如 '5,10,20,60'
-    """
+    """获取个股K线数据"""
     # 解析日期
     try:
         if start:
@@ -147,7 +137,7 @@ async def get_stock_kline(
         )
 
 
-@router.get("/sector/{sector_id}")
+@rt("/sector/{sector_id}")
 async def get_sector_kline(
     request: Request,
     sector_id: str,
@@ -156,15 +146,7 @@ async def get_sector_kline(
     freq: str = "day",
     ma: str | None = None,
 ):
-    """获取板块K线数据
-
-    Args:
-        sector_id: 板块ID
-        start: 开始日期 (YYYY-MM-DD)
-        end: 结束日期 (YYYY-MM-DD)
-        freq: 周期：day/week/month
-        ma: 均线周期，逗号分隔，如 '5,10,20,60'
-    """
+    """获取板块K线数据"""
     # 解析日期
     try:
         if start:
@@ -227,7 +209,7 @@ async def get_sector_kline(
         )
 
 
-@router.get("/index/{symbol}")
+@rt("/index/{symbol}")
 async def get_index_kline(
     request: Request,
     symbol: str,
@@ -236,15 +218,7 @@ async def get_index_kline(
     freq: str = "day",
     ma: str | None = None,
 ):
-    """获取指数K线数据
-
-    Args:
-        symbol: 指数代码，如 '000001.SH'
-        start: 开始日期 (YYYY-MM-DD)
-        end: 结束日期 (YYYY-MM-DD)
-        freq: 周期：day/week/month
-        ma: 均线周期，逗号分隔，如 '5,10,20,60'
-    """
+    """获取指数K线数据"""
     # 解析日期
     try:
         if start:
@@ -307,7 +281,7 @@ async def get_index_kline(
         )
 
 
-@router.get("/compare")
+@rt("/compare")
 async def compare_kline(
     request: Request,
     symbol: str,
@@ -316,15 +290,7 @@ async def compare_kline(
     end: str | None = None,
     freq: str = "day",
 ):
-    """对比两个标的的K线数据
-
-    Args:
-        symbol: 主标的代码
-        compare: 对比标的代码
-        start: 开始日期 (YYYY-MM-DD)
-        end: 结束日期 (YYYY-MM-DD)
-        freq: 周期：day/week/month
-    """
+    """对比两个标的的K线数据"""
     # 解析日期
     try:
         if start:

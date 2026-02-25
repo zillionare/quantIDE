@@ -25,7 +25,9 @@ from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
+from pyqmt.web.apis.analysis import index_router, kline_router, sector_router
 from pyqmt.web.pages.accounts import accounts_app, accounts_list
+from pyqmt.web.pages.analysis import analysis_handler
 from pyqmt.web.pages.history_orders import history_orders_list
 from pyqmt.web.pages.history_positions import history_positions_list
 from pyqmt.web.pages.history_trades import history_trades_list
@@ -99,7 +101,12 @@ def init():
             Mount("/system/accounts", accounts_app),
             Route("/strategy", lambda req: RedirectResponse("/strategy/")),
             Mount("/strategy", strategy_app),
+            Route("/analysis", analysis_handler, methods=["GET"]),
             Mount("/broker", broker_api_app),
+            # 分析导航 API
+            Mount("/api/v1/sectors", sector_router),
+            Mount("/api/v1/indices", index_router),
+            Mount("/api/v1/kline", kline_router),
             Mount("/", home_app),
         ],
     )

@@ -152,14 +152,23 @@ class IndexDAL:
         Returns:
             行情数据DataFrame
         """
-        rows = self.db["index_bars"].rows_where(
+        rows = list(self.db["index_bars"].rows_where(
             "symbol = ? AND dt >= ? AND dt <= ?",
             (symbol, start, end),
             order_by="dt",
-        )
+        ))
 
         if not rows:
-            return pl.DataFrame()
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "symbol": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
