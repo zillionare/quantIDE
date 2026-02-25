@@ -755,6 +755,22 @@ def index(req, session):
         if broker is not None:
             if hasattr(broker, "asset"):
                 asset_overview = build_asset_overview(broker.asset)  # type: ignore
+            elif hasattr(broker, "total_assets"):
+                # SimulationBroker 等没有 asset 属性，但有 total_assets, cash, principal
+                total = broker.total_assets
+                cash = broker.cash if hasattr(broker, "cash") else 0
+                principal = broker.principal if hasattr(broker, "principal") else 0
+                market_value = total - cash
+                pnl = total - principal
+                pnl_pct = pnl / principal if principal else 0
+                asset_overview = {
+                    "total": total,
+                    "cash": cash,
+                    "frozen_cash": 0,
+                    "market_value": market_value,
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                }
             if hasattr(broker, "positions"):
                 positions = broker.positions
             portfolio_id = broker.portfolio_id if hasattr(broker, "portfolio_id") else None

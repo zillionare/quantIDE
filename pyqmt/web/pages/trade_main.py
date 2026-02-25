@@ -529,6 +529,11 @@ def trade_main_page(request):
             total = broker.asset.total
             cash = broker.asset.cash
             market_value = broker.asset.market_value
+        elif hasattr(broker, "total_assets"):
+            # SimulationBroker 等没有 asset 属性
+            total = broker.total_assets
+            cash = broker.cash if hasattr(broker, "cash") else 0
+            market_value = total - cash
         if hasattr(broker, "positions"):
             positions = list(broker.positions.values()) if isinstance(broker.positions, dict) else broker.positions
         if hasattr(broker, "orders"):
