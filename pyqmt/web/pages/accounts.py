@@ -1,12 +1,17 @@
 """账号管理页面"""
 
+import uuid
 from datetime import datetime
 
 from fasthtml.common import *
+from loguru import logger
 from monsterui.all import *
+from starlette.responses import HTMLResponse, RedirectResponse
 
 from pyqmt.core.enums import BrokerKind
+from pyqmt.data.sqlite import db
 from pyqmt.service.registry import BrokerRegistry
+from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.layouts.main import MainLayout
 
 accounts_app, rt = fast_app()
@@ -108,23 +113,65 @@ def SimAccountCard(account: dict, is_active: bool = False):
                 ),
                 Button(
                     "删除",
-                    cls="uk-button uk-button-default uk-button-small text-red-600 border-red-600 hover:bg-red-50 ml-2",
-                    hx_delete=f"/system/accounts/sim/{account.get('id')}",
-                    hx_confirm="确定要删除此仿真账号吗？",
-                    hx_target="#sim-accounts-list",
+                    type="button",
+                    cls="text-sm text-red-600 hover:text-red-800 px-3 py-1 border border-red-600 rounded hover:bg-red-50",
+                    onclick=f"document.getElementById('delete-dialog-{account.get('id')}').classList.remove('hidden')",
+                ),
+                ConfirmDialogModal(
+                    dialog_id=f"delete-dialog-{account.get('id')}",
+                    title="删除账户",
+                    message=f"确定要删除账户 \"{account.get('name')}\" 吗？此操作不可恢复。",
+                    confirm_url=f"/system/accounts/sim/{account.get('id')}/delete",
                 ),
                 Button(
                     "重置",
-                    cls="uk-button uk-button-default uk-button-small text-orange-600 border-orange-600 hover:bg-orange-50 ml-2",
-                    hx_post=f"/system/accounts/sim/{account.get('id')}/reset",
-                    hx_confirm="确定要重置此账号吗？这将清空所有持仓和订单。",
-                    hx_target="#sim-accounts-list",
+                    type="button",
+                    cls="text-sm text-orange-600 hover:text-orange-800 px-3 py-1 border border-orange-600 rounded hover:bg-orange-50 ml-2",
+                    onclick=f"document.getElementById('reset-dialog-{account.get('id')}').classList.remove('hidden')",
+                ),
+                ConfirmDialogModal(
+                    dialog_id=f"reset-dialog-{account.get('id')}",
+                    title="重置账户",
+                    message=f"确定要重置账户 \"{account.get('name')}\" 吗？这将清空所有持仓和订单。",
+                    confirm_url=f"/system/accounts/sim/{account.get('id')}/reset",
                 ),
                 cls="flex items-center",
             ),
             cls="flex items-center justify-between p-4 border border-gray-200 rounded-lg",
         ),
         cls="mb-3",
+    )
+
+
+def ConfirmDialogModal(dialog_id: str, title: str, message: str, confirm_url: str, confirm_method: str = "POST"):
+    """确认对话框组件"""
+    return Div(
+        Div(
+            H3(title, cls="text-lg font-semibold text-gray-900 mb-2"),
+            P(message, cls="text-sm text-gray-600 mb-4"),
+            Div(
+                Form(
+                    Button(
+                        "确定",
+                        type="submit",
+                        cls="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700",
+                    ),
+                    action=confirm_url,
+                    method=confirm_method,
+                    cls="inline",
+                ),
+                Button(
+                    "取消",
+                    type="button",
+                    onclick=f"document.getElementById('{dialog_id}').classList.add('hidden')",
+                    cls="ml-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50",
+                ),
+                cls="flex justify-end",
+            ),
+            cls="bg-white p-6 rounded-lg shadow-lg max-w-md w-full",
+        ),
+        id=dialog_id,
+        cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden",
     )
 
 
@@ -188,10 +235,15 @@ def AccountsPage(live_accounts: list[dict], sim_accounts: list[dict], active_kin
                 H2("模拟交易账户", cls="text-lg font-semibold text-gray-900"),
                 Button(
                     "清空所有模拟交易账户",
-                    cls="uk-button uk-button-default uk-button-small text-red-600 border-red-600 hover:bg-red-50",
-                    hx_delete="/system/accounts/sim/all",
-                    hx_confirm="确定要清空所有模拟交易账户吗？此操作不可恢复！",
-                    hx_target="#sim-accounts-list",
+                    type="button",
+                    cls="text-sm text-red-600 hover:text-red-800 px-3 py-1 border border-red-600 rounded hover:bg-red-50",
+                    onclick="document.getElementById('delete-all-dialog').classList.remove('hidden')",
+                ),
+                ConfirmDialogModal(
+                    dialog_id="delete-all-dialog",
+                    title="清空所有账户",
+                    message="确定要清空所有模拟交易账户吗？此操作不可恢复！",
+                    confirm_url="/system/accounts/sim/all/delete",
                 ),
                 cls="px-6 py-4 border-b border-gray-200 flex items-center justify-between",
             ),
@@ -294,7 +346,6 @@ def accounts_list(request):
         return AccountsPage(live_accounts, sim_accounts, active_kind, active_id, show_create_modal)
 
     layout.main_block = main_block
-    from starlette.responses import HTMLResponse
     return HTMLResponse(to_xml(layout.render()))
 
 
@@ -318,37 +369,121 @@ def refresh_live_account(req, account_id: str):
     return Div("实盘账号刷新功能待实现", cls="text-blue-600 p-4")
 
 
-@rt("/sim/{account_id}", methods=["DELETE"])
+def _auto_select_latest_account(reg, session):
+    """自动选择最新的账户作为活动账户"""
+    if not reg:
+        return
+
+    # 获取所有模拟账户
+    sim_accounts = []
+    for info in reg.list_by_kind(BrokerKind.SIMULATION):
+        account_id = info.get("id")
+        if account_id:
+            # 从数据库获取创建时间
+            pf = db.get_portfolio(account_id)
+            if pf:
+                sim_accounts.append({
+                    "id": account_id,
+                    "kind": BrokerKind.SIMULATION.value,
+                    "start": pf.start,
+                })
+
+    if sim_accounts:
+        # 按创建时间排序，选择最新的
+        sim_accounts.sort(key=lambda x: x.get("start") or "", reverse=True)
+        latest = sim_accounts[0]
+        session["active_account_kind"] = latest["kind"]
+        session["active_account_id"] = latest["id"]
+        return latest
+
+    # 没有模拟账户，尝试实盘账户
+    live_accounts = reg.list_by_kind(BrokerKind.QMT)
+    if live_accounts:
+        live = live_accounts[0]
+        session["active_account_kind"] = BrokerKind.QMT.value
+        session["active_account_id"] = live.get("id")
+        return {"id": live.get("id"), "kind": BrokerKind.QMT.value}
+
+    # 没有任何账户
+    session["active_account_kind"] = ""
+    session["active_account_id"] = ""
+    return None
+
+
+@rt("/sim/all/delete", methods=["POST"])
+def delete_all_sim_accounts(req):
+    """清空所有仿真账号"""
+    logger.info("DELETE ALL request received")
+
+    reg = _get_registry(req)
+    session = req.scope.get("session", {})
+
+    if reg:
+        for info in reg.list_by_kind(BrokerKind.SIMULATION):
+            account_id = info.get("id")
+            if account_id:
+                reg.unregister(BrokerKind.SIMULATION, account_id)
+                # 从数据库删除
+                try:
+                    db.delete_portfolio(account_id)
+                    logger.info(f"Deleted portfolio: {account_id}")
+                except Exception as e:
+                    print(f"Failed to delete portfolio {account_id} from db: {e}")
+
+    # 清除活动账户
+    session["active_account_kind"] = ""
+    session["active_account_id"] = ""
+
+    logger.info("All accounts deleted")
+
+    # 重定向到账户列表页面
+    return RedirectResponse(url="/system/accounts", status_code=303)
+
+
+@rt("/sim/{account_id}/delete", methods=["POST"])
 def delete_sim_account(req, account_id: str):
     """删除仿真账号"""
+    logger.info(f"DELETE request received for account: {account_id}")
+
     reg = _get_registry(req)
+    session = req.scope.get("session", {})
+    active_kind = session.get("active_account_kind", "")
+    active_id = session.get("active_account_id", "")
+
+    logger.info(f"Registry: {reg}, Active: {active_kind}:{active_id}")
+
     if reg:
         reg.unregister(BrokerKind.SIMULATION, account_id)
-    # 返回空，触发页面刷新
-    return ""
+        logger.info(f"Unregistered account: {account_id}")
+
+    # 从数据库删除 portfolio
+    try:
+        db.delete_portfolio(account_id)
+    except Exception as e:
+        print(f"Failed to delete portfolio from db: {e}")
+
+    # 如果删除的是当前活动账户，自动选择最新账户
+    if active_kind == BrokerKind.SIMULATION.value and active_id == account_id:
+        _auto_select_latest_account(reg, session)
+
+    # 重定向到账户列表页面
+    return RedirectResponse(url="/system/accounts", status_code=303)
 
 
 @rt("/sim/{account_id}/reset", methods=["POST"])
 def reset_sim_account(req, account_id: str):
     """重置仿真账号"""
+    logger.info(f"RESET request received for account: {account_id}")
+
     reg = _get_registry(req)
     if reg:
         broker = reg.get(BrokerKind.SIMULATION, account_id)
         if broker and hasattr(broker, "reset"):
             broker.reset()
-    # 返回空，触发页面刷新
-    return ""
+            logger.info(f"Reset account: {account_id}")
 
-
-@rt("/sim/all", methods=["DELETE"])
-def delete_all_sim_accounts(req):
-    """清空所有仿真账号"""
-    reg = _get_registry(req)
-    if reg:
-        for info in reg.list_by_kind(BrokerKind.SIMULATION):
-            reg.unregister(BrokerKind.SIMULATION, info.get("id"))
-    # 返回空，触发页面刷新
-    return ""
+    # 重定向到账户列表页面
+    return RedirectResponse(url="/system/accounts", status_code=303)
 
 
 def CreateSimAccountForm():
@@ -392,8 +527,6 @@ def CreateSimAccountForm():
 
 def _get_sim_accounts_list(reg, active_kind: str = "", active_id: str = ""):
     """获取模拟交易账户列表HTML"""
-    from datetime import datetime
-
     sim_accounts = []
     if reg:
         for info in reg.list_by_kind(BrokerKind.SIMULATION):
@@ -442,9 +575,6 @@ def _get_sim_accounts_list(reg, active_kind: str = "", active_id: str = ""):
 @rt("/sim/create", methods=["POST"])
 async def create_sim_account(req):
     """创建模拟交易账户"""
-    from pyqmt.service.sim_broker import SimulationBroker
-    from starlette.responses import RedirectResponse
-
     reg = _get_registry(req)
     if not reg:
         return Div("系统错误：无法访问账户注册表", cls="text-red-500 p-4")
@@ -468,12 +598,11 @@ async def create_sim_account(req):
         principal = 1000000  # 默认100万
 
     # 生成唯一ID
-    import uuid
     account_id = f"sim_{uuid.uuid4().hex[:8]}"
 
     try:
-        # 创建模拟交易账户
-        sim_broker = SimulationBroker(
+        # 创建模拟交易账户（使用 create 方法会自动保存到数据库）
+        sim_broker = SimulationBroker.create(
             portfolio_id=account_id,
             portfolio_name=name,
             principal=principal
