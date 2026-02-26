@@ -377,3 +377,24 @@ async def import_stocks(request: Request, sector_id: str):
             {"code": 500, "message": f"Failed to import stocks: {e}"},
             status_code=500,
         )
+
+
+@rt("/stock/{symbol}")
+async def get_stock_sectors(request: Request, symbol: str):
+    """获取个股所属板块"""
+    dal = get_sector_dal()
+    sectors = dal.get_stock_sectors(symbol)
+
+    return JSONResponse({
+        "code": 0,
+        "message": "success",
+        "data": [
+            {
+                "id": sector.id,
+                "name": sector.name,
+                "sector_type": sector.sector_type,
+                "source": sector.source,
+            }
+            for sector in sectors
+        ],
+    })

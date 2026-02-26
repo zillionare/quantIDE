@@ -264,3 +264,26 @@ class SectorDAL:
 
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
+
+    def get_stock_sectors(self, symbol: str) -> list[Sector]:
+        """获取个股所属板块
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            板块列表
+        """
+        # 查询 sector_stocks 表获取包含该股票的板块ID
+        rows = list(self.db["sector_stocks"].rows_where(
+            "symbol = ?", (symbol,)
+        ))
+
+        sectors = []
+        for row in rows:
+            sector_id = row["sector_id"]
+            sector = self.get_sector(sector_id)
+            if sector:
+                sectors.append(sector)
+
+        return sectors

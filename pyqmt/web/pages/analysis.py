@@ -1,4 +1,4 @@
-"""分析导航主页面"""
+"""分析页面 - 新设计（v0.4）"""
 
 import datetime
 
@@ -6,12 +6,11 @@ from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
+from monsterui.all import Theme
+
 from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.sqlite import db
-from pyqmt.web.components.analysis.kline_chart import KlineChart
-from pyqmt.web.components.analysis.sector_list import SectorList
-from pyqmt.web.components.analysis.stock_list import StockList
-from pyqmt.web.layouts.main import MainLayout
+from pyqmt.web.components.header import header_component
 
 
 def get_sector_dal() -> SectorDAL:
@@ -20,11 +19,9 @@ def get_sector_dal() -> SectorDAL:
 
 
 def analysis_page(request: Request):
-    """分析导航主页面"""
+    """分析页面 - 新设计（无sidebar）"""
     session = request.scope.get("session", {})
-    layout = MainLayout(title="分析导航", user=session.get("auth"))
-    layout.header_active = "分析"
-    layout.set_sidebar_active("/analysis")
+    user = session.get("auth")
 
     # 获取板块列表
     dal = get_sector_dal()
@@ -35,7 +32,6 @@ def analysis_page(request: Request):
             "name": s.name,
             "sector_type": s.sector_type,
             "source": s.source,
-            "stock_count": len(dal.get_sector_stocks(s.id)),
         }
         for s in sectors
     ]
@@ -57,224 +53,752 @@ def analysis_page(request: Request):
     default_symbol = stocks_data[0]["symbol"] if stocks_data else "000001.SZ"
     default_name = stocks_data[0]["name"] if stocks_data else "平安银行"
 
-    # K线图组件
-    kline_chart = KlineChart(
-        chart_id="main-kline",
-        height=500,
-        symbol=default_symbol,
-        name=default_name,
-        freq="day",
+    # Header 导航项
+    header_menu = [
+        ("首页", "/"),
+        ("交易", "/trade"),
+        ("行情", "/system/stocks"),
+        ("策略", "/strategy"),
+        ("分析", "/analysis"),
+    ]
+
+    # 左侧 Sidebar 内容
+    left_sidebar = Div(
+        # 第一行：板块选择 Select
+        Div(
+            Label("板块选择", cls="block text-xs text-gray-500 mb-1"),
+            Select(
+                *[
+                    Option(
+                        f"{s['name']} -- {s['sector_type']}",
+                        value=s["id"],
+                        selected=(s["id"] == selected_sector_id),
+                    )
+                    for s in sectors_data
+                ],
+                Option("──────────", disabled=True),
+                Option("+ 新建板块", value="__new__", cls="text-blue-600"),
+                cls="w-full p-2 border rounded text-sm",
+                id="sector-select",
+                onchange="onSectorChange(this.value)",
+            ),
+            cls="p-3 border-b bg-gray-50",
+        ),
+        # 第二行：板块个股列表
+        Div(
+            Div(
+                f"板块个股 ({selected_sector_name})",
+                cls="text-sm font-medium text-gray-700 mb-2",
+            ),
+            Div(
+                *[
+                    Div(
+                        Div(
+                            "▶" if i == 0 else "",
+                            cls=f"text-xs w-4 {'text-blue-600' if i == 0 else 'text-transparent'}",
+                        ),
+                        Div(
+                            Div(s["name"], cls="font-medium text-gray-900"),
+                            Div(s["symbol"], cls="text-xs text-gray-500"),
+                        ),
+                        cls=f"flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 {'bg-blue-50 border-l-3 border-blue-600' if i == 0 else ''}",
+                        data_symbol=s["symbol"],
+                        data_name=s["name"],
+                        onclick=f"onStockClick('{s['symbol']}', '{s['name']}')",
+                    )
+                    for i, s in enumerate(stocks_data[:20])
+                ],
+                id="stock-list",
+                cls="divide-y",
+            ),
+            cls="flex-1 overflow-y-auto p-3",
+        ),
+        # 第三行：所属板块
+        Div(
+            Label("所属板块", cls="block text-xs text-gray-500 mb-2"),
+            Div(
+                id="stock-sectors",
+                cls="space-y-1",
+            ),
+            cls="p-3 border-t bg-gray-50",
+            id="stock-sectors-container",
+        ),
+        cls="w-72 bg-white border-r flex flex-col flex-shrink-0 h-full",
     )
 
-    # 页面内容
-    layout.main_block = lambda: Div(
-        # 顶部工具栏
+    # 右侧 Main Content
+    right_content = Div(
+        # 工具条
         Div(
-            # 周期切换
-            KlineChart.freq_buttons("main-kline", "day"),
-            # 均线切换
-            KlineChart.ma_buttons("main-kline", [5, 10, 20, 60]),
-            # 对比选择
-            Div(
-                Select(
-                    Option("不对比", value=""),
-                    Option("上证指数", value="000001.SH"),
-                    Option("深证成指", value="399001.SZ"),
-                    Option("创业板指", value="399006.SZ"),
-                    cls="px-3 py-1 border rounded text-sm",
-                    onchange="setCompare(this.value)",
-                ),
-                cls="ml-auto",
+            # 类型切换
+            Select(
+                Option("个股", value="stock"),
+                Option("指数", value="index"),
+                cls="p-2 border rounded text-sm",
+                id="search-type",
             ),
-            cls="flex items-center gap-4 mb-4",
+            # 搜索输入框
+            Div(
+                Input(
+                    type="text",
+                    placeholder="代码/名称",
+                    cls="w-32 p-2 border rounded text-sm",
+                    maxlength="8",
+                    id="search-input",
+                    oninput="onSearchInput(this.value)",
+                ),
+                # 搜索建议下拉
+                Div(
+                    id="search-suggestions",
+                    cls="absolute top-full left-0 mt-1 w-48 bg-white border rounded shadow-lg hidden z-50",
+                ),
+                cls="relative",
+            ),
+            # 周期按钮组
+            Div(
+                Button(
+                    "日线",
+                    cls="px-3 py-1.5 text-sm rounded bg-blue-600 text-white",
+                    data_freq="day",
+                    onclick="onFreqChange('day')",
+                ),
+                Button(
+                    "周线",
+                    cls="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300",
+                    data_freq="week",
+                    onclick="onFreqChange('week')",
+                ),
+                Button(
+                    "月线",
+                    cls="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300",
+                    data_freq="month",
+                    onclick="onFreqChange('month')",
+                ),
+                Select(
+                    Option("多周期 ▼", value=""),
+                    Option("季线", value="quarter"),
+                    Option("年线", value="year"),
+                    Option("1分钟", value="1min"),
+                    Option("5分钟", value="5min"),
+                    cls="px-2 py-1.5 text-sm border rounded bg-gray-100",
+                    onchange="onFreqChange(this.value)",
+                ),
+                cls="flex gap-1 ml-auto",
+            ),
+            cls="bg-white border-b p-3 flex items-center gap-3 flex-shrink-0",
+        ),
+        # K线图列表区域
+        Div(
+            id="kline-list",
+            cls="flex-1 overflow-y-auto p-4 space-y-4",
+        ),
+        cls="flex-1 flex flex-col bg-gray-100 overflow-hidden h-full",
+    )
+
+    # 主布局
+    main_layout = Div(
+        left_sidebar,
+        right_content,
+        cls="flex flex-1 overflow-hidden",
+    )
+
+    # 完整页面内容
+    page_content = Div(
+        # Header
+        header_component(
+            logo="/static/logo.png",
+            brand="匡醍",
+            nav_items=header_menu,
+            user=user,
+            accounts=[],
+            active_account=None,
+            active_title="分析",
         ),
         # 主内容区
-        Div(
-            # 左侧：板块列表
-            Div(
-                SectorList.toolbar(),
-                SectorList(sectors_data, selected_sector_id).render(),
-                cls="w-64 flex-shrink-0",
-            ),
-            # 中间：K线图
-            Div(
-                kline_chart.render(),
-                cls="flex-1 mx-4",
-            ),
-            # 右侧：成分股列表
-            Div(
-                StockList.toolbar(selected_sector_name),
-                StockList(stocks_data).render(),
-                cls="w-64 flex-shrink-0",
-            ),
-            cls="flex gap-4",
-        ),
-        # JavaScript 交互
-        Script("""
-        // 全局变量
-        let currentSymbol = '""" + default_symbol + """';
-        let currentName = '""" + default_name + """';
-        let currentFreq = 'day';
-        let currentSectorId = '""" + (selected_sector_id if selected_sector_id else "") + """';
-
-        // 加载K线数据
-        async function loadKlineData(symbol, freq, maPeriods) {
-            // 暂时使用固定的2024年日期范围，因为目前只有2024年的数据
-            const end = '2024-12-31';
-            const start = '2024-01-01';
-            const ma = maPeriods ? maPeriods.join(',') : '';
-
-            const url = `/api/v1/kline/stock/${symbol}?start=${start}&end=${end}&freq=${freq}&ma=${ma}`;
-
-            try {
-                const response = await fetch(url);
-                const result = await response.json();
-
-                if (result.code === 0) {
-                    updateKlineData_main_kline(result.data.items);
-                    setSymbol_main_kline(symbol, currentName);
-                } else {
-                    console.error('Failed to load kline data:', result.message);
-                }
-            } catch (error) {
-                console.error('Error loading kline data:', error);
-            }
-        }
-
-        // 切换周期
-        function switchFreq_main_kline(freq) {
-            currentFreq = freq;
-            loadKlineData(currentSymbol, currentFreq, [5, 10, 20, 60]);
-
-            // 更新按钮样式
-            document.querySelectorAll('[data-freq]').forEach(btn => {
-                if (btn.dataset.freq === freq) {
-                    btn.className = 'px-3 py-1 text-sm rounded bg-blue-600 text-white';
-                } else {
-                    btn.className = 'px-3 py-1 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
-                }
-            });
-        }
-
-        // 选择板块
-        async function selectSector(sectorId) {
-            currentSectorId = sectorId;
-
-            // 更新选中样式
-            document.querySelectorAll('[data-sector-id]').forEach(el => {
-                if (el.dataset.sectorId === sectorId) {
-                    el.classList.add('bg-blue-50', 'border-blue-200');
-                    el.classList.remove('border-transparent');
-                } else {
-                    el.classList.remove('bg-blue-50', 'border-blue-200');
-                    el.classList.add('border-transparent');
-                }
-            });
-
-            // 加载板块成分股
-            try {
-                const response = await fetch(`/api/v1/sectors/${sectorId}/stocks`);
-                const result = await response.json();
-
-                if (result.code === 0 && result.data.length > 0) {
-                    // 更新股票列表
-                    updateStockList(result.data);
-
-                    // 默认选中第一只股票
-                    const firstStock = result.data[0];
-                    selectStock(firstStock.symbol);
-                }
-            } catch (error) {
-                console.error('Error loading sector stocks:', error);
-            }
-        }
-
-        // 选择股票
-        function selectStock(symbol) {
-            currentSymbol = symbol;
-
-            // 更新选中样式
-            document.querySelectorAll('[data-symbol]').forEach(el => {
-                if (el.dataset.symbol === symbol) {
-                    el.classList.add('bg-blue-50');
-                } else {
-                    el.classList.remove('bg-blue-50');
-                }
-            });
-
-            // 加载K线数据
-            loadKlineData(symbol, currentFreq, [5, 10, 20, 60]);
-        }
-
-        // 更新股票列表
-        function updateStockList(stocks) {
-            const container = document.querySelector('.stock-list-container');
-            if (!container) return;
-
-            // 这里可以通过 HTMX 或重新渲染来更新列表
-            // 简化处理：刷新页面
-            // location.reload();
-        }
-
-        // 设置对比
-        function setCompare(compareSymbol) {
-            if (!compareSymbol) return;
-
-            // TODO: 实现对比功能
-            console.log('Compare with:', compareSymbol);
-        }
-
-        // 搜索板块
-        function filterSectors(keyword) {
-            const items = document.querySelectorAll('[data-sector-id]');
-            items.forEach(item => {
-                const name = item.querySelector('.font-medium').textContent;
-                if (name.toLowerCase().includes(keyword.toLowerCase())) {
-                    item.style.display = 'flex';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        }
-
-        // 显示创建板块弹窗
-        function showCreateSectorModal() {
-            // TODO: 实现创建板块弹窗
-            alert('创建板块功能待实现');
-        }
-
-        // 刷新板块列表
-        function refreshSectors() {
-            location.reload();
-        }
-
-        // 显示添加股票弹窗
-        function showAddStockModal() {
-            // TODO: 实现添加股票弹窗
-            alert('添加股票功能待实现');
-        }
-
-        // 显示导入弹窗
-        function showImportModal() {
-            // TODO: 实现导入弹窗
-            alert('导入功能待实现');
-        }
-
-        // 查看股票
-        function viewStock(symbol) {
-            selectStock(symbol);
-        }
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            // 加载初始K线数据
-            loadKlineData(currentSymbol, currentFreq, [5, 10, 20, 60]);
-        });
-        """),
-        cls="p-4",
+        main_layout,
+        # JavaScript 交互逻辑
+        Script(get_analysis_js(sectors_data, stocks_data, default_symbol, default_name)),
+        # Lightweight Charts CDN
+        Script(src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"),
+        cls="h-screen flex flex-col",
     )
 
-    return HTMLResponse(to_xml(layout.render()))
+    # 构建完整HTML响应，包含必要的CSS
+    html_content = to_xml((
+        Title("分析"),
+        *Theme.blue.headers(),
+        page_content,
+    ))
+
+    return HTMLResponse(html_content)
+
+
+def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
+    """生成分析页面的 JavaScript 代码"""
+    sectors_json = str(sectors_data).replace("'", '"')
+    stocks_json = str(stocks_data).replace("'", '"')
+
+    return f"""
+    // 全局状态
+    const state = {{
+        sectors: {sectors_json},
+        stocks: {stocks_json},
+        selectedSectorId: '{sectors_data[0]["id"] if sectors_data else ""}',
+        selectedStockSymbol: '{default_symbol}',
+        selectedStockName: '{default_name}',
+        freq: 'day',
+        klineData: {{}},
+        chartInstances: {{}},
+        page: 1,
+        pageSize: 5,
+        hasMore: true,
+        loading: false,
+    }};
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {{
+        loadKlineList();
+        loadStockSectors(state.selectedStockSymbol);
+        setupInfiniteScroll();
+    }});
+
+    // 板块切换
+    async function onSectorChange(sectorId) {{
+        if (sectorId === '__new__') {{
+            showCreateSectorModal();
+            return;
+        }}
+
+        state.selectedSectorId = sectorId;
+        state.page = 1;
+        state.hasMore = true;
+        state.klineData = {{}};
+
+        await updateStockList(sectorId);
+
+        document.getElementById('kline-list').innerHTML = '';
+        loadKlineList();
+    }}
+
+    // 更新个股列表
+    async function updateStockList(sectorId) {{
+        try {{
+            const response = await fetch(`/api/v1/sectors/${{sectorId}}/stocks`);
+            const result = await response.json();
+
+            if (result.code === 0) {{
+                state.stocks = result.data;
+
+                const container = document.getElementById('stock-list');
+                const sectorName = state.sectors.find(s => s.id === sectorId)?.name || '';
+
+                let html = `<div class="text-sm font-medium text-gray-700 mb-2">板块个股 (${{sectorName}})</div>`;
+
+                result.data.forEach((stock, i) => {{
+                    const isSelected = i === 0;
+                    html += `
+                        <div class="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 ${{isSelected ? 'bg-blue-50 border-l-3 border-blue-600' : ''}}"
+                             data-symbol="${{stock.symbol}}"
+                             data-name="${{stock.name}}"
+                             onclick="onStockClick('${{stock.symbol}}', '${{stock.name}}')">
+                            <div class="text-xs w-4 ${{isSelected ? 'text-blue-600' : 'text-transparent'}}">▶</div>
+                            <div>
+                                <div class="font-medium text-gray-900">${{stock.name}}</div>
+                                <div class="text-xs text-gray-500">${{stock.symbol}}</div>
+                            </div>
+                        </div>
+                    `;
+                }});
+
+                container.innerHTML = html;
+
+                if (result.data.length > 0) {{
+                    state.selectedStockSymbol = result.data[0].symbol;
+                    state.selectedStockName = result.data[0].name;
+                    loadStockSectors(state.selectedStockSymbol);
+                }}
+            }}
+        }} catch (error) {{
+            console.error('Error loading stocks:', error);
+        }}
+    }}
+
+    // 个股点击
+    function onStockClick(symbol, name) {{
+        state.selectedStockSymbol = symbol;
+        state.selectedStockName = name;
+
+        document.querySelectorAll('#stock-list > div[data-symbol]').forEach(el => {{
+            const isSelected = el.dataset.symbol === symbol;
+            el.classList.toggle('bg-blue-50', isSelected);
+            el.classList.toggle('border-l-3', isSelected);
+            el.classList.toggle('border-blue-600', isSelected);
+            el.querySelector('.text-xs.w-4').classList.toggle('text-blue-600', isSelected);
+            el.querySelector('.text-xs.w-4').classList.toggle('text-transparent', !isSelected);
+            el.querySelector('.text-xs.w-4').textContent = isSelected ? '▶' : '';
+        }});
+
+        highlightKlineCard(symbol);
+        loadStockSectors(symbol);
+    }}
+
+    // 高亮K线卡片
+    function highlightKlineCard(symbol) {{
+        document.querySelectorAll('.kline-card').forEach(card => {{
+            const isHighlighted = card.dataset.symbol === symbol;
+            card.classList.toggle('highlighted-card', isHighlighted);
+        }});
+
+        const card = document.querySelector(`.kline-card[data-symbol="${{symbol}}"]`);
+        if (card) {{
+            card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+        }}
+    }}
+
+    // 加载个股所属板块
+    async function loadStockSectors(symbol) {{
+        try {{
+            const response = await fetch(`/api/v1/sectors/stock/${{symbol}}`);
+            const result = await response.json();
+
+            const container = document.getElementById('stock-sectors');
+
+            if (result.code === 0 && result.data.length > 0) {{
+                let html = '';
+                result.data.forEach(sector => {{
+                    html += `
+                        <div class="text-sm text-blue-600 cursor-pointer hover:underline flex items-center gap-1"
+                             onclick="onSectorClickFromStock('${{sector.id}}', '${{symbol}}')">
+                            <span>•</span> ${{sector.name}}
+                        </div>
+                    `;
+                }});
+                container.innerHTML = html;
+            }} else {{
+                container.innerHTML = '<div class="text-sm text-gray-400">暂无板块数据</div>';
+            }}
+        }} catch (error) {{
+            console.error('Error loading stock sectors:', error);
+        }}
+    }}
+
+    // 从所属板块点击切换到板块
+    async function onSectorClickFromStock(sectorId, stockSymbol) {{
+        document.getElementById('sector-select').value = sectorId;
+        await onSectorChange(sectorId);
+        setTimeout(() => {{
+            onStockClick(stockSymbol, '');
+        }}, 100);
+    }}
+
+    // 周期切换
+    function onFreqChange(freq) {{
+        state.freq = freq;
+        state.klineData = {{}};
+
+        document.querySelectorAll('[data-freq]').forEach(btn => {{
+            const isActive = btn.dataset.freq === freq;
+            btn.className = isActive
+                ? 'px-3 py-1.5 text-sm rounded bg-blue-600 text-white'
+                : 'px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+        }});
+
+        document.getElementById('kline-list').innerHTML = '';
+        state.page = 1;
+        state.hasMore = true;
+        loadKlineList();
+    }}
+
+    // 加载K线列表
+    async function loadKlineList() {{
+        if (state.loading || !state.hasMore) return;
+
+        state.loading = true;
+
+        const start = (state.page - 1) * state.pageSize;
+        const end = start + state.pageSize;
+        const stocksToLoad = state.stocks.slice(start, end);
+
+        if (stocksToLoad.length === 0) {{
+            state.hasMore = false;
+            state.loading = false;
+            return;
+        }}
+
+        const container = document.getElementById('kline-list');
+
+        for (const stock of stocksToLoad) {{
+            const card = createKlineCard(stock);
+            container.appendChild(card);
+            await loadKlineData(stock.symbol, stock.name, card);
+        }}
+
+        state.page++;
+        state.loading = false;
+
+        if (state.selectedStockSymbol) {{
+            highlightKlineCard(state.selectedStockSymbol);
+        }}
+    }}
+
+    // 创建K线卡片
+    function createKlineCard(stock) {{
+        const div = document.createElement('div');
+        div.className = 'kline-card bg-white rounded-lg shadow overflow-hidden';
+        div.dataset.symbol = stock.symbol;
+        div.innerHTML = `
+            <div class="p-3 border-b flex items-center justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-gray-900">${{stock.name}}</span>
+                        <span class="text-xs text-gray-500">${{stock.symbol}}</span>
+                    </div>
+                    <div class="text-xs mt-1">
+                        <span class="text-gray-600">加载中...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="kline-chart" style="height: 300px;"></div>
+        `;
+        return div;
+    }}
+
+    // 加载单只股票的K线数据
+    async function loadKlineData(symbol, name, card) {{
+        const end = '2024-12-31';
+        const start = '2024-01-01';
+        const freq = state.freq;
+
+        const url = `/api/v1/kline/stock/${{symbol}}?start=${{start}}&end=${{end}}&freq=${{freq}}&ma=5,10,20,60`;
+
+        try {{
+            const response = await fetch(url);
+            const result = await response.json();
+
+            if (result.code === 0) {{
+                const items = result.data.items;
+                if (items.length > 0) {{
+                    const latest = items[items.length - 1];
+                    const prev = items.length > 1 ? items[items.length - 2] : latest;
+                    const change = latest.close - prev.close;
+                    const changePercent = (change / prev.close * 100).toFixed(2);
+                    const colorClass = change >= 0 ? 'text-red-600' : 'text-green-600';
+                    const sign = change >= 0 ? '+' : '';
+
+                    card.querySelector('.text-xs.mt-1').innerHTML = `
+                        <span class="${{colorClass}} font-medium">${{latest.close.toFixed(2)}}</span>
+                        <span class="${{colorClass}} ml-2">${{sign}}${{change.toFixed(2)}} (${{sign}}${{changePercent}}%)</span>
+                    `;
+                }}
+
+                renderChart(card.querySelector('.kline-chart'), items);
+            }}
+        }} catch (error) {{
+            console.error('Error loading kline data:', error);
+            card.querySelector('.text-xs.mt-1').innerHTML = '<span class="text-red-500">加载失败</span>';
+        }}
+    }}
+
+    // 渲染图表
+    function renderChart(container, data) {{
+        if (!container || data.length === 0) return;
+
+        // 创建图表容器结构
+        const chartWrapper = document.createElement('div');
+        chartWrapper.style.position = 'relative';
+        chartWrapper.style.height = '100%';
+        chartWrapper.style.width = '100%';
+        container.innerHTML = '';
+        container.appendChild(chartWrapper);
+
+        // 创建指标信息显示区域
+        const infoPanel = document.createElement('div');
+        infoPanel.style.cssText = 'position: absolute; top: 5px; left: 10px; z-index: 10; font-size: 11px; font-family: monospace; background: rgba(255,255,255,0.9); padding: 5px; border-radius: 3px; pointer-events: none;';
+        chartWrapper.appendChild(infoPanel);
+
+        // 创建K线图容器
+        const klineContainer = document.createElement('div');
+        klineContainer.style.height = '70%';
+        klineContainer.style.width = '100%';
+        chartWrapper.appendChild(klineContainer);
+
+        // 创建成交量图容器
+        const volumeContainer = document.createElement('div');
+        volumeContainer.style.height = '30%';
+        volumeContainer.style.width = '100%';
+        chartWrapper.appendChild(volumeContainer);
+
+        // 格式化时间为数字格式 YYYY-MM-DD
+        function formatTime(dt) {{
+            if (!dt) return '';
+            const date = new Date(dt);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${{year}}-${{month}}-${{day}}`;
+        }}
+
+        // 创建K线图
+        const chart = LightweightCharts.createChart(klineContainer, {{
+            width: klineContainer.clientWidth,
+            height: klineContainer.clientHeight,
+            layout: {{
+                background: {{ color: '#ffffff' }},
+                textColor: '#333',
+            }},
+            grid: {{
+                vertLines: {{ color: '#e0e0e0' }},
+                horzLines: {{ visible: false }},
+            }},
+            crosshair: {{
+                mode: LightweightCharts.CrosshairMode.Normal,
+            }},
+            rightPriceScale: {{
+                borderColor: '#e0e0e0',
+                scaleMargins: {{
+                    top: 0.1,
+                    bottom: 0.1,
+                }},
+            }},
+            timeScale: {{
+                borderColor: '#e0e0e0',
+                timeVisible: false,
+                tickMarkFormatter: (time) => {{
+                    return formatTime(time);
+                }},
+            }},
+            handleScale: false,
+            handleScroll: false,
+        }});
+
+        // 创建成交量图
+        const volumeChart = LightweightCharts.createChart(volumeContainer, {{
+            width: volumeContainer.clientWidth,
+            height: volumeContainer.clientHeight,
+            layout: {{
+                background: {{ color: '#ffffff' }},
+                textColor: '#333',
+            }},
+            grid: {{
+                vertLines: {{ color: '#e0e0e0' }},
+                horzLines: {{ visible: false }},
+            }},
+            crosshair: {{
+                mode: LightweightCharts.CrosshairMode.Normal,
+            }},
+            rightPriceScale: {{
+                borderColor: '#e0e0e0',
+                scaleMargins: {{
+                    top: 0.1,
+                    bottom: 0.1,
+                }},
+            }},
+            timeScale: {{
+                visible: false,
+            }},
+            handleScale: false,
+            handleScroll: false,
+        }});
+
+        const candlestickSeries = chart.addCandlestickSeries({{
+            upColor: '#ef4444',
+            downColor: '#22c55e',
+            borderUpColor: '#ef4444',
+            borderDownColor: '#22c55e',
+            wickUpColor: '#ef4444',
+            wickDownColor: '#22c55e',
+            lastValueVisible: false,
+            priceLineVisible: false,
+        }});
+
+        const candleData = data.map(item => ({{
+            time: item.dt,
+            open: item.open,
+            high: item.high,
+            low: item.low,
+            close: item.close,
+        }}));
+
+        candlestickSeries.setData(candleData);
+
+        // 成交量数据
+        const volumeSeries = volumeChart.addHistogramSeries({{
+            color: '#26a69a',
+            priceFormat: {{
+                type: 'volume',
+            }},
+            priceScaleId: '',
+        }});
+
+        const volumeData = data.map(item => ({{
+            time: item.dt,
+            value: item.volume,
+            color: item.close >= item.open ? '#ef4444' : '#22c55e',
+        }}));
+
+        volumeSeries.setData(volumeData);
+
+        // 均线配置
+        const maColors = {{ 5: '#ff6d00', 10: '#2962ff', 20: '#00c853', 60: '#aa00ff' }};
+        const maSeriesMap = {{}};
+
+        [5, 10, 20, 60].forEach(period => {{
+            const maKey = `ma${{period}}`;
+            const maData = data
+                .filter(item => item[maKey] !== null && item[maKey] !== undefined)
+                .map(item => ({{
+                    time: item.dt,
+                    value: item[maKey],
+                }}));
+
+            if (maData.length > 0) {{
+                const maSeries = chart.addLineSeries({{
+                    color: maColors[period],
+                    lineWidth: 1,
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                }});
+                maSeries.setData(maData);
+                maSeriesMap[period] = maSeries;
+            }}
+        }});
+
+        // 更新信息显示面板
+        function updateInfoPanel(crosshairData) {{
+            const item = crosshairData || data[data.length - 1];
+            if (!item) return;
+
+            const maValues = [5, 10, 20, 60]
+                .filter(p => item[`ma${{p}}`] !== null && item[`ma${{p}}`] !== undefined)
+                .map(p => `<span style="color: ${{maColors[p]}}">MA${{p}}: ${{item[`ma${{p}}`].toFixed(2)}}</span>`)
+                .join(' ');
+
+            const ohlcColor = item.close >= item.open ? '#ef4444' : '#22c55e';
+
+            infoPanel.innerHTML = `
+                <div style="margin-bottom: 3px;">${{maValues}}</div>
+                <div style="color: ${{ohlcColor}}">
+                    O: ${{item.open.toFixed(2)}} H: ${{item.high.toFixed(2)}} L: ${{item.low.toFixed(2)}} C: ${{item.close.toFixed(2)}}
+                </div>
+                <div style="color: #666;">Vol: ${{(item.volume / 10000).toFixed(2)}}万</div>
+            `;
+        }}
+
+        // 初始化显示最后一条数据
+        updateInfoPanel(null);
+
+        // 监听十字准星移动
+        chart.subscribeCrosshairMove(param => {{
+            if (param.time) {{
+                const item = data.find(d => d.dt === param.time);
+                if (item) {{
+                    updateInfoPanel(item);
+                }}
+            }}
+        }});
+
+        // 同步两个图表的时间轴
+        chart.timeScale().subscribeVisibleTimeRangeChange(timeRange => {{
+            if (timeRange) {{
+                volumeChart.timeScale().setVisibleLogicalRange(chart.timeScale().getVisibleLogicalRange());
+            }}
+        }});
+
+        chart.timeScale().fitContent();
+        volumeChart.timeScale().fitContent();
+
+        window.addEventListener('resize', () => {{
+            chart.applyOptions({{ width: klineContainer.clientWidth, height: klineContainer.clientHeight }});
+            volumeChart.applyOptions({{ width: volumeContainer.clientWidth, height: volumeContainer.clientHeight }});
+        }});
+    }}
+
+    // 搜索输入
+    let searchTimeout;
+    async function onSearchInput(value) {{
+        clearTimeout(searchTimeout);
+
+        if (value.length < 1) {{
+            document.getElementById('search-suggestions').classList.add('hidden');
+            return;
+        }}
+
+        searchTimeout = setTimeout(async () => {{
+            try {{
+                const response = await fetch(`/api/v1/search?q=${{encodeURIComponent(value)}}&limit=10`);
+                const result = await response.json();
+
+                const container = document.getElementById('search-suggestions');
+
+                if (result.code === 0 && result.data.length > 0) {{
+                    let html = '';
+                    result.data.forEach(stock => {{
+                        html += `
+                            <div class="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                                 onclick="onSearchSelect('${{stock.symbol}}', '${{stock.name}}')">
+                                <div class="flex justify-between">
+                                    <span class="font-medium">${{stock.name}}</span>
+                                    <span class="text-gray-500 text-xs">${{stock.symbol}}</span>
+                                </div>
+                            </div>
+                        `;
+                    }});
+                    container.innerHTML = html;
+                    container.classList.remove('hidden');
+                }} else {{
+                    container.innerHTML = '<div class="p-2 text-gray-400">无搜索结果</div>';
+                    container.classList.remove('hidden');
+                }}
+            }} catch (error) {{
+                console.error('Search error:', error);
+            }}
+        }}, 300);
+    }}
+
+    // 搜索选择
+    async function onSearchSelect(symbol, name) {{
+        document.getElementById('search-input').value = '';
+        document.getElementById('search-suggestions').classList.add('hidden');
+
+        const inCurrentSector = state.stocks.some(s => s.symbol === symbol);
+
+        if (inCurrentSector) {{
+            onStockClick(symbol, name);
+        }} else {{
+            state.selectedStockSymbol = symbol;
+            state.selectedStockName = name;
+            loadStockSectors(symbol);
+            alert('该股票不在当前板块，请在左侧"所属板块"中点击切换');
+        }}
+    }}
+
+    // 无限滚动
+    function setupInfiniteScroll() {{
+        const container = document.getElementById('kline-list');
+
+        container.addEventListener('scroll', () => {{
+            if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {{
+                loadKlineList();
+            }}
+        }});
+    }}
+
+    // 创建板块弹窗
+    function showCreateSectorModal() {{
+        const name = prompt('请输入板块名称：');
+        if (!name) return;
+        console.log('Create sector:', name);
+    }}
+
+    // 点击外部关闭搜索建议
+    document.addEventListener('click', function(e) {{
+        const searchContainer = document.querySelector('.relative');
+        if (searchContainer && !searchContainer.contains(e.target)) {{
+            const suggestions = document.getElementById('search-suggestions');
+            if (suggestions) suggestions.classList.add('hidden');
+        }}
+    }});
+    """
 
 
 # 路由处理函数
