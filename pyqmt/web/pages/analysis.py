@@ -410,6 +410,7 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
     }}
 
     // 多周期视图 - 显示当前选中个股的日/周/月线
+    // 布局：左侧日线（半届），右侧上周线，右侧下月线
     async function onMultiFreqView() {{
         if (!state.selectedStockSymbol) {{
             alert('请先选择一只个股');
@@ -431,24 +432,31 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         const stock = state.stocks.find(s => s.symbol === state.selectedStockSymbol);
         if (!stock) return;
 
-        // 创建多周期视图容器
+        // 创建三栏布局容器
         const multiFreqContainer = document.createElement('div');
-        multiFreqContainer.className = 'space-y-4';
+        multiFreqContainer.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 16px; height: calc(100vh - 200px);';
 
-        // 加载日/周/月线
-        const freqs = [
-            {{ key: 'day', label: '日线' }},
-            {{ key: 'week', label: '周线' }},
-            {{ key: 'month', label: '月线' }}
-        ];
+        // 创建日线卡片（左侧，占两行）
+        const dayCard = createMultiFreqCard(stock, 'day', '日线');
+        dayCard.style.cssText = 'grid-row: 1 / 3; grid-column: 1;';
+        multiFreqContainer.appendChild(dayCard);
 
-        for (const freqInfo of freqs) {{
-            const card = createMultiFreqCard(stock, freqInfo.key, freqInfo.label);
-            multiFreqContainer.appendChild(card);
-            await loadKlineDataForFreq(stock.symbol, stock.name, card, freqInfo.key);
-        }}
+        // 创建周线卡片（右上）
+        const weekCard = createMultiFreqCard(stock, 'week', '周线');
+        weekCard.style.cssText = 'grid-row: 1; grid-column: 2;';
+        multiFreqContainer.appendChild(weekCard);
+
+        // 创建月线卡片（右下）
+        const monthCard = createMultiFreqCard(stock, 'month', '月线');
+        monthCard.style.cssText = 'grid-row: 2; grid-column: 2;';
+        multiFreqContainer.appendChild(monthCard);
 
         container.appendChild(multiFreqContainer);
+
+        // 加载数据
+        await loadKlineDataForFreq(stock.symbol, stock.name, dayCard, 'day');
+        await loadKlineDataForFreq(stock.symbol, stock.name, weekCard, 'week');
+        await loadKlineDataForFreq(stock.symbol, stock.name, monthCard, 'month');
     }}
 
     // 创建多周期卡片
@@ -457,20 +465,19 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         div.className = 'kline-card bg-white rounded-lg shadow overflow-hidden';
         div.dataset.symbol = stock.symbol;
         div.dataset.freq = freq;
+        div.style.height = '100%';
         div.innerHTML = `
-            <div class="p-3 border-b flex items-center justify-between">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="font-semibold text-gray-900">${{stock.name}}</span>
-                        <span class="text-xs text-gray-500">${{stock.symbol}}</span>
-                        <span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700">${{freqLabel}}</span>
-                    </div>
-                    <div class="text-xs mt-1">
-                        <span class="text-gray-600">加载中...</span>
-                    </div>
+            <div class="p-3 border-b flex items-center justify-between" style="height: 50px;">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">${{stock.name}}</span>
+                    <span class="text-xs text-gray-500">${{stock.symbol}}</span>
+                    <span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700">${{freqLabel}}</span>
+                </div>
+                <div class="text-xs font-mono ma-info" data-symbol="${{stock.symbol}}">
+                    <span class="text-gray-400">加载中...</span>
                 </div>
             </div>
-            <div class="kline-chart" style="height: 300px;"></div>
+            <div class="kline-chart" style="height: calc(100% - 50px);"></div>
         `;
         return div;
     }}
