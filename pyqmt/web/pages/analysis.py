@@ -174,14 +174,10 @@ def analysis_page(request: Request):
                     data_freq="month",
                     onclick="onFreqChange('month')",
                 ),
-                Select(
-                    Option("多周期 ▼", value=""),
-                    Option("季线", value="quarter"),
-                    Option("年线", value="year"),
-                    Option("1分钟", value="1min"),
-                    Option("5分钟", value="5min"),
-                    cls="px-2 py-1.5 text-sm border rounded bg-gray-100",
-                    onchange="onFreqChange(this.value)",
+                Button(
+                    "多周期",
+                    cls="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300",
+                    onclick="onMultiFreqView()",
                 ),
                 cls="flex gap-1 ml-auto",
             ),
@@ -253,6 +249,8 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         pageSize: 5,
         hasMore: true,
         loading: false,
+        multiFreqMode: false,
+        multiFreqStock: null,
     }};
 
     // 初始化
@@ -395,6 +393,8 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
     function onFreqChange(freq) {{
         state.freq = freq;
         state.klineData = {{}};
+        state.multiFreqMode = false;
+        state.multiFreqStock = null;
 
         document.querySelectorAll('[data-freq]').forEach(btn => {{
             const isActive = btn.dataset.freq === freq;
@@ -409,8 +409,116 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         loadKlineList();
     }}
 
+    // 多周期视图 - 显示当前选中个股的日/周/月线
+    async function onMultiFreqView() {{
+        if (!state.selectedStockSymbol) {{
+            alert('请先选择一只个股');
+            return;
+        }}
+
+        state.multiFreqMode = true;
+        state.multiFreqStock = state.selectedStockSymbol;
+
+        // 更新按钮样式
+        document.querySelectorAll('[data-freq]').forEach(btn => {{
+            btn.className = 'px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+        }});
+
+        const container = document.getElementById('kline-list');
+        container.innerHTML = '';
+
+        // 获取当前选中个股的信息
+        const stock = state.stocks.find(s => s.symbol === state.selectedStockSymbol);
+        if (!stock) return;
+
+        // 创建多周期视图容器
+        const multiFreqContainer = document.createElement('div');
+        multiFreqContainer.className = 'space-y-4';
+
+        // 加载日/周/月线
+        const freqs = [
+            {{ key: 'day', label: '日线' }},
+            {{ key: 'week', label: '周线' }},
+            {{ key: 'month', label: '月线' }}
+        ];
+
+        for (const freqInfo of freqs) {{
+            const card = createMultiFreqCard(stock, freqInfo.key, freqInfo.label);
+            multiFreqContainer.appendChild(card);
+            await loadKlineDataForFreq(stock.symbol, stock.name, card, freqInfo.key);
+        }}
+
+        container.appendChild(multiFreqContainer);
+    }}
+
+    // 创建多周期卡片
+    function createMultiFreqCard(stock, freq, freqLabel) {{
+        const div = document.createElement('div');
+        div.className = 'kline-card bg-white rounded-lg shadow overflow-hidden';
+        div.dataset.symbol = stock.symbol;
+        div.dataset.freq = freq;
+        div.innerHTML = `
+            <div class="p-3 border-b flex items-center justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-gray-900">${{stock.name}}</span>
+                        <span class="text-xs text-gray-500">${{stock.symbol}}</span>
+                        <span class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700">${{freqLabel}}</span>
+                    </div>
+                    <div class="text-xs mt-1">
+                        <span class="text-gray-600">加载中...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="kline-chart" style="height: 300px;"></div>
+        `;
+        return div;
+    }}
+
+    // 加载指定周期的K线数据
+    async function loadKlineDataForFreq(symbol, name, card, freq) {{
+        const end = '2024-12-31';
+        const start = '2024-01-01';
+
+        const url = `/api/v1/kline/stock/${{symbol}}?start=${{start}}&end=${{end}}&freq=${{freq}}&ma=5,10,20,60`;
+
+        try {{
+            const response = await fetch(url);
+            const result = await response.json();
+
+            if (result.code === 0) {{
+                const items = result.data.items;
+                if (items.length > 0) {{
+                    const latest = items[items.length - 1];
+                    const maColors = {{ 5: '#ff6d00', 10: '#2962ff', 20: '#00c853', 60: '#aa00ff' }};
+
+                    // 更新卡片头部的均线信息
+                    const maInfoEl = card.querySelector('.ma-info');
+                    if (maInfoEl) {{
+                        const maValues = [5, 10, 20, 60]
+                            .filter(p => latest[`ma${{p}}`] !== null && latest[`ma${{p}}`] !== undefined)
+                            .map(p => `<span style="color: ${{maColors[p]}}">MA${{p}}: ${{latest[`ma${{p}}`].toFixed(2)}}</span>`)
+                            .join(' ');
+                        maInfoEl.innerHTML = maValues;
+                    }}
+                }}
+
+                renderChart(card.querySelector('.kline-chart'), items);
+            }}
+        }} catch (error) {{
+            console.error('Error loading kline data:', error);
+            const maInfoEl = card.querySelector('.ma-info');
+            if (maInfoEl) {{
+                maInfoEl.innerHTML = '<span class="text-red-500">加载失败</span>';
+            }}
+        }}
+    }}
+
     // 加载K线列表
     async function loadKlineList() {{
+        // 多周期模式下不加载列表
+        if (state.multiFreqMode) return;
+
         if (state.loading || !state.hasMore) return;
 
         state.loading = true;
@@ -448,14 +556,12 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         div.dataset.symbol = stock.symbol;
         div.innerHTML = `
             <div class="p-3 border-b flex items-center justify-between">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="font-semibold text-gray-900">${{stock.name}}</span>
-                        <span class="text-xs text-gray-500">${{stock.symbol}}</span>
-                    </div>
-                    <div class="text-xs mt-1">
-                        <span class="text-gray-600">加载中...</span>
-                    </div>
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-900">${{stock.name}}</span>
+                    <span class="text-xs text-gray-500">${{stock.symbol}}</span>
+                </div>
+                <div class="text-xs font-mono ma-info" data-symbol="${{stock.symbol}}">
+                    <span class="text-gray-400">加载中...</span>
                 </div>
             </div>
             <div class="kline-chart" style="height: 300px;"></div>
@@ -479,23 +585,27 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
                 const items = result.data.items;
                 if (items.length > 0) {{
                     const latest = items[items.length - 1];
-                    const prev = items.length > 1 ? items[items.length - 2] : latest;
-                    const change = latest.close - prev.close;
-                    const changePercent = (change / prev.close * 100).toFixed(2);
-                    const colorClass = change >= 0 ? 'text-red-600' : 'text-green-600';
-                    const sign = change >= 0 ? '+' : '';
+                    const maColors = {{ 5: '#ff6d00', 10: '#2962ff', 20: '#00c853', 60: '#aa00ff' }};
 
-                    card.querySelector('.text-xs.mt-1').innerHTML = `
-                        <span class="${{colorClass}} font-medium">${{latest.close.toFixed(2)}}</span>
-                        <span class="${{colorClass}} ml-2">${{sign}}${{change.toFixed(2)}} (${{sign}}${{changePercent}}%)</span>
-                    `;
+                    // 更新卡片头部的均线信息
+                    const maInfoEl = card.querySelector('.ma-info');
+                    if (maInfoEl) {{
+                        const maValues = [5, 10, 20, 60]
+                            .filter(p => latest[`ma${{p}}`] !== null && latest[`ma${{p}}`] !== undefined)
+                            .map(p => `<span style="color: ${{maColors[p]}}">MA${{p}}: ${{latest[`ma${{p}}`].toFixed(2)}}</span>`)
+                            .join(' ');
+                        maInfoEl.innerHTML = maValues;
+                    }}
                 }}
 
                 renderChart(card.querySelector('.kline-chart'), items);
             }}
         }} catch (error) {{
             console.error('Error loading kline data:', error);
-            card.querySelector('.text-xs.mt-1').innerHTML = '<span class="text-red-500">加载失败</span>';
+            const maInfoEl = card.querySelector('.ma-info');
+            if (maInfoEl) {{
+                maInfoEl.innerHTML = '<span class="text-red-500">加载失败</span>';
+            }}
         }}
     }}
 
@@ -567,8 +677,18 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
                     return formatTime(time);
                 }},
             }},
-            handleScale: false,
-            handleScroll: false,
+            handleScale: {{
+                axisPressedMouseMove: {{
+                    time: true,
+                    price: false,
+                }},
+            }},
+            handleScroll: {{
+                horzTouchDrag: true,
+                vertTouchDrag: false,
+                mouseWheel: false,
+                pressedMouseMove: true,
+            }},
         }});
 
         // 创建成交量图
@@ -597,7 +717,12 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
                 visible: false,
             }},
             handleScale: false,
-            handleScroll: false,
+            handleScroll: {{
+                horzTouchDrag: true,
+                vertTouchDrag: false,
+                mouseWheel: false,
+                pressedMouseMove: true,
+            }},
         }});
 
         const candlestickSeries = chart.addCandlestickSeries({{
@@ -668,19 +793,13 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
             const item = crosshairData || data[data.length - 1];
             if (!item) return;
 
-            const maValues = [5, 10, 20, 60]
-                .filter(p => item[`ma${{p}}`] !== null && item[`ma${{p}}`] !== undefined)
-                .map(p => `<span style="color: ${{maColors[p]}}">MA${{p}}: ${{item[`ma${{p}}`].toFixed(2)}}</span>`)
-                .join(' ');
-
             const ohlcColor = item.close >= item.open ? '#ef4444' : '#22c55e';
 
             infoPanel.innerHTML = `
-                <div style="margin-bottom: 3px;">${{maValues}}</div>
                 <div style="color: ${{ohlcColor}}">
-                    O: ${{item.open.toFixed(2)}} H: ${{item.high.toFixed(2)}} L: ${{item.low.toFixed(2)}} C: ${{item.close.toFixed(2)}}
+                    开盘: ${{item.open.toFixed(2)}} 最高: ${{item.high.toFixed(2)}} 最低: ${{item.low.toFixed(2)}} 收盘: ${{item.close.toFixed(2)}}
                 </div>
-                <div style="color: #666;">Vol: ${{(item.volume / 10000).toFixed(2)}}万</div>
+                <div style="color: #666;">成交量: ${{(item.volume / 10000).toFixed(2)}}万</div>
             `;
         }}
 
@@ -765,10 +884,34 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         if (inCurrentSector) {{
             onStockClick(symbol, name);
         }} else {{
+            // 临时加入对比队列
             state.selectedStockSymbol = symbol;
             state.selectedStockName = name;
             loadStockSectors(symbol);
-            alert('该股票不在当前板块，请在左侧"所属板块"中点击切换');
+
+            // 检查是否已经在对比队列中
+            const container = document.getElementById('kline-list');
+            const existingCard = container.querySelector(`.kline-card[data-symbol="${{symbol}}"]`);
+
+            if (!existingCard) {{
+                // 创建临时对比卡片
+                const tempStock = {{ symbol: symbol, name: name }};
+                const card = createKlineCard(tempStock);
+                card.classList.add('temp-compare-card');
+                card.dataset.temp = 'true';
+
+                // 添加到对比队列区域（在第一个位置）
+                if (container.firstChild) {{
+                    container.insertBefore(card, container.firstChild);
+                }} else {{
+                    container.appendChild(card);
+                }}
+
+                await loadKlineData(symbol, name, card);
+                highlightKlineCard(symbol);
+            }} else {{
+                highlightKlineCard(symbol);
+            }}
         }}
     }}
 
@@ -798,6 +941,33 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
             if (suggestions) suggestions.classList.add('hidden');
         }}
     }});
+
+    // 添加样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .highlighted-card {{
+            box-shadow: 0 0 0 3px #3b82f6, 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transform: scale(1.01);
+            transition: all 0.2s ease;
+        }}
+        .temp-compare-card {{
+            border: 2px dashed #f59e0b;
+            background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+        }}
+        .temp-compare-card::before {{
+            content: '对比';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #f59e0b;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            z-index: 5;
+        }}
+    `;
+    document.head.appendChild(style);
     """
 
 
