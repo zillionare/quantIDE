@@ -1779,28 +1779,11 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
                 H3(title, cls="text-lg font-semibold text-gray-900 mb-4"),
                 message,
                 Div(
-                    Div(
-                        Input(
-                            id="scan-dir-input",
-                            value=scan_dir,
-                            placeholder="请输入绝对路径，例如: /Users/name/strategies",
-                            cls="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        ),
-                        Button(
-                            "...",
-                            type="button",
-                            cls="px-3 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg hover:bg-gray-200 text-gray-700",
-                            onclick="document.getElementById('dir-file-input').click()",
-                        ),
-                        cls="flex mb-4"
-                    ),
                     Input(
-                        id="dir-file-input",
-                        type="file",
-                        webkitdirectory="",
-                        directory="",
-                        cls="hidden",
-                        onchange="document.getElementById('scan-dir-input').value = this.files[0]?.path || ''"
+                        id="scan-dir-input",
+                        value=scan_dir,
+                        placeholder="请输入绝对路径，例如: /Users/name/strategies",
+                        cls="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     ),
                     cls="mb-4"
                 ),
@@ -1821,7 +1804,7 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
                     ),
                     cls="flex justify-end"
                 ),
-                cls="bg-white rounded-lg shadow-xl p-6 w-[480px]"
+                cls="bg-white rounded-lg shadow-xl p-6 w-96"
             ),
             cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         ),
