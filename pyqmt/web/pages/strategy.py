@@ -712,32 +712,29 @@ def index(req, session):
                         ),
                         cls="flex items-center",
                     ),
-                    Span("重新扫描"),
+                    Span("扫描策略列表"),
                     cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2",
                     type="button",
-                    onclick="onRescanStrategies()",
+                    onclick="onScanStrategies()",
                 ),
                 Button(
-                    Span(
-                        Svg(
-                            Path(
-                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
-                                **{
-                                    "stroke-linecap": "round",
-                                    "stroke-linejoin": "round",
-                                    "stroke-width": "2",
-                                },
-                            ),
-                            cls="w-5 h-5",
-                            fill="none",
-                            stroke="currentColor",
-                            viewBox="0 0 24 24",
+                    Svg(
+                        Path(
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
+                            **{
+                                "stroke-linecap": "round",
+                                "stroke-linejoin": "round",
+                                "stroke-width": "2",
+                            },
                         ),
-                        cls="flex items-center",
+                        cls="w-5 h-5",
+                        fill="none",
+                        stroke="currentColor",
+                        viewBox="0 0 24 24",
                     ),
-                    Span("配置"),
-                    cls="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center space-x-2 ml-2",
+                    cls="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg ml-2",
                     type="button",
+                    title="配置扫描目录",
                     onclick="onConfigScanDir()",
                 ),
                 cls="p-6 border-b border-gray-200 flex justify-between items-center",
@@ -791,31 +788,40 @@ def index(req, session):
         ),
         Div(id="modal-container"),
         # 配置对话框
-        Script("""
-        function onRescanStrategies() {
-            if (!confirm('确定要重新扫描策略目录吗？')) return;
+        Script(f"""
+        const currentScanDir = "{scan_dir}";
 
-            fetch('/api/strategy/rescan', {
+        function onScanStrategies() {{
+            // 检查是否配置了扫描目录
+            if (!currentScanDir || currentScanDir === "") {{
+                alert('请先配置策略扫描目录');
+                onConfigScanDir();
+                return;
+            }}
+
+            if (!confirm('确定要扫描策略目录吗？')) return;
+
+            fetch('/api/strategy/rescan', {{
                 method: 'POST',
-                headers: {
+                headers: {{
                     'Content-Type': 'application/json',
-                }
-            })
+                }}
+            }})
             .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(`扫描完成！发现 ${data.count} 个策略`);
+            .then(data => {{
+                if (data.success) {{
+                    alert(`扫描完成！发现 ${{data.count}} 个策略`);
                     location.reload();
-                } else {
+                }} else {{
                     alert('扫描失败: ' + data.error);
-                }
-            })
-            .catch(error => {
+                }}
+            }})
+            .catch(error => {{
                 alert('请求失败: ' + error);
-            });
-        }
+            }});
+        }}
 
-        function onConfigScanDir() {
+        function onConfigScanDir() {{
             const modal = document.getElementById('modal-container');
             modal.innerHTML = `
                 <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -823,7 +829,7 @@ def index(req, session):
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">配置扫描目录</h3>
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">策略扫描目录</label>
-                            <input type="text" id="scan-dir-input" value="${scan_dir}" placeholder="例如: pyqmt/strategies"
+                            <input type="text" id="scan-dir-input" value="${{currentScanDir}}" placeholder="例如: pyqmt/strategies"
                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                             <p class="text-xs text-gray-500 mt-1">相对于项目根目录的路径</p>
                         </div>
@@ -836,35 +842,36 @@ def index(req, session):
                     </div>
                 </div>
             `;
-        }
+        }}
 
-        function saveScanDir() {
+        function saveScanDir() {{
             const dir = document.getElementById('scan-dir-input').value.trim();
-            if (!dir) {
+            if (!dir) {{
                 alert('请输入扫描目录');
                 return;
-            }
+            }}
 
-            fetch('/api/strategy/config', {
+            fetch('/api/strategy/config', {{
                 method: 'POST',
-                headers: {
+                headers: {{
                     'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ directory: dir })
-            })
+                }},
+                body: JSON.stringify({{ directory: dir }})
+            }})
             .then(response => response.json())
-            .then(data => {
-                if (data.success) {
+            .then(data => {{
+                if (data.success) {{
                     document.getElementById('modal-container').innerHTML='';
                     alert('配置已保存');
-                } else {
+                    location.reload();
+                }} else {{
                     alert('保存失败: ' + data.error);
-                }
-            })
-            .catch(error => {
+                }}
+            }})
+            .catch(error => {{
                 alert('请求失败: ' + error);
-            });
-        }
+            }});
+        }}
         """),
         cls="space-y-6",
     )
