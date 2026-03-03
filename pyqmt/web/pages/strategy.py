@@ -875,8 +875,7 @@ def index(req, session):
 def strategy_detail(req, session, name: str):
     layout = MainLayout(title=f"策略详情 - {name}", user=session.get("auth"))
 
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
 
     if name not in strategies:
         return RedirectResponse("/strategy")
@@ -961,8 +960,7 @@ def _parse_params(form, prefix="param_"):
 
 @rt("/{name}/backtest/modal")
 def backtest_modal(name: str):
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
     cls = strategies.get(name)
     if not cls: return "Strategy not found"
 
@@ -1038,8 +1036,7 @@ async def run_backtest(req, name: str):
         interval = form.get("interval", "1d")
         config = _parse_params(form)
 
-        workspace = "pyqmt/strategies"
-        strategies = strategy_loader.load(workspace)
+        strategies = strategy_loader.load_from_cache()
         cls = strategies.get(name)
 
         if not cls: raise Exception("Strategy not found")
@@ -1079,8 +1076,7 @@ async def run_backtest(req, name: str):
 
 @rt("/{name}/grid_search/modal")
 def grid_search_modal(name: str):
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
     cls = strategies.get(name)
     if not cls: return "Strategy not found"
 
@@ -1153,8 +1149,7 @@ async def run_grid_search(req, name: str):
         param_grid = {}
         base_config = {}
 
-        workspace = "pyqmt/strategies"
-        strategies = strategy_loader.load(workspace)
+        strategies = strategy_loader.load_from_cache()
         cls = strategies.get(name)
         if not cls: raise Exception("Strategy not found")
         default_params = getattr(cls, "PARAMS", {})

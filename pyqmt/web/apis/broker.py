@@ -432,9 +432,7 @@ async def load_backtest(request):
 @rt("/strategies", methods=["GET"])
 async def list_strategies(req):
     """列出所有可用策略"""
-    # 暂时使用当前工作目录下的 strategies 目录
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
 
     result = []
     for name, cls in strategies.items():
@@ -486,8 +484,7 @@ async def run_grid_search_job(req):
     initial_cash = params.get("initial_cash", 1_000_000)
     max_workers = params.get("max_workers", None)
 
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
 
     if strategy_name not in strategies:
         return Response(f"Strategy {strategy_name} not found", status_code=404)
@@ -539,8 +536,7 @@ async def run_backtest_job(req):
     initial_cash = params.get("initial_cash", 1_000_000)
     portfolio_id = params.get("portfolio_id")
 
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    strategies = strategy_loader.load_from_cache()
 
     if strategy_name not in strategies:
         return Response(f"Strategy {strategy_name} not found", status_code=404)
