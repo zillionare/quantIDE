@@ -45,12 +45,18 @@ class StrategyLoader:
         """设置扫描目录"""
         from datetime import datetime
 
+        existing_rows = list(
+            db["strategy_config"].rows_where("key = ?", ("scan_directory",))
+        )
+        existing_id = existing_rows[0]["id"] if existing_rows else None
+
         config = StrategyConfig(
+            id=existing_id or StrategyConfig().id,
             key="scan_directory",
             value=directory,
             updated_at=datetime.now(),
         )
-        db["strategy_config"].upsert(config.to_dict(), pk=StrategyConfig.__pk__)
+        db["strategy_config"].upsert(config.to_dict(), pk="key")
         logger.info(f"Scan directory set to: {directory}")
 
     def load_from_cache(self) -> Dict[str, Type[BaseStrategy]]:
