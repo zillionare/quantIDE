@@ -719,20 +719,7 @@ def index(req, session):
                     hx_target="#modal-container",
                 ),
                 Button(
-                    Svg(
-                        Path(
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
-                            **{
-                                "stroke-linecap": "round",
-                                "stroke-linejoin": "round",
-                                "stroke-width": "2",
-                            },
-                        ),
-                        cls="w-5 h-5",
-                        fill="none",
-                        stroke="currentColor",
-                        viewBox="0 0 24 24",
-                    ),
+                    UkIcon("cog", size=20),
                     cls="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg ml-2",
                     type="button",
                     title="配置扫描目录",
@@ -1792,14 +1779,29 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
                 H3(title, cls="text-lg font-semibold text-gray-900 mb-4"),
                 message,
                 Div(
-                    Label("策略扫描目录", cls="block text-sm font-medium text-gray-700 mb-2"),
-                    Input(
-                        id="scan-dir-input",
-                        value=scan_dir,
-                        placeholder="例如: pyqmt/strategies",
-                        cls="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    Div(
+                        Input(
+                            id="scan-dir-input",
+                            value=scan_dir,
+                            placeholder="请输入绝对路径，例如: /Users/name/strategies",
+                            cls="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        ),
+                        Button(
+                            "...",
+                            type="button",
+                            cls="px-3 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg hover:bg-gray-200 text-gray-700",
+                            onclick="document.getElementById('dir-file-input').click()",
+                        ),
+                        cls="flex mb-4"
                     ),
-                    P("相对于项目根目录的路径", cls="text-xs text-gray-500 mt-1"),
+                    Input(
+                        id="dir-file-input",
+                        type="file",
+                        webkitdirectory="",
+                        directory="",
+                        cls="hidden",
+                        onchange="document.getElementById('scan-dir-input').value = this.files[0]?.path || ''"
+                    ),
                     cls="mb-4"
                 ),
                 Div(
@@ -1819,7 +1821,7 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
                     ),
                     cls="flex justify-end"
                 ),
-                cls="bg-white rounded-lg shadow-xl p-6 w-96"
+                cls="bg-white rounded-lg shadow-xl p-6 w-[480px]"
             ),
             cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         ),
@@ -1830,6 +1832,8 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
 # API 路由：配置扫描目录
 @rt("/scan/config", methods=["POST"])
 def save_scan_config(req):
+    from pathlib import Path
+
     try:
         form = req.form()
         directory = form.get("scan-dir-input", "").strip()
@@ -1837,6 +1841,34 @@ def save_scan_config(req):
         if not directory:
             return Div(
                 P("目录不能为空", cls="text-red-600 mb-2"),
+                _config_modal_html(directory, is_error=False),
+                id="config-error"
+            )
+
+        # 转换 ~ 为绝对路径
+        if directory.startswith("~"):
+            directory = str(Path(directory).expanduser())
+
+        # 检查是否为绝对路径
+        if not directory.startswith("/"):
+            return Div(
+                P("必须使用绝对路径，例如: /Users/name/strategies", cls="text-red-600 mb-2"),
+                _config_modal_html(directory, is_error=False),
+                id="config-error"
+            )
+
+        # 检查目录是否存在
+        path = Path(directory)
+        if not path.exists():
+            return Div(
+                P(f"目录不存在: {directory}", cls="text-red-600 mb-2"),
+                _config_modal_html(directory, is_error=False),
+                id="config-error"
+            )
+
+        if not path.is_dir():
+            return Div(
+                P(f"路径不是目录: {directory}", cls="text-red-600 mb-2"),
                 _config_modal_html(directory, is_error=False),
                 id="config-error"
             )
