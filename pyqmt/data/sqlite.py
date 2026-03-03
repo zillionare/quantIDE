@@ -65,6 +65,7 @@ from pyqmt.core.singleton import singleton
 from pyqmt.data.models.base import Entity, new_uuid_id
 from pyqmt.data.models.index import Index, IndexBar
 from pyqmt.data.models.sector import Sector, SectorBar, SectorStock
+from pyqmt.data.models.strategy_config import StrategyConfig, StrategyInfo
 
 T = TypeVar("T")
 
@@ -292,7 +293,7 @@ class SQLiteDB:
 
         在 sqlite_utils 中，创建表结构并非必须；但会导致sqlite-utils 无法准确判断类型。
         """
-        for e in [Order, Trade, Asset, Position, Portfolio, StrategyLog, Sector, SectorStock, SectorBar, Index, IndexBar]:
+        for e in [Order, Trade, Asset, Position, Portfolio, StrategyLog, Sector, SectorStock, SectorBar, Index, IndexBar, StrategyConfig, StrategyInfo]:
             table = e.__table_name__
             pk = e.__pk__
 

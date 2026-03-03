@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fasthtml.common import *
 from monsterui.all import *
+from fasthtml.common import Script
 from starlette.middleware import Middleware
 from starlette.responses import RedirectResponse
 from starlette.routing import Route
@@ -37,12 +38,11 @@ from pyqmt.web.pages.login import login_app
 from pyqmt.web.pages.strategy import strategy_app
 from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
+from pyqmt.data import db
 
 
 def _load_accounts_from_db(registry: BrokerRegistry):
     """从数据库加载所有账户到 BrokerRegistry"""
-    from pyqmt.data.sqlite import db
-    from pyqmt.service.sim_broker import SimulationBroker
 
     # 从数据库加载所有 portfolio
     portfolios = db.get_all_portfolios()
@@ -73,7 +73,6 @@ def init():
     auth = AuthManager(config={"login_path": "/login"})
 
     # 合并 Theme headers 和 HTMX
-    from fasthtml.common import Script
     htmx_script = Script(src="https://unpkg.com/htmx.org@1.9.12")
     headers = list(Theme.blue.headers()) + [htmx_script]
 

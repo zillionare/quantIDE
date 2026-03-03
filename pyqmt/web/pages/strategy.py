@@ -7,6 +7,7 @@ import uuid
 import arrow
 import polars as pl
 from fasthtml.common import *
+from loguru import logger
 from monsterui.all import *
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -637,8 +638,9 @@ def index(req, session):
         },
     ]
 
-    workspace = "pyqmt/strategies"
-    strategies = strategy_loader.load(workspace)
+    # 从缓存加载策略（不再每次扫描）
+    strategies = strategy_loader.load_from_cache()
+    scan_dir = strategy_loader.get_scan_directory()
     strategy_rows = _build_strategy_rows(strategies)
     backtest_rows = _build_backtest_rows(strategies)
 
@@ -710,9 +712,33 @@ def index(req, session):
                         ),
                         cls="flex items-center",
                     ),
-                    Span("新建策略"),
+                    Span("重新扫描"),
                     cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2",
                     type="button",
+                    onclick="onRescanStrategies()",
+                ),
+                Button(
+                    Span(
+                        Svg(
+                            Path(
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
+                                **{
+                                    "stroke-linecap": "round",
+                                    "stroke-linejoin": "round",
+                                    "stroke-width": "2",
+                                },
+                            ),
+                            cls="w-5 h-5",
+                            fill="none",
+                            stroke="currentColor",
+                            viewBox="0 0 24 24",
+                        ),
+                        cls="flex items-center",
+                    ),
+                    Span("配置"),
+                    cls="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center space-x-2 ml-2",
+                    type="button",
+                    onclick="onConfigScanDir()",
                 ),
                 cls="p-6 border-b border-gray-200 flex justify-between items-center",
             ),
@@ -764,6 +790,82 @@ def index(req, session):
             id="backtest-list",
         ),
         Div(id="modal-container"),
+        # 配置对话框
+        Script("""
+        function onRescanStrategies() {
+            if (!confirm('确定要重新扫描策略目录吗？')) return;
+
+            fetch('/api/strategy/rescan', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`扫描完成！发现 ${data.count} 个策略`);
+                    location.reload();
+                } else {
+                    alert('扫描失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('请求失败: ' + error);
+            });
+        }
+
+        function onConfigScanDir() {
+            const modal = document.getElementById('modal-container');
+            modal.innerHTML = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div class="bg-white rounded-lg shadow-xl p-6 w-96">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">配置扫描目录</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">策略扫描目录</label>
+                            <input type="text" id="scan-dir-input" value="${scan_dir}" placeholder="例如: pyqmt/strategies"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <p class="text-xs text-gray-500 mt-1">相对于项目根目录的路径</p>
+                        </div>
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="document.getElementById('modal-container').innerHTML=''"
+                                class="px-4 py-2 text-gray-600 hover:text-gray-800">取消</button>
+                            <button type="button" onclick="saveScanDir()"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function saveScanDir() {
+            const dir = document.getElementById('scan-dir-input').value.trim();
+            if (!dir) {
+                alert('请输入扫描目录');
+                return;
+            }
+
+            fetch('/api/strategy/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ directory: dir })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('modal-container').innerHTML='';
+                    alert('配置已保存');
+                } else {
+                    alert('保存失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('请求失败: ' + error);
+            });
+        }
+        """),
         cls="space-y-6",
     )
 
@@ -1678,3 +1780,47 @@ async def backtest_ws(websocket: WebSocket):
 
 
 strategy_app.add_websocket_route("/backtest/{portfolio_id}/ws", backtest_ws)
+
+
+# API 路由：重新扫描策略
+@rt("/api/strategy/rescan", methods=["POST"])
+def api_rescan_strategies(req):
+    try:
+        strategies = strategy_loader.scan_and_cache()
+        return {
+            "success": True,
+            "count": len(strategies),
+            "strategies": list(strategies.keys())
+        }
+    except Exception as e:
+        logger.error(f"Failed to rescan strategies: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# API 路由：配置扫描目录
+@rt("/api/strategy/config", methods=["POST"])
+def api_config_scan_dir(req):
+    try:
+        data = req.json()
+        directory = data.get("directory", "").strip()
+
+        if not directory:
+            return {
+                "success": False,
+                "error": "目录不能为空"
+            }
+
+        strategy_loader.set_scan_directory(directory)
+        return {
+            "success": True,
+            "directory": directory
+        }
+    except Exception as e:
+        logger.error(f"Failed to set scan directory: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
