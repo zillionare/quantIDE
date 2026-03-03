@@ -715,7 +715,8 @@ def index(req, session):
                     Span("扫描策略列表"),
                     cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2",
                     type="button",
-                    onclick="onScanStrategies()",
+                    hx_get="/strategy/scan/confirm",
+                    hx_target="#modal-container",
                 ),
                 Button(
                     Svg(
@@ -735,7 +736,8 @@ def index(req, session):
                     cls="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg ml-2",
                     type="button",
                     title="配置扫描目录",
-                    onclick="onConfigScanDir()",
+                    hx_get="/strategy/scan/config-modal",
+                    hx_target="#modal-container",
                 ),
                 cls="p-6 border-b border-gray-200 flex justify-between items-center",
             ),
@@ -787,92 +789,6 @@ def index(req, session):
             id="backtest-list",
         ),
         Div(id="modal-container"),
-        # 配置对话框
-        Script(f"""
-        const currentScanDir = "{scan_dir}";
-
-        function onScanStrategies() {{
-            // 检查是否配置了扫描目录
-            if (!currentScanDir || currentScanDir === "") {{
-                alert('请先配置策略扫描目录');
-                onConfigScanDir();
-                return;
-            }}
-
-            if (!confirm('确定要扫描策略目录吗？')) return;
-
-            fetch('/api/strategy/rescan', {{
-                method: 'POST',
-                headers: {{
-                    'Content-Type': 'application/json',
-                }}
-            }})
-            .then(response => response.json())
-            .then(data => {{
-                if (data.success) {{
-                    alert(`扫描完成！发现 ${{data.count}} 个策略`);
-                    location.reload();
-                }} else {{
-                    alert('扫描失败: ' + data.error);
-                }}
-            }})
-            .catch(error => {{
-                alert('请求失败: ' + error);
-            }});
-        }}
-
-        function onConfigScanDir() {{
-            const modal = document.getElementById('modal-container');
-            modal.innerHTML = `
-                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div class="bg-white rounded-lg shadow-xl p-6 w-96">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">配置扫描目录</h3>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">策略扫描目录</label>
-                            <input type="text" id="scan-dir-input" value="${{currentScanDir}}" placeholder="例如: pyqmt/strategies"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <p class="text-xs text-gray-500 mt-1">相对于项目根目录的路径</p>
-                        </div>
-                        <div class="flex justify-end space-x-3">
-                            <button type="button" onclick="document.getElementById('modal-container').innerHTML=''"
-                                class="px-4 py-2 text-gray-600 hover:text-gray-800">取消</button>
-                            <button type="button" onclick="saveScanDir()"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }}
-
-        function saveScanDir() {{
-            const dir = document.getElementById('scan-dir-input').value.trim();
-            if (!dir) {{
-                alert('请输入扫描目录');
-                return;
-            }}
-
-            fetch('/api/strategy/config', {{
-                method: 'POST',
-                headers: {{
-                    'Content-Type': 'application/json',
-                }},
-                body: JSON.stringify({{ directory: dir }})
-            }})
-            .then(response => response.json())
-            .then(data => {{
-                if (data.success) {{
-                    document.getElementById('modal-container').innerHTML='';
-                    alert('配置已保存');
-                    location.reload();
-                }} else {{
-                    alert('保存失败: ' + data.error);
-                }}
-            }})
-            .catch(error => {{
-                alert('请求失败: ' + error);
-            }});
-        }}
-        """),
         cls="space-y-6",
     )
 
@@ -1784,45 +1700,169 @@ async def backtest_ws(websocket: WebSocket):
 strategy_app.add_websocket_route("/backtest/{portfolio_id}/ws", backtest_ws)
 
 
-# API 路由：重新扫描策略
-@rt("/api/strategy/rescan", methods=["POST"])
-def api_rescan_strategies(req):
+# 配置对话框路由
+@rt("/scan/config-modal")
+def config_modal_route(req):
+    scan_dir = strategy_loader.get_scan_directory()
+    return _config_modal_html(scan_dir, is_error=False)
+
+
+# 扫描确认对话框
+@rt("/scan/confirm")
+def scan_confirm_modal(req):
+    scan_dir = strategy_loader.get_scan_directory()
+
+    # 如果未配置目录，显示配置对话框
+    if not scan_dir:
+        return _config_modal_html(scan_dir, is_error=True)
+
+    return Modal(
+        ModalTitle("确认扫描"),
+        ModalBody(
+            P(f"确定要扫描策略目录吗？", cls="text-gray-700"),
+            P(f"当前扫描目录: {scan_dir}", cls="text-sm text-gray-500 mt-2"),
+        ),
+        ModalFooter(
+            Button(
+                "取消",
+                type="button",
+                cls="px-4 py-2 text-gray-600 hover:text-gray-800",
+                onclick="document.getElementById('modal-container').innerHTML=''"
+            ),
+            Button(
+                "确定扫描",
+                type="button",
+                cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
+                hx_post="/strategy/scan/run",
+                hx_target="#modal-container",
+            ),
+        ),
+        id="scan-confirm-modal"
+    )
+
+
+# 执行扫描
+@rt("/scan/run", methods=["POST"])
+def run_scan(req):
     try:
         strategies = strategy_loader.scan_and_cache()
-        return {
-            "success": True,
-            "count": len(strategies),
-            "strategies": list(strategies.keys())
-        }
+        return Modal(
+            ModalTitle("扫描完成"),
+            ModalBody(
+                P(f"成功发现 {len(strategies)} 个策略", cls="text-green-600 font-medium"),
+                P("页面即将刷新...", cls="text-sm text-gray-500 mt-2"),
+            ),
+            ModalFooter(
+                Button(
+                    "确定",
+                    type="button",
+                    cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
+                    onclick="location.reload()"
+                ),
+            ),
+            id="scan-result-modal"
+        )
     except Exception as e:
-        logger.error(f"Failed to rescan strategies: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        logger.error(f"Failed to scan strategies: {e}")
+        return Modal(
+            ModalTitle("扫描失败"),
+            ModalBody(
+                P(f"错误: {str(e)}", cls="text-red-600"),
+            ),
+            ModalFooter(
+                Button(
+                    "关闭",
+                    type="button",
+                    cls="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700",
+                    onclick="document.getElementById('modal-container').innerHTML=''"
+                ),
+            ),
+            id="scan-error-modal"
+        )
+
+
+def _config_modal_html(scan_dir: str, is_error: bool = False):
+    """配置对话框HTML"""
+    title = "请先配置扫描目录" if is_error else "配置扫描目录"
+    message = P("您尚未配置策略扫描目录，请先设置。", cls="text-red-600 mb-4") if is_error else ""
+
+    return Div(
+        Div(
+            Div(
+                H3(title, cls="text-lg font-semibold text-gray-900 mb-4"),
+                message,
+                Div(
+                    Label("策略扫描目录", cls="block text-sm font-medium text-gray-700 mb-2"),
+                    Input(
+                        id="scan-dir-input",
+                        value=scan_dir,
+                        placeholder="例如: pyqmt/strategies",
+                        cls="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    ),
+                    P("相对于项目根目录的路径", cls="text-xs text-gray-500 mt-1"),
+                    cls="mb-4"
+                ),
+                Div(
+                    Button(
+                        "取消",
+                        type="button",
+                        cls="px-4 py-2 text-gray-600 hover:text-gray-800",
+                        onclick="document.getElementById('modal-container').innerHTML=''"
+                    ),
+                    Button(
+                        "保存",
+                        type="button",
+                        cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ml-2",
+                        hx_post="/strategy/scan/config",
+                        hx_include="#scan-dir-input",
+                        hx_target="#modal-container",
+                    ),
+                    cls="flex justify-end"
+                ),
+                cls="bg-white rounded-lg shadow-xl p-6 w-96"
+            ),
+            cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        ),
+        id="config-modal"
+    )
 
 
 # API 路由：配置扫描目录
-@rt("/api/strategy/config", methods=["POST"])
-def api_config_scan_dir(req):
+@rt("/scan/config", methods=["POST"])
+def save_scan_config(req):
     try:
-        data = req.json()
-        directory = data.get("directory", "").strip()
+        form = req.form()
+        directory = form.get("scan-dir-input", "").strip()
 
         if not directory:
-            return {
-                "success": False,
-                "error": "目录不能为空"
-            }
+            return Div(
+                P("目录不能为空", cls="text-red-600 mb-2"),
+                _config_modal_html(directory, is_error=False),
+                id="config-error"
+            )
 
         strategy_loader.set_scan_directory(directory)
-        return {
-            "success": True,
-            "directory": directory
-        }
+
+        return Modal(
+            ModalTitle("配置已保存"),
+            ModalBody(
+                P(f"扫描目录已设置为: {directory}", cls="text-green-600"),
+                P("页面即将刷新...", cls="text-sm text-gray-500 mt-2"),
+            ),
+            ModalFooter(
+                Button(
+                    "确定",
+                    type="button",
+                    cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
+                    onclick="location.reload()"
+                ),
+            ),
+            id="config-success-modal"
+        )
     except Exception as e:
         logger.error(f"Failed to set scan directory: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return Div(
+            P(f"保存失败: {str(e)}", cls="text-red-600 mb-2"),
+            _config_modal_html("", is_error=False),
+            id="config-error"
+        )
