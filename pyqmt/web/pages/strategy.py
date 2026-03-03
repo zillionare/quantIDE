@@ -3,8 +3,10 @@ import datetime
 import json
 import re
 import uuid
+from pathlib import Path
 
 import arrow
+import fasthtml.common as fh
 import polars as pl
 from fasthtml.common import *
 from loguru import logger
@@ -640,7 +642,6 @@ def index(req, session):
 
     # 从缓存加载策略（不再每次扫描）
     strategies = strategy_loader.load_from_cache()
-    scan_dir = strategy_loader.get_scan_directory()
     strategy_rows = _build_strategy_rows(strategies)
     backtest_rows = _build_backtest_rows(strategies)
 
@@ -694,37 +695,40 @@ def index(req, session):
         Div(
             Div(
                 H2("策略列表", cls="text-lg font-semibold text-gray-900"),
-                Button(
-                    Span(
-                        Svg(
-                            Path(
-                                d="M12 4v16m8-8H4",
-                                **{
-                                    "stroke-linecap": "round",
-                                    "stroke-linejoin": "round",
-                                    "stroke-width": "2",
-                                },
+                Div(
+                    Button(
+                        Span(
+                            Svg(
+                                Path(
+                                    d="M12 4v16m8-8H4",
+                                    **{
+                                        "stroke-linecap": "round",
+                                        "stroke-linejoin": "round",
+                                        "stroke-width": "2",
+                                    },
+                                ),
+                                cls="w-5 h-5",
+                                fill="none",
+                                stroke="currentColor",
+                                viewBox="0 0 24 24",
                             ),
-                            cls="w-5 h-5",
-                            fill="none",
-                            stroke="currentColor",
-                            viewBox="0 0 24 24",
+                            cls="flex items-center",
                         ),
-                        cls="flex items-center",
+                        Span("扫描策略列表"),
+                        cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center gap-2 border-0 shadow-none",
+                        type="button",
+                        hx_post="/strategy/scan/run",
+                        hx_target="#modal-container",
                     ),
-                    Span("扫描策略列表"),
-                    cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2",
-                    type="button",
-                    hx_get="/strategy/scan/confirm",
-                    hx_target="#modal-container",
-                ),
-                Button(
-                    UkIcon("cog", size=20),
-                    cls="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg ml-2",
-                    type="button",
-                    title="配置扫描目录",
-                    hx_get="/strategy/scan/config-modal",
-                    hx_target="#modal-container",
+                    Button(
+                        UkIcon("cog", size=20),
+                        cls="p-2 bg-transparent border-0 shadow-none text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg inline-flex items-center justify-center",
+                        type="button",
+                        title="配置扫描目录",
+                        hx_get="/strategy/scan/config-modal",
+                        hx_target="#modal-container",
+                    ),
+                    cls="flex items-center gap-2",
                 ),
                 cls="p-6 border-b border-gray-200 flex justify-between items-center",
             ),
@@ -760,12 +764,12 @@ def index(req, session):
                         ),
                         cls="relative",
                     ),
-                    Select(
-                        Option("按年化收益排序", value="annual", selected=True),
-                        Option("按夏普比率排序", value="sharpe"),
-                        Option("按最大回撤排序", value="drawdown"),
-                        Option("按索提诺排序", value="sortino"),
-                        cls="px-4 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none",
+                    fh.Select(
+                        fh.Option("按年化收益排序", value="annual", selected=True),
+                        fh.Option("按夏普比率排序", value="sharpe"),
+                        fh.Option("按最大回撤排序", value="drawdown"),
+                        fh.Option("按索提诺排序", value="sortino"),
+                        cls="uk-select uk-form-small text-gray-900",
                     ),
                     cls="flex items-center space-x-4",
                 ),
@@ -880,9 +884,9 @@ def backtest_modal(name: str):
     for k, v in default_params.items():
         param_inputs.append(
             Div(
-                Label(k, cls="block text-sm font-medium text-gray-700 mb-1"),
-                Input(name=f"param_{k}", value=str(v), cls="input input-sm"),
-                cls="mb-3"
+                Span(k, cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                Input(name=f"param_{k}", value=str(v), cls="input input-sm w-full"),
+                cls="flex items-center gap-3 mb-3"
             )
         )
 
@@ -891,31 +895,48 @@ def backtest_modal(name: str):
             H3(f"运行回测 - {name}", cls="text-lg font-bold mb-4"),
             Form(
                 Div(
-                    Label("开始日期", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="start_date", type="date", value="2024-01-01", required=True, cls="input input-sm"),
-                    cls="mb-3"
-                ),
-                Div(
-                    Label("结束日期", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="end_date", type="date", value=arrow.now().format("YYYY-MM-DD"), required=True, cls="input input-sm"),
-                    cls="mb-3"
-                ),
-                Div(
-                    Label("初始资金", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="initial_cash", type="number", value="1000000", cls="input input-sm"),
-                    cls="mb-3"
-                ),
-                Div(
-                    Label("周期", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Select(
-                        Option("日线", value="1d"),
-                        Option("1分钟", value="1m"),
-                        name="interval",
-                        cls="select select-sm"
+                    Span("开始日期", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="start_date",
+                        type="date",
+                        value="2024-01-01",
+                        required=True,
+                        cls="input input-sm w-full"
                     ),
-                    cls="mb-3"
+                    cls="flex items-center gap-3 mb-3"
                 ),
-                Div(H4("策略参数", cls="text-sm font-bold mt-4 mb-2"), *param_inputs),
+                Div(
+                    Span("结束日期", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="end_date",
+                        type="date",
+                        value=arrow.now().format("YYYY-MM-DD"),
+                        required=True,
+                        cls="input input-sm w-full"
+                    ),
+                    cls="flex items-center gap-3 mb-3"
+                ),
+                Div(
+                    Span("初始资金", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="initial_cash",
+                        type="number",
+                        value="1000000",
+                        cls="input input-sm w-full"
+                    ),
+                    cls="flex items-center gap-3 mb-3"
+                ),
+                Div(
+                    Span("周期", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    fh.Select(
+                        fh.Option("日线", value="1d", selected="selected"),
+                        fh.Option("1分钟", value="1m"),
+                        name="interval",
+                        cls="uk-select uk-form-small flex-1 text-gray-700",
+                    ),
+                    cls="flex items-center gap-3 mb-3"
+                ),
+                Div(H4("策略参数", cls="text-sm font-semibold text-gray-600 mt-4 mb-2"), *param_inputs),
                 Div(
                     Button("取消", type="button", cls="btn btn-ghost", onclick="document.getElementById('modal-container').innerHTML=''"),
                     Button(
@@ -997,9 +1018,14 @@ def grid_search_modal(name: str):
         # For grid search, we expect comma separated values
         param_inputs.append(
             Div(
-                Label(f"{k} (逗号分隔)", cls="block text-sm font-medium text-gray-700 mb-1"),
-                Input(name=f"param_{k}", value=str(v), placeholder="例如: 10, 20, 30", cls="input input-sm"),
-                cls="mb-3"
+                Span(f"{k} (逗号分隔)", cls="text-sm font-medium text-gray-500 w-32 shrink-0"),
+                Input(
+                    name=f"param_{k}",
+                    value=str(v),
+                    placeholder="例如: 10, 20, 30",
+                    cls="input input-sm w-full",
+                ),
+                cls="flex items-center gap-3 mb-3"
             )
         )
 
@@ -1008,22 +1034,39 @@ def grid_search_modal(name: str):
             H3(f"运行网格搜索 - {name}", cls="text-lg font-bold mb-4"),
             Form(
                 Div(
-                    Label("开始日期", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="start_date", type="date", value="2024-01-01", required=True, cls="input input-sm"),
-                    cls="mb-3"
+                    Span("开始日期", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="start_date",
+                        type="date",
+                        value="2024-01-01",
+                        required=True,
+                        cls="input input-sm w-full",
+                    ),
+                    cls="flex items-center gap-3 mb-3"
                 ),
                 Div(
-                    Label("结束日期", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="end_date", type="date", value=arrow.now().format("YYYY-MM-DD"), required=True, cls="input input-sm"),
-                    cls="mb-3"
+                    Span("结束日期", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="end_date",
+                        type="date",
+                        value=arrow.now().format("YYYY-MM-DD"),
+                        required=True,
+                        cls="input input-sm w-full",
+                    ),
+                    cls="flex items-center gap-3 mb-3"
                 ),
                 Div(
-                    Label("并发数量", cls="block text-sm font-medium text-gray-700 mb-1"),
-                    Input(name="max_workers", type="number", value="4", cls="input input-sm"),
-                    cls="mb-3"
+                    Span("并发数量", cls="text-sm font-medium text-gray-500 w-24 shrink-0"),
+                    Input(
+                        name="max_workers",
+                        type="number",
+                        value="4",
+                        cls="input input-sm w-full",
+                    ),
+                    cls="flex items-center gap-3 mb-3"
                 ),
                 Div(
-                    H4("参数网格", cls="text-sm font-bold mt-4 mb-2"),
+                    H4("参数网格", cls="text-sm font-semibold text-gray-600 mt-4 mb-2"),
                     P("输入多个值以逗号分隔，如: 5, 10, 20", cls="text-xs text-gray-500 mb-2"),
                     *param_inputs
                 ),
@@ -1697,32 +1740,38 @@ def config_modal_route(req):
 # 扫描确认对话框
 @rt("/scan/confirm")
 def scan_confirm_modal(req):
+    if not strategy_loader.has_scan_directory_config():
+        return _config_modal_html("", is_error=True)
+
     scan_dir = strategy_loader.get_scan_directory()
-
-    # 如果未配置目录，显示配置对话框
     if not scan_dir:
-        return _config_modal_html(scan_dir, is_error=True)
+        return _config_modal_html("", is_error=True)
 
-    return Modal(
-        ModalTitle("确认扫描"),
-        ModalBody(
-            P(f"确定要扫描策略目录吗？", cls="text-gray-700"),
-            P(f"当前扫描目录: {scan_dir}", cls="text-sm text-gray-500 mt-2"),
-        ),
-        ModalFooter(
-            Button(
-                "取消",
-                type="button",
-                cls="px-4 py-2 text-gray-600 hover:text-gray-800",
-                onclick="document.getElementById('modal-container').innerHTML=''"
+    return Div(
+        Div(
+            Div(
+                H3("确认扫描", cls="text-lg font-semibold text-gray-900 mb-4"),
+                P("确定要扫描策略目录吗？", cls="text-gray-700"),
+                P(f"当前扫描目录: {scan_dir}", cls="text-sm text-gray-500 mt-2 mb-4"),
+                Div(
+                    Button(
+                        "取消",
+                        type="button",
+                        cls="px-4 py-2 text-gray-600 hover:text-gray-800",
+                        onclick="document.getElementById('modal-container').innerHTML=''"
+                    ),
+                    Button(
+                        "确定扫描",
+                        type="button",
+                        cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ml-2",
+                        hx_post="/strategy/scan/run",
+                        hx_target="#modal-container",
+                    ),
+                    cls="flex justify-end"
+                ),
+                cls="bg-white rounded-lg shadow-xl p-6 w-96"
             ),
-            Button(
-                "确定扫描",
-                type="button",
-                cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
-                hx_post="/strategy/scan/run",
-                hx_target="#modal-container",
-            ),
+            cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         ),
         id="scan-confirm-modal"
     )
@@ -1732,46 +1781,92 @@ def scan_confirm_modal(req):
 @rt("/scan/run", methods=["POST"])
 def run_scan(req):
     try:
+        if not strategy_loader.has_scan_directory_config():
+            return _config_modal_html("", is_error=True)
+
         strategies = strategy_loader.scan_and_cache()
-        return Modal(
-            ModalTitle("扫描完成"),
-            ModalBody(
-                P(f"成功发现 {len(strategies)} 个策略", cls="text-green-600 font-medium"),
-                P("页面即将刷新...", cls="text-sm text-gray-500 mt-2"),
-            ),
-            ModalFooter(
-                Button(
-                    "确定",
-                    type="button",
-                    cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
-                    onclick="location.reload()"
+        strategy_count = len(strategies)
+        scan_dir = strategy_loader.get_scan_directory()
+        if strategy_count == 0:
+            return Div(
+                Div(
+                    Div(
+                        H3("扫描完成", cls="text-lg font-semibold text-gray-900 mb-4"),
+                        P("未发现任何策略", cls="text-amber-600 font-medium"),
+                        P(f"扫描目录: {scan_dir}", cls="text-sm text-gray-500 mt-2 mb-4"),
+                        Div(
+                            Button(
+                                "关闭",
+                                type="button",
+                                cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
+                                onclick="document.getElementById('modal-container').innerHTML=''"
+                            ),
+                            cls="flex justify-end"
+                        ),
+                        cls="bg-white rounded-lg shadow-xl p-6 w-96"
+                    ),
+                    cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
                 ),
+                id="scan-result-modal"
+            )
+
+        return Div(
+            Div(
+                Div(
+                    H3("扫描完成", cls="text-lg font-semibold text-gray-900 mb-4"),
+                    P(f"成功发现 {strategy_count} 个策略", cls="text-green-600 font-medium"),
+                    P("策略列表将自动刷新", cls="text-sm text-gray-500 mt-2 mb-4"),
+                    Div(
+                        Button(
+                            "关闭",
+                            type="button",
+                            cls="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700",
+                            onclick="document.getElementById('modal-container').innerHTML=''"
+                        ),
+                        cls="flex justify-end"
+                    ),
+                    cls="bg-white rounded-lg shadow-xl p-6 w-96"
+                ),
+                cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
             ),
-            id="scan-result-modal"
+            Script("setTimeout(() => location.reload(), 1200);"),
+            id="scan-result-modal",
         )
     except Exception as e:
         logger.error(f"Failed to scan strategies: {e}")
-        return Modal(
-            ModalTitle("扫描失败"),
-            ModalBody(
-                P(f"错误: {str(e)}", cls="text-red-600"),
-            ),
-            ModalFooter(
-                Button(
-                    "关闭",
-                    type="button",
-                    cls="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700",
-                    onclick="document.getElementById('modal-container').innerHTML=''"
+        return Div(
+            Div(
+                Div(
+                    H3("扫描失败", cls="text-lg font-semibold text-gray-900 mb-4"),
+                    P(f"错误: {str(e)}", cls="text-red-600 mb-4"),
+                    Div(
+                        Button(
+                            "关闭",
+                            type="button",
+                            cls="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700",
+                            onclick="document.getElementById('modal-container').innerHTML=''"
+                        ),
+                        cls="flex justify-end"
+                    ),
+                    cls="bg-white rounded-lg shadow-xl p-6 w-96"
                 ),
+                cls="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
             ),
             id="scan-error-modal"
         )
 
 
-def _config_modal_html(scan_dir: str, is_error: bool = False):
+def _config_modal_html(
+    scan_dir: str, is_error: bool = False, error_message: str = ""
+):
     """配置对话框HTML"""
     title = "请先配置扫描目录" if is_error else "配置扫描目录"
-    message = P("您尚未配置策略扫描目录，请先设置。", cls="text-red-600 mb-4") if is_error else ""
+    if error_message:
+        message = P(error_message, cls="text-red-600 mb-4")
+    elif is_error:
+        message = P("您尚未配置策略扫描目录，请先设置。", cls="text-red-600 mb-4")
+    else:
+        message = ""
 
     return Div(
         Div(
@@ -1814,46 +1909,41 @@ def _config_modal_html(scan_dir: str, is_error: bool = False):
 
 # API 路由：配置扫描目录
 @rt("/scan/config", methods=["POST"])
-def save_scan_config(req):
-    from pathlib import Path
-
+async def save_scan_config(req):
     try:
-        form = req.form()
+        form = await req.form()
         directory = form.get("scan-dir-input", "").strip()
 
         if not directory:
-            return Div(
-                P("目录不能为空", cls="text-red-600 mb-2"),
-                _config_modal_html(directory, is_error=False),
-                id="config-error"
+            return _config_modal_html(
+                directory, is_error=True, error_message="目录不能为空"
             )
 
-        # 转换 ~ 为绝对路径
-        if directory.startswith("~"):
-            directory = str(Path(directory).expanduser())
+        # 允许输入 ~，并统一展开成绝对路径
+        path = Path(directory).expanduser()
+        directory = str(path)
 
         # 检查是否为绝对路径
-        if not directory.startswith("/"):
-            return Div(
-                P("必须使用绝对路径，例如: /Users/name/strategies", cls="text-red-600 mb-2"),
-                _config_modal_html(directory, is_error=False),
-                id="config-error"
+        if not path.is_absolute():
+            return _config_modal_html(
+                directory,
+                is_error=True,
+                error_message="必须使用绝对路径，例如: /Users/name/strategies",
             )
 
         # 检查目录是否存在
-        path = Path(directory)
         if not path.exists():
-            return Div(
-                P(f"目录不存在: {directory}", cls="text-red-600 mb-2"),
-                _config_modal_html(directory, is_error=False),
-                id="config-error"
+            return _config_modal_html(
+                directory,
+                is_error=True,
+                error_message=f"目录不存在: {directory}",
             )
 
         if not path.is_dir():
-            return Div(
-                P(f"路径不是目录: {directory}", cls="text-red-600 mb-2"),
-                _config_modal_html(directory, is_error=False),
-                id="config-error"
+            return _config_modal_html(
+                directory,
+                is_error=True,
+                error_message=f"路径不是目录: {directory}",
             )
 
         strategy_loader.set_scan_directory(directory)
@@ -1876,8 +1966,8 @@ def save_scan_config(req):
         )
     except Exception as e:
         logger.error(f"Failed to set scan directory: {e}")
-        return Div(
-            P(f"保存失败: {str(e)}", cls="text-red-600 mb-2"),
-            _config_modal_html("", is_error=False),
-            id="config-error"
+        return _config_modal_html(
+            directory if "directory" in locals() else "",
+            is_error=True,
+            error_message=f"保存失败: {str(e)}",
         )

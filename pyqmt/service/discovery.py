@@ -23,10 +23,23 @@ class StrategyLoader:
         try:
             rows = list(db["strategy_config"].rows_where("key = ?", ("scan_directory",)))
             if rows:
-                return rows[0]["value"]
+                value = (rows[0].get("value") or "").strip()
+                if value:
+                    return value
         except Exception as e:
             logger.warning(f"Failed to get scan directory from db: {e}")
         return self._default_scan_dir
+
+    def has_scan_directory_config(self) -> bool:
+        """判断是否已显式配置扫描目录"""
+        try:
+            rows = list(db["strategy_config"].rows_where("key = ?", ("scan_directory",)))
+            if not rows:
+                return False
+            return (rows[0].get("value") or "").strip() != ""
+        except Exception as e:
+            logger.warning(f"Failed to check scan directory config: {e}")
+            return False
 
     def set_scan_directory(self, directory: str) -> None:
         """设置扫描目录"""
