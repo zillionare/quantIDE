@@ -7,7 +7,6 @@ from typing import Any
 
 import pandas as pd
 import polars as pl
-import quantstats as qs
 from loguru import logger
 
 from pyqmt.core.enums import BrokerKind
