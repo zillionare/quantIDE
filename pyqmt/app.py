@@ -26,6 +26,8 @@ from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
+from pyqmt.web.middleware_init import InitCheckMiddleware
+from pyqmt.web.pages.init_wizard import init_wizard_app
 from pyqmt.web.apis.analysis import index_router, kline_router, search_router, sector_router
 from pyqmt.web.pages.accounts import accounts_app, accounts_list
 from pyqmt.web.pages.analysis import analysis_handler
@@ -95,13 +97,17 @@ def init():
     app, rt = fast_app(
         hdrs=headers,
         before=auth.create_beforeware(),
-        middleware=[Middleware(BrokerRegistryMiddleware, registry=reg)],
+        middleware=[
+            Middleware(InitCheckMiddleware),
+            Middleware(BrokerRegistryMiddleware, registry=reg),
+        ],
         exception_handlers={
             Exception: exception_handler,
             BaseTradeError: exception_handler,
         },
         routes=[
             Mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "web" / "static")), name="static"),
+            Mount("/init-wizard", init_wizard_app),
             Mount("/login", login_app),
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),

@@ -3,15 +3,24 @@ from monsterui.all import *
 
 
 class BaseLayout:
-    """基础布局类，所有布局都继承自此类"""
+    """基础布局类
 
-    def __init__(self, title: str = "PyQMT系统"):
-        self.title = title
+    用于不需要侧边栏的简单页面，如登录页、初始化向导等。
+    """
 
-    def render(self):
-        """渲染页面，子类需要重写此方法"""
-        raise NotImplementedError("子类必须实现render方法")
+    def __init__(self, *content, page_title: str = "PyQMT"):
+        """初始化基础布局
 
-    def main_block(self):
-        """主要内容块，子类需要重写此方法"""
-        raise NotImplementedError("子类必须实现main_block方法")
+        Args:
+            content: 页面主要内容
+            page_title: 页面标题
+        """
+        self.content = content
+        self.page_title = page_title
+
+    def __ft__(self):
+        """渲染页面"""
+        return Title(self.page_title), Container(
+            *self.content,
+            cls="min-h-screen bg-gray-50 dark:bg-gray-900 py-8",
+        )
