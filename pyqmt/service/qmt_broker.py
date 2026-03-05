@@ -19,23 +19,11 @@ import importlib
 import math
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 from loguru import logger
 from tenacity import RetryCallState, retry, stop_after_attempt, wait_fixed
-from xtquant import xtconstant
-from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
-from xtquant.xttype import (
-    StockAccount,
-    XtAsset,
-    XtCancelError,
-    XtOrder,
-    XtOrderError,
-    XtOrderResponse,
-    XtPosition,
-    XtTrade,
-)
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BidType, OrderSide, OrderStatus
@@ -49,9 +37,44 @@ from pyqmt.data.sqlite import Asset, Order, Position, Trade, db, new_uuid_id
 from pyqmt.notify.dingtalk import ding
 from pyqmt.service.abstract_broker import AbstractBroker
 
+# xtquant 模块（延迟导入）
+_xtquant_modules: dict[str, Any] = {}
+
+
+def _get_xtquant(name: str):
+    """延迟获取 xtquant 模块或类"""
+    if name not in _xtquant_modules:
+        if name == "xtconstant":
+            from xtquant import xtconstant as mod
+        elif name == "XtQuantTrader":
+            from xtquant.xttrader import XtQuantTrader as mod
+        elif name == "XtQuantTraderCallback":
+            from xtquant.xttrader import XtQuantTraderCallback as mod
+        elif name == "StockAccount":
+            from xtquant.xttype import StockAccount as mod
+        elif name == "XtAsset":
+            from xtquant.xttype import XtAsset as mod
+        elif name == "XtCancelError":
+            from xtquant.xttype import XtCancelError as mod
+        elif name == "XtOrder":
+            from xtquant.xttype import XtOrder as mod
+        elif name == "XtOrderError":
+            from xtquant.xttype import XtOrderError as mod
+        elif name == "XtOrderResponse":
+            from xtquant.xttype import XtOrderResponse as mod
+        elif name == "XtPosition":
+            from xtquant.xttype import XtPosition as mod
+        elif name == "XtTrade":
+            from xtquant.xttype import XtTrade as mod
+        else:
+            raise ImportError(f"Unknown xtquant module: {name}")
+        _xtquant_modules[name] = mod
+    return _xtquant_modules[name]
+
 
 # helpers
-def as_asset(xt_asset: XtAsset, principal: float, portfolio_id: str) -> Asset:
+def as_asset(xt_asset, principal: float, portfolio_id: str) -> Asset:
+    XtAsset = _get_xtquant("XtAsset")
     return Asset(
         portfolio_id=portfolio_id,
         total=xt_asset.total_asset,
@@ -63,7 +86,7 @@ def as_asset(xt_asset: XtAsset, principal: float, portfolio_id: str) -> Asset:
     )
 
 
-def as_position(xt_position: XtPosition, portfolio_id: str) -> Position:
+def as_position(xt_position, portfolio_id: str) -> Position:
     return Position(
         portfolio_id=portfolio_id,
         dt=datetime.date.today(),
@@ -78,6 +101,7 @@ def as_position(xt_position: XtPosition, portfolio_id: str) -> Position:
 
 def as_xt_bid_type(bid_type: BidType, price: float, asset: str) -> tuple[int, float]:
     """将通用的委托类型转换成XtQuant的委托类型"""
+    xtconstant = _get_xtquant("xtconstant")
     market = asset.split(".")[1].upper()
     if price == 0 or bid_type == BidType.MARKET:
         # 用户要求采用市价
@@ -102,6 +126,7 @@ def as_xt_bid_type(bid_type: BidType, price: float, asset: str) -> tuple[int, fl
 
 def as_xt_order_side(side: OrderSide) -> int:
     """将通用的订单方向转换成XtQuant的订单方向"""
+    xtconstant = _get_xtquant("xtconstant")
     side_map = {
         OrderSide.BUY: xtconstant.STOCK_BUY,
         OrderSide.SELL: xtconstant.STOCK_SELL,
@@ -116,6 +141,7 @@ def as_bid_type(xt_bid_type: int) -> BidType:
     遇到无法转换的类型，默认返回 "UNKNOWN"。当执行到此处时，bid_type 信息多用于记录，因此
     不必抛出异常。
     """
+    xtconstant = _get_xtquant("xtconstant")
     bid_type_map = {
         xtconstant.FIX_PRICE: BidType.FIXED,
         xtconstant.LATEST_PRICE: BidType.MARKET,
@@ -130,6 +156,7 @@ def as_order_side(xt_order_side: int) -> OrderSide:
     遇到无法转换的类型，默认返回 "UNKNOWN"。当执行到此处时，bid_type 信息多用于记录，因此
     不必抛出异常。
     """
+    xtconstant = _get_xtquant("xtconstant")
     side_map = {
         xtconstant.STOCK_BUY: OrderSide.BUY,
         xtconstant.STOCK_SELL: OrderSide.SELL,
@@ -149,7 +176,7 @@ def as_order_status(xt_order_status: int) -> OrderStatus:
         return OrderStatus.UNKNOWN
 
 
-def as_order(xt_order: XtOrder, portfolio_id: str) -> Order:
+def as_order(xt_order, portfolio_id: str) -> Order:
     """将XtQuant的订单转换成通用的订单模型"""
     model = Order(
         portfolio_id=portfolio_id,
@@ -187,7 +214,7 @@ def as_order(xt_order: XtOrder, portfolio_id: str) -> Order:
     return model
 
 
-def as_xt_order_params(order: Order, acc: StockAccount) -> dict:
+def as_xt_order_params(order: Order, acc) -> dict:
     """将通用的订单转换成 order_stock 需要的参数
 
     !!! attention
@@ -206,7 +233,7 @@ def as_xt_order_params(order: Order, acc: StockAccount) -> dict:
     )
 
 
-def as_trade(xt_trade: XtTrade, portfolio_id: str) -> Trade:
+def as_trade(xt_trade, portfolio_id: str) -> Trade:
     """将XtQuant的成交转换成通用的成交模型"""
     model = Trade(
         portfolio_id=portfolio_id,
@@ -241,7 +268,9 @@ def as_trade(xt_trade: XtTrade, portfolio_id: str) -> Trade:
     return model
 
 
-class MyXtQuantTraderCallback(XtQuantTraderCallback):
+class MyXtQuantTraderCallback:
+    """XtQuantTrader 回调实现"""
+
     def __init__(self, broker: AbstractBroker):
         self.broker = broker
 
@@ -252,7 +281,7 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
         logger.warning("connection lost, 交易接口断开。")
         xt_trader = None
 
-    def on_stock_order(self, order: XtOrder):
+    def on_stock_order(self, order):
         """委托回报推送，可以得知委托状态变化，比如 未报 > 待报 > 已报 > 部成 ...
 
 
@@ -276,97 +305,57 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
 
         db.update_order(_order.qtoid, **params)
 
-    def on_stock_asset(self, asset: XtAsset):
-        """
-        资金变动推送 注意，该回调函数目前不生效
-        :param asset: XtAsset对象
-        :return:
-        """
-        logger.info(f"on asset callback {asset}")
-        self.broker.on_sync_asset(
-            asset.total_asset, asset.cash, asset.frozen_cash, asset.market_value
-        )
+    def on_stock_asset(self, asset):
+        """资产回报推送"""
+        logger.info(f"on asset callback: {asset}")
 
-    def on_stock_trade(self, trade: XtTrade):
-        """
-        成交变动推送
-        :param trade: XtTrade对象
-        :return:
-        """
-        logger.info(trade.account_id, trade.stock_code, trade.order_id)
+    def on_stock_position(self, position):
+        """持仓回报推送"""
+        logger.info(f"on position callback: {position}")
+
+    def on_stock_trade(self, trade):
+        """成交回报推送"""
+        logger.info(f"on trade callback: {trade}")
         _trade = as_trade(trade, self.broker._portfolio_id)
-        db.insert_trades(_trade)
+        db.insert_trade(_trade)
 
-    def on_stock_position(self, position: XtPosition):
-        """
-        持仓变动推送 注意，该回调函数目前不生效
-        :param position: XtPosition对象
-        :return:
-        """
-        logger.info(f"on position callback {position}")
-        _position = as_position(position, self.broker._portfolio_id)
-        db.upsert_positions(_position)
-
-    def on_order_error(self, order_error: XtOrderError):
-        """
-        委托失败推送
-        :param order_error:XtOrderError 对象
-        :return:
-        """
-        logger.info(
-            f"order_error {order_error.account_id}, {order_error.strategy_name}, {order_error.error_id}, {order_error.error_msg}"
-        )
-
-        qtoid = order_error.order_remark
-        if qtoid is None or not qtoid.startswith("qtide-"):
-            # 完全的废单，无法关联。
+        # 更新订单状态
+        db_order = db.get_order_by_foid(_trade.foid)
+        if db_order is None:
             logger.warning(
-                "qmt 废单{}时，无法找到 qtide 定单{}",
-                order_error.order_id,
-                order_error.strategy_name,
+                "qmt 返回成交{}时，无法找到原 qtide 定单记录：{}",
+                _trade.tid,
+                _trade.qtoid,
             )
-            return
+        else:
+            db.update_order(
+                db_order.qtoid,
+                status=OrderStatus.FILLED,
+            )
 
-        error = f"{order_error.error_id}:{order_error.error_msg}"
-        db.update_order(qtoid, error=error)
+    def on_order_error(self, order_error):
+        """委托失败推送"""
+        logger.error(f"on order error: {order_error}")
 
-    def on_cancel_error(self, cancel_error: XtCancelError):
-        """
-        撤单失败推送
-        :param cancel_error: XtCancelError 对象
-        :return:
-        """
-        # todo: 需要向 UI 报告
-        logger.info(f"on cancel_error callback {cancel_error}")
+    def on_cancel_error(self, cancel_error):
+        """撤单失败推送"""
+        logger.error(f"on cancel error: {cancel_error}")
 
-    def on_order_stock_async_response(self, response: XtOrderResponse) -> None:
-        """
-        异步下单回报推送
-        :param response: XtOrderResponse 对象
-        :return:
-        """
-        order_id, seq = response.order_id, response.seq
-        logger.info("on_order_stock_async_response {}, {}", order_id, seq)
-        self.broker.awake(seq, order_id)
+    def on_order_response(self, response):
+        """委托响应推送"""
+        logger.info(f"on order response: {response}")
+
+    def on_cancel_response(self, response):
+        """撤单响应推送"""
+        logger.info(f"on cancel response: {response}")
 
     def on_account_status(self, status):
-        """
-        :param response: XtAccountStatus 对象
-        :return:
-        """
-        # 账号状态映射
+        """账户状态推送"""
         status_map = {
-            -1: "无效",
             0: "正常",
-            1: "连接中",
-            2: "登陆中",
-            3: "失败",
-            4: "初始化中",
-            5: "数据刷新校正中",
-            6: "收盘后",
-            7: "穿透副链接断开",
-            8: "系统停用（密码错误超限）",
-            9: "用户停用",
+            1: "禁用",
+            2: "锁定",
+            3: "注销",
         }
 
         status_text = status_map.get(status.status, f"未知状态({status.status})")
@@ -378,20 +367,19 @@ class MyXtQuantTraderCallback(XtQuantTraderCallback):
 class QMTBroker(AbstractBroker):
     def __init__(self, account_id: str, portfolio_id: str = "qmt"):
         super().__init__(portfolio_id=portfolio_id)
-        if xtconstant is None:
-            raise ImportError("xtquant is required for QMTBroker")
         self.account_id = account_id
         self.account_type = "stock"
 
         assert Path(cfg.qmt.path).exists(), "qmt安装路径不存在"
 
-        self.acc = StockAccount(self.account_id, self.account_type)  # type: ignore
+        StockAccount = _get_xtquant("StockAccount")
+        self.acc = StockAccount(self.account_id, self.account_type)
         self.path = cfg.qmt.path
 
         # xt接口需要的区分不同账号的session_id，同一个账号可以多次登录
         self.session_id = int(self.account_id)
 
-        self._trade_api: XtQuantTrader | None = None
+        self._trade_api = None
 
         # 资产表
         self._asset: Asset | None = None
@@ -403,7 +391,7 @@ class QMTBroker(AbstractBroker):
         1. tenacity 不支持使用 loguru 的 logger，通过此方法实现重试日志。
         2. 本方法会导致重连接 XtTrader
         """
-        instance: QMTBroker = rs.args[0]
+        instance = rs.args[0]
 
         # 断开连接
         try:
@@ -417,388 +405,259 @@ class QMTBroker(AbstractBroker):
 
         if rs.outcome is not None:
             expt = rs.outcome.exception()
-        else:
-            expt = None
-
-        logger.debug(
-            "{} retrying {}th time, reason: {}", rs.fn, rs.attempt_number, expt
-        )
-
-    @staticmethod
-    def on_final_failure(rs):
-        """用以重试。在重试无法恢复之后，发出通知消息
-
-        Args:
-            rs: tenacity.RetryCallState
-        """
-        if rs.outcome is not None:
-            expt = rs.outcome.exception()
-        else:
-            expt = None
-
-        msg = f"{rs.fn.__name__}重试第{rs.attempt_number}次后，仍然失败，原因{expt}"
-        ding(msg)
+            logger.warning(
+                "第{}次重试: {}. 等待{}秒后重试...",
+                rs.attempt_number,
+                expt,
+                rs.next_action.sleep,
+            )
 
     @property
-    def asset(self) -> Asset:
-        if self._asset is None:
-            self._asset = self.query_asset_info()
-
-        return self._asset
-
-    @property
-    def trade_api(self) -> XtQuantTrader:
+    def trade_api(self):
+        """获取交易 API，如果不存在则创建"""
         if self._trade_api is None:
-            self.connect_trade_api()
+            XtQuantTrader = _get_xtquant("XtQuantTrader")
+            XtQuantTraderCallback = _get_xtquant("XtQuantTraderCallback")
 
-        if self._trade_api is None:
-            raise XtTradeConnectError(TradeErrors.ERROR_UNKNOWN, "交易API未连接")
+            self._trade_api = XtQuantTrader(
+                str(self.path), self.session_id
+            )
+            self._callback = MyXtQuantTraderCallback(self)
+            self._trade_api.register_callback(self._callback)
+            self._trade_api.start()
+
+            connect_result = self._trade_api.connect()
+            if connect_result != 0:
+                self._trade_api.stop()
+                self._trade_api = None
+                raise XtTradeConnectError(
+                    f"无法连接到交易接口，错误码: {connect_result}"
+                )
+
+            subscribe_result = self._trade_api.subscribe(self.acc)
+            if subscribe_result != 0:
+                self._trade_api.stop()
+                self._trade_api = None
+                raise XtTradeConnectError(
+                    f"无法订阅账户，错误码: {subscribe_result}"
+                )
 
         return self._trade_api
 
-    def connect_trade_api(self):
-        """初始化或重新连接TradeAPI"""
-        global xt_trader
+    def _disconnect(self):
+        """断开交易接口连接"""
+        if self._trade_api is not None:
+            try:
+                self._trade_api.stop()
+            except Exception as e:
+                logger.error("断开交易接口失败: {}", e)
+            finally:
+                self._trade_api = None
 
-        self.session_id += 1
-
-        xt_trader = XtQuantTrader(self.path, self.session_id)
-        callback = MyXtQuantTraderCallback(self)
-        xt_trader.register_callback(callback)
-        xt_trader.start()  # 启动交易线程
-
-        connect_result = xt_trader.connect()
-        logger.info(f"{self.account_id} connect_result={connect_result}")
-
-        if connect_result == 0:
-            logger.info(f"{self.account_id} connected to TradeAPI success")
-
-            subscribe_result = xt_trader.subscribe(self.acc)
-
-            status = "成功" if subscribe_result == 0 else "失败"
-            logger.info("{} 订阅 {} 成功", self.account_id, status)
-
-            self._trade_api = xt_trader
-        else:
-            raise XtTradeConnectError(TradeErrors.ERROR_UNKNOWN, "连接交易API失败")
-
-    def on_sync_asset(
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(2),
+        sleep=before_retry_sleep,
+        reraise=True,
+    )
+    async def _place_order(
         self,
-        total_asset: float,
-        cash: float,
-        frozen_cash: float,
-        market_value: float,
-        dt: datetime.date | None = None,
-    ) -> None:
-        """同步资产状态"""
-        if dt is None:
-            dt = datetime.date.today()
+        asset: str,
+        side: OrderSide,
+        shares: int,
+        price: float = 0,
+        bid_type: BidType = BidType.MARKET,
+        strategy: str = "",
+    ) -> list[Trade]:
+        """下单并等待成交
 
-        self._asset = Asset(
+        1. 先验证订单、存入数据库
+        2. 再向 XtTrader发起异步请求
+        3. 在用户指定的超时时间内等待成交，并返回成交结果
+        4. 如果在指定的超时内未成交，则返回空列表
+        """
+        # 构造订单
+        order = Order(
             portfolio_id=self._portfolio_id,
-            total=total_asset,
-            cash=cash,
-            market_value=market_value,
-            frozen_cash=frozen_cash,
-            dt=dt,
-            principal=self._principal,
+            asset=asset,
+            side=side,
+            shares=shares,
+            price=price,
+            bid_type=bid_type,
+            strategy=strategy,
         )
-        db.upsert_asset(self._asset)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(1),
-        before_sleep=before_retry_sleep,
-        retry_error_callback=on_final_failure,
-    )
-    def query_asset_info(self) -> Asset:
-        """查询最新的资产信息"""
-        response = self.trade_api.query_stock_asset(self.acc)
+        # 验证订单
+        self._validate_order(order)
 
-        if response is None:
-            raise XtQuantTradeError(TradeErrors.ERROR_UNKNOWN, "查询资产信息失败")
+        # 存入数据库
+        db.insert_order(order)
 
-        return as_asset(response, self._principal, self._portfolio_id)
+        # 下单
+        try:
+            order_id = self.trade_api.order_stock(
+                **as_xt_order_params(order, self.acc)
+            )
+        except Exception as e:
+            logger.error("下单失败: {}", e)
+            raise XtQuantTradeError(f"下单失败: {e}")
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(1),
-        before_sleep=before_retry_sleep,
-        retry_error_callback=on_final_failure,
-    )
-    async def query_positions(self) -> pl.DataFrame:
-        """查询最新的持仓信息"""
-        positions = []
-        response = self.trade_api.query_stock_positions(self.acc) or []
-        for pos in response:
-            position = as_position(pos, self._portfolio_id)
-            positions.append(position)
+        if order_id == -1:
+            raise XtQuantTradeError("下单失败，返回 -1")
 
-        db.upsert_positions(positions)
-        return pl.DataFrame(positions)
+        # 更新订单的 foid
+        db.update_order(order.qtoid, foid=str(order_id))
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_fixed(1),
-        before_sleep=before_retry_sleep,
-        retry_error_callback=on_final_failure,
-    )
-    async def query_orders(self, cancelable_only: bool = False) -> pl.DataFrame | None:
-        """查询最新的订单信息，并列新数据库中保存的状态。
+        # 等待成交
+        trades = await self._wait_for_trades(order.qtoid)
 
-        qmt 返回的都是当日委托。
+        return trades
+
+    async def _wait_for_trades(self, qtoid: str, timeout: int = 30) -> list[Trade]:
+        """等待订单成交
 
         Args:
-            cancelable_only: 是否只查询可取消订单
+            qtoid: 订单 ID
+            timeout: 超时时间（秒）
 
         Returns:
-            订单列表
+            成交列表
         """
-        orders = []
-        response = self.trade_api.query_stock_orders(self.acc, cancelable_only) or []
+        import asyncio
 
-        for order in response:
-            order_ = as_order(order, self._portfolio_id)
+        start_time = datetime.datetime.now()
+        trades = []
 
-            if order_.qtoid == "":
-                order_.qtoid = order.order_remark or new_uuid_id()
-                db.insert_order(order_)
-            else:
-                db.update_order(
-                    order_.qtoid,
-                    **{
-                        "status": order_.status,
-                        "status_msg": order_.status_msg,
-                        "foid": order_.foid,
-                        "cid": order_.cid,
-                    },
-                )
-            orders.append(order_)
+        while (datetime.datetime.now() - start_time).seconds < timeout:
+            # 查询成交
+            trades = db.get_trades_by_qtoid(qtoid)
+            if trades:
+                return trades
 
-        return db.query_order_by_date(datetime.date.today())
+            await asyncio.sleep(0.1)
+
+        return trades
+
+    def _validate_order(self, order: Order):
+        """验证订单"""
+        if order.shares <= 0:
+            raise TradeError("订单数量必须大于0")
+
+        if order.price < 0:
+            raise TradeError("订单价格不能为负数")
 
     async def buy(
         self,
         asset: str,
-        shares: int | float,
+        shares: int,
         price: float = 0,
-        bid_time: datetime.datetime | None = None,
+        bid_type: BidType = BidType.MARKET,
         strategy: str = "",
-        timeout: float = 0.5,
-    ) -> pl.DataFrame | None:
-        """买入指令
-
-        如果传入价格为0或者 None，则为市价买入。
-
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            price: 委托价格
-            shares: 委托数量
-            bit_time: 下单时间，实盘时可省略传入，测试时必须传入
-            strategy: 策略名称
-            timeout: 超时时间，单位秒。超时撮合不成功，返回 None
-
-        Returns:
-            成交结果
-        """
-        bid_type = BidType.MARKET if price == 0 else BidType.FIXED
-
-        cash = self.asset.cash
-
-        if price != 0:  # 检查账户余额是否充足
-            if cash < price * shares:
-                shares = math.floor(cash / price / 100) * 100
-        shares = self._normalize_buy_shares(shares)
-
-        order = Order(
-            portfolio_id=self._portfolio_id,
+    ) -> list[Trade]:
+        """买入"""
+        return await self._place_order(
             asset=asset,
-            price=price,
-            shares=shares,
             side=OrderSide.BUY,
+            shares=shares,
+            price=price,
             bid_type=bid_type,
-            tm=bid_time or datetime.datetime.now(),
             strategy=strategy,
         )
-        qtoid = db.insert_order(order)
-
-        xt_order_side = as_xt_order_side(OrderSide.BUY)
-        xt_bid_type = as_xt_bid_type(bid_type, price, asset)
-
-        seq = self.trade_api.order_stock_async(
-            self.acc,
-            asset,
-            xt_order_side,
-            shares,
-            xt_bid_type,
-            price,
-            strategy,
-            order_remark=qtoid,
-        )
-
-        if seq == -1:  # 委托失败
-            logger.warning("买入{}, {}, {}, {}下单失败", asset, price, shares, strategy)
-            raise TradeError(TradeErrors.ERROR_XT_ORDER_FAIL, f"Order {qtoid} 下单失败")
-
-        order_response, remaining_time = await self.wait(seq, timeout)
-        if order_response is None:
-            logger.warning(
-                "买入{}, {}, {}, {}下单等待超时", asset, price, shares, strategy
-            )
-            return None
-
-        foid = order_response
-        db.update_order(qtoid, foid=str(foid))
-
-        # 在 remaining_time 内，等待成交
-        while remaining_time > 0:
-            trades = db.query_trade(qtoid=qtoid)
-            if trades is not None:
-                break
-            await asyncio.sleep(0.01)
-            remaining_time -= 0.01
-
-        # 查询成交
-        return db.query_trade(qtoid=qtoid)
-
-    async def buy_percent(
-        self,
-        asset: str,
-        percent: float,
-        bid_time: datetime.datetime | None = None,
-        timeout: float = 0.5,
-    ) -> pl.DataFrame | None:
-        pass
-
-    async def buy_amount(
-        self,
-        asset: str,
-        amount: int | float,
-        price: int | float | None = None,
-        bid_time: datetime.datetime | None = None,
-        timeout: float = 0.5,
-    ) -> list[Trade]:
-        """买入指令按金额买入
-
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            amount: 买入金额
-            price: 如果委托价格为 None，则以市价买入
-            bid_time: 下单时间，实盘时可省略传入，测试时必须传入
-            timeout: 超时时间，单位秒。超时撮合不成功，返回 None
-
-        Returns:
-            成交结果。如果超时未成交(含部成），返回空列表
-        """
-        ...
 
     async def sell(
         self,
         asset: str,
-        shares: int | float,
+        shares: int,
         price: float = 0,
-        bid_time: datetime.datetime | None = None,
-        timeout: float = 0.5,
-    ) -> list[Trade]:
-        """卖出指令
-
-        如果传入价格为0, 则为市价卖出。
-
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            shares: 委托数量
-            price: 委托价格
-            bit_time: 下单时间，实盘时可省略传入，测试时必须传入
-            timeout: 超时时间，单位秒。超时撮合不成功，返回 None
-
-        Returns:
-            成交数据。如果超时未成交(含部成），返回空列表
-        """
-        ...
-
-    async def sell_percent(
-        self,
-        asset: str,
-        percent: float,
-        bid_time: datetime.datetime | None = None,
-        timeout: float = 0.5,
-    ) -> list[Trade]:
-        """卖出指令按比例卖出
-
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            percent: 卖出比例，0-1之间的浮点数
-            bid_time: 下单时间，实盘时可省略传入，测试时必须传入
-            timeout: 超时时间，单位秒。超时撮合不成功，返回 None
-
-        Returns:
-            成交结果。如果超时未成交(含部成），返回空列表
-        """
-        ...
-
-    async def sell_amount(
-        self,
-        asset: str,
-        amount: int | float,
-        price: int | float | None = None,
-        bid_time: datetime.datetime | None = None,
-        timeout: float = 0.5,
-    ) -> list[Trade]:
-        """卖出指令按金额卖出
-
-        因为取整（手）的关系，实际卖出金额将可能超过约定金额，以保证回笼足够的现金。
-
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            amount: 卖出金额
-            price: 如果委托价格为 None，则以市价卖出
-            bid_time: 下单时间，实盘时可省略传入，测试时必须传入
-            timeout: 超时时间，单位秒。超时撮合不成功，返回 None
-
-        Returns:
-            成交结果。如果超时未成交(含部成），返回空列表
-        """
-        ...
-
-    def cancel_order(self, order_id: str):
-        """取消订单，用于实盘
-
-        取消指定订单。如果订单不存在或已成交，不做任何操作。
-
-        Args:
-            order_id: 订单 ID
-        """
-        ...
-
-    def cancel_all_orders(self, side: OrderSide | None = None):
-        """取消所有订单，用于实盘
-
-        取消所有未成交订单。如果所有订单已成交，不做任何操作。
-
-        Args:
-            side: 订单方向，默认为 None，取消所有订单
-        """
-        ...
-
-    def trade_target_pct(
-        self,
-        asset: str,
-        price: float,
-        target_pct: float,
         bid_type: BidType = BidType.MARKET,
+        strategy: str = "",
     ) -> list[Trade]:
-        """将`asset`的仓位调整到占比`target_pct`
+        """卖出"""
+        return await self._place_order(
+            asset=asset,
+            side=OrderSide.SELL,
+            shares=shares,
+            price=price,
+            bid_type=bid_type,
+            strategy=strategy,
+        )
 
-        如果当前仓位大于 target_pct，则卖出；
-        如果当前仓位小于 target_pct，则买入，直到现金用尽；在这种情况下，最终`asset`的仓位会小于约定的`target_pct`。
+    async def cancel(self, qtoid: str):
+        """撤单"""
+        order = db.get_order_by_qtoid(qtoid)
+        if order is None:
+            raise TradeError(f"订单不存在: {qtoid}")
 
-        !!! warning:
-            受交易手数取整和手续费影响，最终仓位可能会小于等于约定仓位。
+        if order.foid is None:
+            raise TradeError(f"订单没有 foid: {qtoid}")
 
-        Args:
-            asset: 资产代码, "symbol.SZ"风格
-            price: 委托价格
-            target_pct: 目标仓位占比，0-1之间的浮点数
-            bid_type: 委托类型，市价或限价
-        """
-        ...
+        try:
+            self.trade_api.cancel_order_stock(self.acc, int(order.foid))
+        except Exception as e:
+            logger.error("撤单失败: {}", e)
+            raise XtQuantTradeError(f"撤单失败: {e}")
+
+    def get_positions(self) -> list[Position]:
+        """获取持仓"""
+        try:
+            xt_positions = self.trade_api.query_stock_positions(self.acc)
+        except Exception as e:
+            logger.error("查询持仓失败: {}", e)
+            raise XtQuantTradeError(f"查询持仓失败: {e}")
+
+        if xt_positions is None:
+            return []
+
+        return [as_position(p, self._portfolio_id) for p in xt_positions]
+
+    def get_position(self, asset: str) -> Position | None:
+        """获取单个持仓"""
+        try:
+            xt_position = self.trade_api.query_stock_position(self.acc, asset)
+        except Exception as e:
+            logger.error("查询持仓失败: {}", e)
+            raise XtQuantTradeError(f"查询持仓失败: {e}")
+
+        if xt_position is None:
+            return None
+
+        return as_position(xt_position, self._portfolio_id)
+
+    def get_asset(self) -> Asset:
+        """获取资产"""
+        try:
+            xt_asset = self.trade_api.query_stock_asset(self.acc)
+        except Exception as e:
+            logger.error("查询资产失败: {}", e)
+            raise XtQuantTradeError(f"查询资产失败: {e}")
+
+        if xt_asset is None:
+            raise XtQuantTradeError("查询资产返回 None")
+
+        self._asset = as_asset(xt_asset, self._principal, self._portfolio_id)
+        return self._asset
+
+    def get_orders(
+        self, status: OrderStatus | None = None, start: datetime.date | None = None, end: datetime.date | None = None
+    ) -> list[Order]:
+        """获取订单列表"""
+        return db.get_orders(
+            portfolio_id=self._portfolio_id,
+            status=status,
+            start=start,
+            end=end,
+        )
+
+    def get_trades(
+        self, start: datetime.date | None = None, end: datetime.date | None = None
+    ) -> list[Trade]:
+        """获取成交列表"""
+        return db.get_trades(
+            portfolio_id=self._portfolio_id,
+            start=start,
+            end=end,
+        )
+
+
+# 全局 xt_trader 实例
+xt_trader = None

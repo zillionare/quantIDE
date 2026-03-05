@@ -42,12 +42,16 @@ class Config(object):
     class livequote:
         mode: str
 
+        class qmt:
+            path: str
+            markets: list
+
+        class redis:
+            host: str
+            port: int
+            channels: list
+
     brokers: list
-
-    class redis:
-        host: str
-
-        port: int
 
     class qmt:
         account_id: str

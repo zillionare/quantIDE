@@ -56,8 +56,24 @@ def _load_accounts_from_db(registry: BrokerRegistry):
                 print(f"Failed to load simulation account {pf.portfolio_id}: {e}")
 
 
+def _check_xtquant():
+    """检查 xtquant 是否可用（当配置为 qmt 模式时）"""
+    if cfg.livequote.mode == "qmt":
+        try:
+            from xtquant import xtdata
+        except ImportError as e:
+            raise RuntimeError(
+                "Configuration requires qmt mode, but xtquant is not installed. "
+                "Please install QMT and ensure xtquant is available in your Python environment. "
+                f"Original error: {e}"
+            ) from e
+
+
 def init():
     init_config()
+
+    # 检查 xtquant 可用性
+    _check_xtquant()
 
     init_data(cfg.home)
 

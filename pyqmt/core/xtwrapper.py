@@ -10,22 +10,23 @@ import pandas as pd
 from arrow import Arrow
 from numpy.typing import NDArray
 
-try:
-    from xtquant import xtdata as xt
-except ImportError:  # pragma: no cover
-    xt = None  # type: ignore[assignment]
-
 from pyqmt.core.utils import date2str, time2minute
 
 logger = logging.getLogger(__name__)
 
 cfg = cfg4py.get_instance()
 
+# xtquant 延迟导入
+_xt = None
+
 
 def _require_xt() -> Any:
-    if xt is None:
-        raise ImportError("xtquant is required")
-    return xt
+    """获取 xtquant.xtdata 模块，延迟导入"""
+    global _xt
+    if _xt is None:
+        from xtquant import xtdata as xt
+        _xt = xt
+    return _xt
 
 
 def _format_date(dt: datetime.date):

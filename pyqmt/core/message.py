@@ -110,7 +110,6 @@ class MessageHub:
             msg_content: 消息内容
         """
         try:
-            print(f"DEBUG: msg_hub publish {topic}")
             self._dispatch_queue.put_nowait((topic, msg_content))
         except Full:
             logger.warning(
@@ -128,8 +127,6 @@ class MessageHub:
                     topic, msg_content = self._dispatch_queue.get(timeout=0.1)
                 except Empty:
                     continue
-
-                print(f"DEBUG: dispatch {topic} to {len(self._subscribers.get(topic, []))} subscribers: {self._subscribers.get(topic, [])}")
 
                 try:
                     # 获取订阅者副本，减少锁持有时间
@@ -162,7 +159,7 @@ class MessageHub:
         try:
             queue.put_nowait(msg_content)
         except Full:
-            logger.warning("Pull queue for topic {} is full. Discarding oldest.", topic)
+            logger.info("Pull queue for topic {} is full. Discarding oldest.", topic)
             try:
                 queue.get_nowait()
                 queue.put_nowait(msg_content)
