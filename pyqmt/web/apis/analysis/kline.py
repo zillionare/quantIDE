@@ -6,16 +6,13 @@ from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from pyqmt.data.dal.bar_dal import BarDAL
 from pyqmt.data.models.daily_bars import daily_bars
+from pyqmt.data.dal.index_dal import IndexDAL
+from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.sqlite import db
+from pyqmt.data.utils.resampler import Resampler
 
 app, rt = fast_app()
-
-
-def get_bar_dal() -> BarDAL:
-    """获取 BarDAL 实例"""
-    return BarDAL(db, daily_bars.store)
 
 
 def bars_to_list(df) -> list[dict]:
@@ -26,7 +23,7 @@ def bars_to_list(df) -> list[dict]:
     result = []
     for row in df.iter_rows(named=True):
         result.append({
-            "dt": row["dt"].isoformat() if isinstance(row["dt"], (datetime.date, datetime.datetime)) else row["dt"],
+            "dt": row["frame"].isoformat() if isinstance(row["frame"], (datetime.date, datetime.datetime)) else row["frame"],
             "open": float(row["open"]),
             "high": float(row["high"]),
             "low": float(row["low"]),
@@ -45,7 +42,7 @@ def add_ma_to_list(df, ma_periods: list[int]) -> list[dict]:
     result = []
     for row in df.iter_rows(named=True):
         item = {
-            "dt": row["dt"].isoformat() if isinstance(row["dt"], (datetime.date, datetime.datetime)) else row["dt"],
+            "dt": row["frame"].isoformat() if isinstance(row["frame"], (datetime.date, datetime.datetime)) else row["frame"],
             "open": float(row["open"]),
             "high": float(row["high"]),
             "low": float(row["low"]),
@@ -63,6 +60,65 @@ def add_ma_to_list(df, ma_periods: list[int]) -> list[dict]:
         result.append(item)
 
     return result
+
+
+def _get_stock_bars(
+    symbol: str,
+    start: datetime.date,
+    end: datetime.date,
+    freq: str = "day",
+) -> pl.DataFrame:
+    """从 DailyBars 获取个股行情数据"""
+    df = daily_bars.get_bars_in_range(
+        assets=[symbol],
+        start=start,
+        end=end,
+        adjust="qfq",
+        eager_mode=True,
+    )
+
+    if df.is_empty():
+        return pl.DataFrame(schema={
+            "frame": pl.Date,
+            "asset": pl.Utf8,
+            "open": pl.Float64,
+            "high": pl.Float64,
+            "low": pl.Float64,
+            "close": pl.Float64,
+            "volume": pl.Int64,
+            "amount": pl.Float64,
+        })
+
+    # 重命名列
+    df = df.rename({"date": "frame", "asset": "asset"})
+
+    # 重采样
+    if freq != "day":
+        df = Resampler.resample(df, freq)
+
+    return df
+
+
+def _get_bars_with_ma(
+    symbol: str,
+    start: datetime.date,
+    end: datetime.date,
+    freq: str = "day",
+    ma_periods: list[int] | None = None,
+) -> pl.DataFrame:
+    """获取行情数据并计算均线"""
+    df = _get_stock_bars(symbol, start, end, freq)
+
+    if df.is_empty() or not ma_periods:
+        return df
+
+    # 计算均线
+    for period in ma_periods:
+        df = df.with_columns(
+            pl.col("close").rolling_mean(window_size=period).alias(f"ma{period}")
+        )
+
+    return df
 
 
 @rt("/stock/{symbol}")
@@ -111,13 +167,11 @@ async def get_stock_kline(
         )
 
     try:
-        dal = get_bar_dal()
-
         if ma_periods:
-            df = dal.get_bars_with_ma(symbol, start_date, end_date, freq, ma_periods)
+            df = _get_bars_with_ma(symbol, start_date, end_date, freq, ma_periods)
             data = add_ma_to_list(df, ma_periods)
         else:
-            df = dal.get_stock_bars(symbol, start_date, end_date, freq)
+            df = _get_stock_bars(symbol, start_date, end_date, freq)
             data = bars_to_list(df)
 
         return JSONResponse({
@@ -183,13 +237,22 @@ async def get_sector_kline(
         )
 
     try:
-        dal = get_bar_dal()
+        sector_dal = SectorDAL(db)
 
         if ma_periods:
-            df = dal.get_bars_with_ma(sector_id, start_date, end_date, freq, ma_periods)
+            df = sector_dal.get_sector_bars(sector_id, start_date, end_date)
+            if freq != "day":
+                df = Resampler.resample(df, freq)
+            # 计算均线
+            for period in ma_periods:
+                df = df.with_columns(
+                    pl.col("close").rolling_mean(window_size=period).alias(f"ma{period}")
+                )
             data = add_ma_to_list(df, ma_periods)
         else:
-            df = dal.get_sector_bars(sector_id, start_date, end_date, freq)
+            df = sector_dal.get_sector_bars(sector_id, start_date, end_date)
+            if freq != "day":
+                df = Resampler.resample(df, freq)
             data = bars_to_list(df)
 
         return JSONResponse({
@@ -255,13 +318,22 @@ async def get_index_kline(
         )
 
     try:
-        dal = get_bar_dal()
+        index_dal = IndexDAL(db)
 
         if ma_periods:
-            df = dal.get_bars_with_ma(symbol, start_date, end_date, freq, ma_periods)
+            df = index_dal.get_index_bars(symbol, start_date, end_date)
+            if freq != "day":
+                df = Resampler.resample(df, freq)
+            # 计算均线
+            for period in ma_periods:
+                df = df.with_columns(
+                    pl.col("close").rolling_mean(window_size=period).alias(f"ma{period}")
+                )
             data = add_ma_to_list(df, ma_periods)
         else:
-            df = dal.get_index_bars(symbol, start_date, end_date, freq)
+            df = index_dal.get_index_bars(symbol, start_date, end_date)
+            if freq != "day":
+                df = Resampler.resample(df, freq)
             data = bars_to_list(df)
 
         return JSONResponse({
@@ -316,14 +388,12 @@ async def compare_kline(
         )
 
     try:
-        dal = get_bar_dal()
-
         # 获取主标的K线
-        df1 = dal.get_stock_bars(symbol, start_date, end_date, freq)
+        df1 = _get_stock_bars(symbol, start_date, end_date, freq)
         data1 = bars_to_list(df1)
 
         # 获取对比标的K线
-        df2 = dal.get_stock_bars(compare, start_date, end_date, freq)
+        df2 = _get_stock_bars(compare, start_date, end_date, freq)
         data2 = bars_to_list(df2)
 
         return JSONResponse({

@@ -11,7 +11,6 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
 from pyqmt.config import cfg
-from pyqmt.data.dal.bar_dal import BarDAL
 from pyqmt.data.dal.index_dal import IndexDAL
 from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.services.index_sync import IndexSyncService
@@ -55,10 +54,9 @@ class DataSyncScheduler:
         """创建同步服务实例"""
         sector_dal = SectorDAL(db)
         index_dal = IndexDAL(db)
-        bar_dal = BarDAL(db)
 
         self.sector_sync = SectorSyncService(sector_dal)
-        self.index_sync = IndexSyncService(index_dal, bar_dal)
+        self.index_sync = IndexSyncService(index_dal)
 
     def sync_sectors_job(self):
         """板块同步任务"""

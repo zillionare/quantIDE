@@ -9,7 +9,6 @@ import pandas as pd
 from loguru import logger
 
 from pyqmt.config import cfg
-from pyqmt.data.dal.bar_dal import BarDAL
 from pyqmt.data.dal.index_dal import IndexDAL
 from pyqmt.data.fetchers.tushare_ext import (
     fetch_index_bars,
@@ -22,9 +21,8 @@ from pyqmt.data.models.index import Index, IndexBar
 class IndexSyncService:
     """指数数据同步服务"""
 
-    def __init__(self, dal: IndexDAL, bar_dal: BarDAL | None = None):
+    def __init__(self, dal: IndexDAL):
         self.dal = dal
-        self.bar_dal = bar_dal
         self._epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
 
     def sync_index_list(self) -> int:
