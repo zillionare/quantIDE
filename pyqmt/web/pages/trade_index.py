@@ -14,7 +14,9 @@ from pyqmt.core.enums import BrokerKind
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.web.layouts.main import MainLayout
 
-trade_index_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+trade_index_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 def _get_registry(req) -> BrokerRegistry:

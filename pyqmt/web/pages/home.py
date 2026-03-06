@@ -10,7 +10,9 @@ from pyqmt.service.registry import BrokerRegistry
 from pyqmt.web.apis.broker import build_asset_overview
 from pyqmt.web.layouts.main import MainLayout
 
-home_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+home_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 def AccountTabs():

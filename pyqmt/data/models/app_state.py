@@ -19,6 +19,7 @@ class AppState(Entity):
 
     __table_name__ = "app_state"
     __pk__ = "id"
+    __indexes__ = ([], False)  # 无索引
 
     id: int = 1  # 固定为1，单例表
 

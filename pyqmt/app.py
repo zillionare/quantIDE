@@ -5,6 +5,9 @@ Main application entry point for the PyQMT system.
 This file sets up the FastHTML application with MonsterUI styling.
 """
 
+import atexit
+import os
+import sys
 from pathlib import Path
 
 from fasthtml.common import *
@@ -16,6 +19,51 @@ from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 
 from pyqmt.config import cfg, init_config
+
+
+def _check_single_instance():
+    """检查是否已有实例在运行，防止多实例启动"""
+    pid_file = Path(cfg.home) / ".pyqmt.pid"
+
+    if pid_file.exists():
+        try:
+            with open(pid_file, "r") as f:
+                old_pid = int(f.read().strip())
+
+            # 检查进程是否仍在运行
+            if sys.platform == "win32":
+                import ctypes
+
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(1, False, old_pid)
+                if handle != 0:
+                    kernel32.CloseHandle(handle)
+                    raise RuntimeError(
+                        f"PyQMT 已经在运行 (PID: {old_pid})。"
+                        f"请先停止现有实例，或删除 {pid_file} 后重试。"
+                    )
+            else:
+                # Unix/Linux/Mac
+                os.kill(old_pid, 0)
+                raise RuntimeError(
+                    f"PyQMT 已经在运行 (PID: {old_pid})。"
+                    f"请先停止现有实例，或删除 {pid_file} 后重试。"
+                )
+        except (ValueError, OSError, ProcessLookupError):
+            # PID 文件存在但进程已不存在，删除旧文件
+            pid_file.unlink()
+
+    # 写入当前 PID
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(pid_file, "w") as f:
+        f.write(str(os.getpid()))
+
+    # 注册退出时清理
+    def cleanup_pid():
+        if pid_file.exists():
+            pid_file.unlink()
+
+    atexit.register(cleanup_pid)
 from pyqmt.core.enums import BrokerKind
 from pyqmt.core.errors import BaseTradeError
 from pyqmt.core.scheduler import scheduler
@@ -74,6 +122,9 @@ def _check_xtquant():
 def init():
     init_config()
 
+    # 检查是否已有实例在运行
+    _check_single_instance()
+
     # 检查 xtquant 可用性
     _check_xtquant()
 
@@ -90,12 +141,10 @@ def init():
 
     auth = AuthManager(config={"login_path": "/login"})
 
-    # 合并 Theme headers 和 HTMX
-    htmx_script = Script(src="https://unpkg.com/htmx.org@1.9.12")
-    headers = list(Theme.blue.headers()) + [htmx_script]
+    from pyqmt.web.theme import AppTheme
 
     app, rt = fast_app(
-        hdrs=headers,
+        hdrs=AppTheme.headers(),
         before=auth.create_beforeware(),
         middleware=[
             Middleware(InitCheckMiddleware),
@@ -107,6 +156,7 @@ def init():
         },
         routes=[
             Mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "web" / "static")), name="static"),
+            Route("/init-wizard", lambda req: RedirectResponse(f"/init-wizard/?{req.query_params}" if req.query_params else "/init-wizard/")),
             Mount("/init-wizard", init_wizard_app),
             Mount("/login", login_app),
             Mount("/home", home_app),

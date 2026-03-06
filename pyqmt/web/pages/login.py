@@ -3,7 +3,9 @@ from monsterui.all import *
 
 from pyqmt.web.layouts.login import LoginLayout
 
-login_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+login_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 @rt("/", methods="get")

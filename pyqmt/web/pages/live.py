@@ -10,7 +10,9 @@ from pyqmt.data.sqlite import Asset, Position
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.web.layouts.main import MainLayout
 
-live_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+live_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 def _get_registry(req) -> Any:

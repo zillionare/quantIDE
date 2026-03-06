@@ -38,23 +38,27 @@ class InitCheckMiddleware(BaseHTTPMiddleware):
             return response
 
         # 检查是否已完成初始化
+        should_redirect = False
         try:
-            if not init_wizard.is_initialized():
-                # 未初始化，重定向到初始化向导
-                if request.method == "GET":
-                    return RedirectResponse("/init-wizard", status_code=302)
-                else:
-                    # API 请求返回错误信息
-                    from fasthtml.common import JSONResponse
-
-                    return JSONResponse(
-                        {"error": "应用未初始化，请先完成初始化向导"},
-                        status_code=503,
-                    )
-        except Exception:
-            # 如果检查失败（如数据库未连接），允许继续访问
+            should_redirect = not init_wizard.is_initialized()
+        except Exception as e:
+            # 如果检查失败（如数据库未连接），记录日志并允许继续访问
             # 初始化向导页面会处理这些问题
-            pass
+            import logging
+            logging.getLogger(__name__).warning(f"初始化状态检查失败: {e}, 允许继续访问")
+
+        if should_redirect:
+            # 未初始化，重定向到初始化向导
+            if request.method == "GET":
+                return RedirectResponse("/init-wizard", status_code=302)
+            else:
+                # API 请求返回错误信息
+                from fasthtml.common import JSONResponse
+
+                return JSONResponse(
+                    {"error": "应用未初始化，请先完成初始化向导"},
+                    status_code=503,
+                )
 
         response = await call_next(request)
         return response

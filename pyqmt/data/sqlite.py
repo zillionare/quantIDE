@@ -309,7 +309,8 @@ class SQLiteDB:
             # 创建索引
             if e.__indexes__ is not None:
                 indexes, is_unique = e.__indexes__
-                t.create_index(indexes, unique=is_unique, if_not_exists=True)
+                if indexes:  # 只在有索引字段时创建
+                    t.create_index(indexes, unique=is_unique, if_not_exists=True)
 
             # 创建外键约束
             if hasattr(e, "__foreign_keys__") and e.__foreign_keys__:

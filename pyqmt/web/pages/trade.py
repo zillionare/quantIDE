@@ -11,7 +11,9 @@ from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import SimulationBroker
 from pyqmt.web.layouts.main import MainLayout
 
-trade_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+trade_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 def _get_registry(req) -> Any:

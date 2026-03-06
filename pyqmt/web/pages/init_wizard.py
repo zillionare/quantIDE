@@ -9,20 +9,25 @@ from typing import Any
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
-from monsterui.daisy import Steps, LiStep, StepT
 
 from pyqmt.service.init_wizard import init_wizard
 from pyqmt.web.layouts.base import BaseLayout
 
-init_wizard_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme, PRIMARY_COLOR
+
+init_wizard_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 # ========== 步骤指示器组件 ==========
 
-def StepIndicator(current_step: int, steps: list[dict]):
-    """步骤指示器组件
+# 主色调配置
+PRIMARY_COLOR = "#D13527"
 
-    使用 MonsterUI 的 Steps 组件实现。
+
+def StepIndicator(current_step: int, steps: list[dict]):
+    """步骤指示器组件（竖状布局）
+
+    使用自定义样式的竖状步骤条，主色调为 #D13527。
 
     Args:
         current_step: 当前步骤（1-5）
@@ -35,21 +40,36 @@ def StepIndicator(current_step: int, steps: list[dict]):
 
         # 确定步骤样式
         if is_active:
-            cls = StepT.primary.value
+            # 当前步骤：使用主色调
+            text_style = f"color: {PRIMARY_COLOR}; font-weight: bold;"
+            circle_bg = PRIMARY_COLOR
         elif is_completed:
-            cls = StepT.success.value
+            # 已完成步骤：主色调
+            text_style = f"color: {PRIMARY_COLOR};"
+            circle_bg = PRIMARY_COLOR
         else:
-            cls = ""
+            # 未开始步骤：灰色
+            text_style = "color: #9ca3af;"
+            circle_bg = "#e5e7eb"
 
         step_items.append(
-            LiStep(
-                step["name"],
-                cls=cls,
-                data_content=str(i),
+            Li(
+                Div(
+                    # 步骤编号圆圈 - 使用固定宽高比确保圆形
+                    Span(
+                        str(i),
+                        cls="step-number flex-shrink-0",
+                        style=f"background: {circle_bg}; color: white; width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; margin-right: 12px; flex-shrink: 0;",
+                    ),
+                    # 步骤名称 - 不换行
+                    Span(step["name"], style=f"{text_style} white-space: nowrap;"),
+                    cls="flex items-center py-3",
+                ),
+                cls="step",
             )
         )
 
-    return Steps(*step_items, cls="mb-8")
+    return Ul(*step_items, cls="steps-vertical list-none p-0 m-0 w-full")
 
 
 # ========== 步骤内容组件 ==========
@@ -57,26 +77,26 @@ def StepIndicator(current_step: int, steps: list[dict]):
 def Step1_Welcome():
     """步骤1：欢迎页面"""
     return Div(
-        H3("欢迎使用 PyQMT", cls="text-center mb-4"),
+        H3("欢迎使用 PyQMT", cls="mb-6", style=f"color: {PRIMARY_COLOR};"),
         P(
             "PyQMT 是一个基于 Python 的量化交易系统。",
-            cls="text-center text-gray-600 mb-4",
+            cls="text-gray-600 mb-4",
         ),
         P(
             "在开始使用之前，我们需要完成一些初始化配置，包括：",
-            cls="text-center text-gray-600 mb-4",
+            cls="text-gray-600 mb-4",
         ),
         Ul(
             Li("配置数据源（Tushare、QMT）"),
             Li("设置定时任务时间"),
             Li("下载历史行情数据"),
-            cls="list-disc pl-8 mb-6 text-gray-600",
+            cls="list-disc pl-6 mb-6 text-gray-600",
         ),
         P(
             "整个初始化过程大约需要 5-10 分钟，取决于您选择下载的历史数据范围。",
-            cls="text-center text-gray-500 text-sm mb-6",
+            cls="text-gray-500 text-sm mb-6",
         ),
-        cls="max-w-2xl mx-auto py-8",
+        cls="py-4",
     )
 
 
@@ -85,7 +105,7 @@ def Step2_DataSource(state: dict | None = None):
     state = state or {}
 
     return Div(
-        H4("配置数据源", cls="mb-4"),
+        H4("配置数据源", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         # Tushare 配置
         Card(
             CardHeader(H5("Tushare 配置", cls="text-lg font-semibold")),
@@ -113,47 +133,31 @@ def Step2_DataSource(state: dict | None = None):
             ),
             cls="mb-4",
         ),
-        # QMT 配置
+        # QMT 配置（实盘交易）
         Card(
-            CardHeader(H5("QMT 配置", cls="text-lg font-semibold")),
+            CardHeader(H5("QMT 实盘配置", cls="text-lg font-semibold")),
             CardBody(
                 P(
-                    "QMT 是交易执行端，用于实盘或仿真交易。",
+                    "QMT 是实盘交易执行端。如果您不使用实盘交易，可以跳过此步骤。",
                     cls="text-sm text-gray-600 mb-4",
                 ),
-                # 账号类型选择
-                Div(
-                    FormLabel("账号类型", required=True),
-                    Div(
-                        LabelRadio(
-                            label="仿真交易",
-                            name="qmt_account_type",
-                            value="simulation",
-                            checked=state.get("qmt_account_type") == "simulation",
-                        ),
-                        LabelRadio(
-                            label="实盘交易",
-                            name="qmt_account_type",
-                            value="live",
-                            checked=state.get("qmt_account_type") == "live",
-                        ),
-                        cls="flex gap-4 mt-2",
-                    ),
-                    cls="mb-4",
+                # 隐藏字段：固定为实盘类型
+                Input(
+                    type="hidden",
+                    name="qmt_account_type",
+                    value="live",
                 ),
                 LabelInput(
                     label="QMT 账号 ID",
                     name="qmt_account_id",
                     value=state.get("qmt_account_id", ""),
-                    placeholder="请输入 QMT 账号 ID",
-                    required=True,
+                    placeholder="请输入 QMT 实盘账号 ID",
                 ),
                 LabelInput(
                     label="QMT 安装路径",
                     name="qmt_path",
                     value=state.get("qmt_path", ""),
                     placeholder="例如: C:/国金证券QMT交易端",
-                    required=True,
                 ),
             ),
             cls="mb-4",
@@ -167,7 +171,7 @@ def Step3_Schedule(state: dict | None = None):
     state = state or {}
 
     return Div(
-        H4("配置任务调度时间", cls="mb-4"),
+        H4("配置任务调度时间", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P(
             "设置各项数据同步任务的执行时间。建议保持默认设置。",
             cls="text-gray-600 mb-6",
@@ -240,7 +244,7 @@ def Step4_DownloadData(state: dict | None = None):
     )
 
     return Div(
-        H4("下载历史数据", cls="mb-4"),
+        H4("下载历史数据", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P(
             "选择要下载的历史数据范围。数据量越大，下载时间越长。",
             cls="text-gray-600 mb-6",
@@ -293,69 +297,79 @@ def Step5_Complete():
     return Div(
         Div(
             UkIcon("check-circle", width=64, height=64, cls="text-green-500"),
-            cls="flex justify-center mb-4",
+            cls="mb-6",
         ),
-        H3("初始化完成！", cls="text-center mb-4"),
+        H3("初始化完成！", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P(
             "您的 PyQMT 系统已完成初始化配置。",
-            cls="text-center text-gray-600 mb-4",
+            cls="text-gray-600 mb-4",
         ),
         P(
             "系统将自动开始执行数据同步任务，您现在可以：",
-            cls="text-center text-gray-600 mb-4",
+            cls="text-gray-600 mb-4",
         ),
         Ul(
             Li("查看实时行情"),
             Li("创建和运行策略"),
             Li("进行回测或实盘交易"),
             Li("分析历史数据"),
-            cls="list-disc pl-8 mb-6 text-gray-600 max-w-md mx-auto",
+            cls="list-disc pl-6 mb-6 text-gray-600",
         ),
-        cls="max-w-2xl mx-auto py-8 text-center",
+        # 同步进度对话框容器
+        Div(id="sync-dialog", cls="mt-6"),
+        cls="py-4",
     )
 
 
 # ========== 导航按钮组件 ==========
 
 def WizardButtons(current_step: int, total_steps: int = 5):
-    """向导导航按钮"""
-    buttons = []
+    """向导导航按钮 - 上一步在左，下一步在右"""
+    left_buttons = []
+    right_buttons = []
 
-    # 上一步按钮（除了第一步）
+    # 上一步按钮（除了第一步）- 放在左侧
     if current_step > 1:
-        buttons.append(
+        left_buttons.append(
             Button(
                 "上一步",
-                cls=ButtonT.secondary,
+                cls="btn px-6 py-2 rounded",
+                style="background: #f3f4f6; color: #374151; border: 1px solid #d1d5db;",
                 hx_post=f"/init-wizard/step/{current_step - 1}",
                 hx_target="#wizard-content",
                 hx_include="[name]",
             )
         )
 
-    # 下一步/完成按钮
+    # 下一步/完成按钮 - 放在右侧
     if current_step < total_steps:
-        buttons.append(
+        right_buttons.append(
             Button(
                 "下一步",
-                cls=ButtonT.primary,
+                cls="btn px-6 py-2 rounded",
+                style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                 hx_post=f"/init-wizard/step/{current_step + 1}",
                 hx_target="#wizard-content",
                 hx_include="[name]",
             )
         )
     else:
-        buttons.append(
+        right_buttons.append(
             Button(
-                "进入系统",
-                cls=ButtonT.primary,
+                "开始同步",
+                cls="btn px-6 py-2 rounded",
+                style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                 hx_post="/init-wizard/complete",
-                hx_target="body",
-                hx_push_url="/",
+                hx_target="#sync-dialog",
+                hx_swap="innerHTML",
             )
         )
 
-    return Div(*buttons, cls="flex justify-between mt-8")
+    return Div(
+        Div(*left_buttons, cls="flex gap-2"),
+        Div(*right_buttons, cls="flex gap-2"),
+        cls="flex justify-between mt-12 pt-6 border-t border-gray-200",
+    )
 
 
 # ========== 主页面 ==========
@@ -390,21 +404,26 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
     step_content = step_content_map.get(step, Step1_Welcome())
 
     page_content = Div(
-        H2("PyQMT 初始化向导", cls="text-center mb-2"),
-        P(
-            f"步骤 {step} / 5",
-            cls="text-center text-gray-500 mb-6",
-        ),
-        # 步骤指示器
-        StepIndicator(step, steps),
-        # 步骤内容
-        Form(
-            step_content,
-            WizardButtons(step),
-            id="wizard-form",
+        # 左右布局：左侧步骤条，右侧内容
+        Div(
+            # 左侧步骤条
+            Div(
+                StepIndicator(step, steps),
+                cls="w-56 flex-shrink-0",
+            ),
+            # 右侧内容
+            Div(
+                Form(
+                    step_content,
+                    WizardButtons(step),
+                    id="wizard-form",
+                ),
+                cls="flex-1 ml-12",
+            ),
+            cls="flex min-h-[500px]",
         ),
         id="wizard-content",
-        cls="container mx-auto max-w-4xl py-8",
+        cls="container mx-auto max-w-5xl py-12",
     )
 
     return BaseLayout(
@@ -416,11 +435,27 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
 # ========== 路由处理 ==========
 
 @rt("/")
-def get():
-    """初始化向导首页"""
-    # 检查是否已完成初始化
-    if init_wizard.is_initialized():
+async def get(request: Request):
+    """初始化向导首页
+
+    支持 force=true 参数强制重新进入向导（调试用）。
+    """
+    # 从 URL 查询字符串中获取 force 参数
+    # 尝试多种方式获取参数
+    force_param = request.query_params.get("force", "")
+    force = str(force_param).lower() in ("true", "1", "yes")
+
+    logger.info(f"访问初始化向导: path={request.url.path}, query={request.url.query}, force_param={force_param}, force={force}")
+
+    # 检查是否已完成初始化（除非强制进入）
+    is_init = init_wizard.is_initialized()
+    logger.info(f"初始化状态: is_initialized={is_init}")
+
+    if not force and is_init:
+        logger.info("已初始化，重定向到首页")
         return RedirectResponse("/")
+
+    logger.info("显示初始化向导页面")
 
     # 开始初始化流程
     init_wizard.start_initialization()
@@ -476,17 +511,105 @@ async def handle_step(request: Request, step: int):
 
 @rt("/complete")
 async def handle_complete():
-    """完成初始化"""
+    """完成初始化 - 显示同步进度对话框"""
     try:
+        # 标记初始化完成
         init_wizard.complete_initialization()
-        logger.info("初始化向导完成，即将进入主界面")
-        return RedirectResponse("/", status_code=303)
+        logger.info("初始化向导完成，开始数据同步")
+
+        # 返回同步进度对话框
+        return SyncProgressDialog()
     except Exception as e:
         logger.error(f"完成初始化失败: {e}")
         return Div(
             P(f"初始化失败: {e}", cls="text-red-500"),
             cls="text-center p-4",
         )
+
+
+def SyncProgressDialog():
+    """同步进度对话框"""
+    return Div(
+        # 遮罩层
+        Div(
+            cls="fixed inset-0 bg-black bg-opacity-50 z-40",
+        ),
+        # 对话框
+        Div(
+            Div(
+                H4("正在同步数据", cls="text-lg font-semibold mb-4", style=f"color: {PRIMARY_COLOR};"),
+                P("正在初始化系统并同步必要数据，请稍候...", cls="text-gray-600 mb-4"),
+                # 进度条
+                Div(
+                    Div(
+                        cls="h-2 bg-gray-200 rounded-full overflow-hidden",
+                    ),
+                    Div(
+                        id="sync-progress-bar",
+                        cls="h-2 bg-red-600 rounded-full -mt-2 transition-all duration-300",
+                        style="width: 0%;",
+                    ),
+                    cls="mb-4",
+                ),
+                # 状态文本
+                P(
+                    "正在连接数据源...",
+                    id="sync-status",
+                    cls="text-sm text-gray-500 mb-4",
+                ),
+                # 进入系统按钮（初始隐藏）
+                Button(
+                    "进入系统",
+                    id="enter-system-btn",
+                    cls="btn px-6 py-2 rounded hidden",
+                    style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
+                    onclick="window.location.href='/'",
+                ),
+                cls="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4",
+            ),
+            cls="fixed inset-0 flex items-center justify-center z-50",
+        ),
+        # 模拟进度脚本
+        Script("""
+            (function() {
+                let progress = 0;
+                const progressBar = document.getElementById('sync-progress-bar');
+                const statusText = document.getElementById('sync-status');
+                const enterBtn = document.getElementById('enter-system-btn');
+
+                const stages = [
+                    { progress: 20, text: "正在连接数据源..." },
+                    { progress: 40, text: "正在同步股票列表..." },
+                    { progress: 60, text: "正在同步历史行情..." },
+                    { progress: 80, text: "正在初始化定时任务..." },
+                    { progress: 100, text: "同步完成！" },
+                ];
+
+                let currentStage = 0;
+
+                function updateProgress() {
+                    if (currentStage < stages.length) {
+                        const stage = stages[currentStage];
+                        progressBar.style.width = stage.progress + '%';
+                        statusText.textContent = stage.text;
+                        currentStage++;
+
+                        if (stage.progress === 100) {
+                            setTimeout(() => {
+                                enterBtn.classList.remove('hidden');
+                            }, 500);
+                        } else {
+                            setTimeout(updateProgress, 800 + Math.random() * 400);
+                        }
+                    }
+                }
+
+                // 开始进度动画
+                setTimeout(updateProgress, 300);
+            })();
+        """),
+        cls="sync-dialog-container",
+    )
 
 
 @rt("/reset")

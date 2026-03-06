@@ -219,10 +219,12 @@ def analysis_page(request: Request):
         cls="h-screen flex flex-col",
     )
 
+    from pyqmt.web.theme import AppTheme
+
     # 构建完整HTML响应，包含必要的CSS
     html_content = to_xml((
         Title("分析"),
-        *Theme.blue.headers(),
+        *AppTheme.headers(),
         page_content,
     ))
 

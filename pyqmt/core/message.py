@@ -79,6 +79,10 @@ class MessageHub:
         )
         self._worker.start()
 
+        # 日志速率限制：记录每个 topic 上次日志时间
+        self._last_log_time: Dict[str, datetime.datetime] = {}
+        self._log_interval = datetime.timedelta(seconds=60)  # 每分钟最多记录一次
+
     def subscribe(self, topic: str, callback: Callable) -> None:
         """
         订阅指定主题的消息
@@ -159,7 +163,12 @@ class MessageHub:
         try:
             queue.put_nowait(msg_content)
         except Full:
-            logger.info("Pull queue for topic {} is full. Discarding oldest.", topic)
+            # 速率限制：每分钟最多记录一次
+            now = datetime.datetime.now()
+            last_log = self._last_log_time.get(topic)
+            if last_log is None or now - last_log >= self._log_interval:
+                logger.info("Pull queue for topic {} is full. Discarding oldest.", topic)
+                self._last_log_time[topic] = now
             try:
                 queue.get_nowait()
                 queue.put_nowait(msg_content)

@@ -23,7 +23,9 @@ from pyqmt.service.metrics import metrics
 from pyqmt.service.runner import BacktestRunner
 from pyqmt.web.layouts.main import MainLayout
 
-strategy_app, rt = fast_app()
+from pyqmt.web.theme import AppTheme
+
+strategy_app, rt = fast_app(hdrs=AppTheme.headers())
 
 BENCHMARK_ASSET = "000300.SH"
 

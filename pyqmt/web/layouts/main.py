@@ -62,7 +62,8 @@ class MainLayout(BaseLayout):
     """主页面布局，包含header和sidebar"""
 
     def __init__(self, title: str = "PyQMT系统", user: str | None = None):
-        super().__init__(title)
+        super().__init__(page_title=title)
+        self.title = title
         self.user = user
         self.header_accounts: list[dict] = []
         self.active_account: dict | None = None
@@ -117,9 +118,11 @@ class MainLayout(BaseLayout):
                     if default_account and default_account[0] == kind.value and default_account[1] == info.get("id"):
                         active_account = account
 
+        from pyqmt.web.theme import AppTheme
+
         return (
             Title(self.title),
-            *Theme.blue.headers(),
+            *AppTheme.headers(),
             Div(
                 header_component(
                     logo="/static/logo.png",
