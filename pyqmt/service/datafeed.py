@@ -363,7 +363,3 @@ class BarsFeedImpl:
                     "adjust": pl.Float64,
                 }
             )
-
-
-# 为了向后兼容，提供别名
-DataFeed = BarsFeedImpl

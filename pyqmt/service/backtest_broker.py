@@ -28,7 +28,7 @@ from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.sqlite import Asset, Order, Portfolio, Position, Trade, db
 from pyqmt.service.abstract_broker import AbstractBroker
 from pyqmt.service.base_broker import TradeResult
-from pyqmt.service.datafeed import DataFeed
+from pyqmt.service.datafeed import BarsFeedImpl
 
 
 class BacktestBroker(AbstractBroker):
@@ -37,7 +37,7 @@ class BacktestBroker(AbstractBroker):
         bt_start: datetime.date | datetime.datetime,
         bt_end: datetime.date | datetime.datetime,
         portfolio_id: str,
-        data_feed: DataFeed,
+        data_feed: BarsFeedImpl,
         principal: float = 1_000_000,
         commission: float = 5e-4,
         portfolio_name: str = "backtest",
@@ -62,7 +62,7 @@ class BacktestBroker(AbstractBroker):
             portfolio_name=portfolio_name,
         )
 
-        self._data_feed: DataFeed = data_feed
+        self._data_feed: BarsFeedImpl = data_feed
         self._match_level = match_level
         self._bt_start: datetime.datetime = calendar.replace_time(bt_start, 9, 30)
         # End time should cover the closing operations
