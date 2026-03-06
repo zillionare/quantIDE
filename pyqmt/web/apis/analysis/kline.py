@@ -2,6 +2,7 @@
 
 import datetime
 
+import polars as pl
 from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
