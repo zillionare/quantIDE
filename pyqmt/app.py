@@ -75,6 +75,7 @@ from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.middleware_init import InitCheckMiddleware
+from pyqmt.web.middleware_feature import FeatureCheckMiddleware
 from pyqmt.web.pages.init_wizard import init_wizard_app
 from pyqmt.web.apis.analysis import index_router, kline_router, search_router, sector_router
 from pyqmt.web.pages.accounts import accounts_app, accounts_list
@@ -148,6 +149,7 @@ def init():
         before=auth.create_beforeware(),
         middleware=[
             Middleware(InitCheckMiddleware),
+            Middleware(FeatureCheckMiddleware),
             Middleware(BrokerRegistryMiddleware, registry=reg),
         ],
         exception_handlers={

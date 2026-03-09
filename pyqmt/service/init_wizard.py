@@ -97,6 +97,32 @@ class InitWizardService:
         state = self.get_state()
         return state.is_fully_initialized
 
+    def has_qmt_configured(self) -> bool:
+        """检查是否配置了 QMT 账号
+
+        Returns:
+            bool: True 表示已配置 QMT
+        """
+        state = self.get_state()
+        return state.has_qmt_configured()
+
+    def get_feature_status(self) -> dict[str, bool]:
+        """获取各功能的可用状态
+
+        Returns:
+            功能状态字典，包含:
+            - backtest: 回测功能是否可用
+            - simulation: 仿真交易是否可用
+            - live_trading: 实盘交易是否可用
+        """
+        state = self.get_state()
+
+        return {
+            "backtest": state.can_use_backtest(),
+            "simulation": state.can_use_live_trading(),
+            "live_trading": state.can_use_live_trading(),
+        }
+
     def start_initialization(self) -> AppState:
         """开始初始化流程
 

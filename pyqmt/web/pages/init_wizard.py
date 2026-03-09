@@ -106,12 +106,12 @@ def Step2_DataSource(state: dict | None = None):
 
     return Div(
         H4("配置数据源", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        # Tushare 配置
+        # Tushare 配置（必需）
         Card(
-            CardHeader(H5("Tushare 配置", cls="text-lg font-semibold")),
+            CardHeader(H5("Tushare 配置（必需）", cls="text-lg font-semibold")),
             CardBody(
                 P(
-                    "Tushare 是数据源，用于获取股票行情、财务数据等。",
+                    "Tushare 是必需的数据源，用于获取股票行情、财务数据等。",
                     cls="text-sm text-gray-600 mb-4",
                 ),
                 LabelInput(
@@ -133,12 +133,19 @@ def Step2_DataSource(state: dict | None = None):
             ),
             cls="mb-4",
         ),
-        # QMT 配置（实盘交易）
+        # QMT 配置（可选，但影响功能）
         Card(
-            CardHeader(H5("QMT 实盘配置", cls="text-lg font-semibold")),
+            CardHeader(
+                H5("QMT 配置（可选）", cls="text-lg font-semibold"),
+            ),
             CardBody(
+                Alert(
+                    "⚠️ 重要提示",
+                    "如果不配置 QMT，实盘交易和仿真交易功能将被禁用，仅回测功能可用。",
+                    cls="mb-4"
+                ),
                 P(
-                    "QMT 是实盘交易执行端。如果您不使用实盘交易，可以跳过此步骤。",
+                    "QMT 是实盘/仿真交易执行端。配置后可使用实时行情和交易功能。",
                     cls="text-sm text-gray-600 mb-4",
                 ),
                 # 隐藏字段：固定为实盘类型
@@ -151,16 +158,16 @@ def Step2_DataSource(state: dict | None = None):
                     label="QMT 账号 ID",
                     name="qmt_account_id",
                     value=state.get("qmt_account_id", ""),
-                    placeholder="请输入 QMT 实盘账号 ID",
+                    placeholder="请输入 QMT 账号 ID（不配置则留空）",
                 ),
                 LabelInput(
                     label="QMT 安装路径",
                     name="qmt_path",
                     value=state.get("qmt_path", ""),
-                    placeholder="例如: C:/国金证券QMT交易端",
+                    placeholder="例如: C:/国金证券QMT交易端（不配置则留空）",
                 ),
             ),
-            cls="mb-4",
+            cls="mb-4 border-warning",
         ),
         cls="max-w-2xl mx-auto",
     )
@@ -292,8 +299,60 @@ def Step4_DownloadData(state: dict | None = None):
     )
 
 
-def Step5_Complete():
+def Step5_Complete(state: dict | None = None):
     """步骤5：完成页面"""
+    state = state or {}
+    has_qmt = bool(state.get("qmt_account_id")) and bool(state.get("qmt_path"))
+
+    # 功能状态列表
+    features = []
+
+    # 回测功能（始终可用）
+    features.append(
+        Div(
+            Span("✅", cls="mr-2"),
+            Span("回测功能", cls="font-medium"),
+            Span(" - 使用历史数据进行策略回测", cls="text-gray-500 text-sm ml-2"),
+            cls="flex items-center py-2"
+        )
+    )
+
+    # 仿真/实盘交易（需要 QMT）
+    if has_qmt:
+        features.append(
+            Div(
+                Span("✅", cls="mr-2"),
+                Span("仿真交易", cls="font-medium"),
+                Span(" - 使用 QMT 进行仿真交易", cls="text-gray-500 text-sm ml-2"),
+                cls="flex items-center py-2"
+            )
+        )
+        features.append(
+            Div(
+                Span("✅", cls="mr-2"),
+                Span("实盘交易", cls="font-medium"),
+                Span(" - 使用 QMT 进行实盘交易", cls="text-gray-500 text-sm ml-2"),
+                cls="flex items-center py-2"
+            )
+        )
+    else:
+        features.append(
+            Div(
+                Span("🔒", cls="mr-2"),
+                Span("仿真交易", cls="font-medium text-gray-400"),
+                Span(" - 未配置 QMT，已禁用", cls="text-orange-500 text-sm ml-2"),
+                cls="flex items-center py-2"
+            )
+        )
+        features.append(
+            Div(
+                Span("🔒", cls="mr-2"),
+                Span("实盘交易", cls="font-medium text-gray-400"),
+                Span(" - 未配置 QMT，已禁用", cls="text-orange-500 text-sm ml-2"),
+                cls="flex items-center py-2"
+            )
+        )
+
     return Div(
         Div(
             UkIcon("check-circle", width=64, height=64, cls="text-green-500"),
@@ -304,16 +363,21 @@ def Step5_Complete():
             "您的 PyQMT 系统已完成初始化配置。",
             cls="text-gray-600 mb-4",
         ),
-        P(
-            "系统将自动开始执行数据同步任务，您现在可以：",
-            cls="text-gray-600 mb-4",
+        # 功能状态卡片
+        Card(
+            CardHeader(H5("可用功能", cls="font-semibold")),
+            CardBody(
+                *features,
+                Div(
+                    "💡 提示：如需使用仿真/实盘交易功能，可在设置中配置 QMT 账号。",
+                    cls="text-sm text-gray-500 mt-4 pt-4 border-t"
+                ) if not has_qmt else "",
+            ),
+            cls="mb-6"
         ),
-        Ul(
-            Li("查看实时行情"),
-            Li("创建和运行策略"),
-            Li("进行回测或实盘交易"),
-            Li("分析历史数据"),
-            cls="list-disc pl-6 mb-6 text-gray-600",
+        P(
+            "系统将自动开始执行数据同步任务。",
+            cls="text-gray-600 mb-4",
         ),
         # 同步进度对话框容器
         Div(id="sync-dialog", cls="mt-6"),
@@ -399,7 +463,7 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
         2: Step2_DataSource(state_dict),
         3: Step3_Schedule(state_dict),
         4: Step4_DownloadData(state_dict),
-        5: Step5_Complete(),
+        5: Step5_Complete(state_dict),
     }
     step_content = step_content_map.get(step, Step1_Welcome())
 
