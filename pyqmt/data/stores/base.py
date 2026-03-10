@@ -407,7 +407,7 @@ class ParquetStorage:
                 df, errors = self._fetch_data_func([date])
                 self._error_handler(errors)
 
-                if df is not None and not df.empty:
+                if df is not None and len(df) > 0:
                     self.append_data(df)
                     self._update_dates(pl.Series([date]))
 
