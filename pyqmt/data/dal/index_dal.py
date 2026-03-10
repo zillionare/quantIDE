@@ -172,9 +172,10 @@ class IndexDAL:
             return 0
 
         # 转换为 DataFrame 并追加到 Parquet
+        # 注意：ParquetStorage 使用 "asset" 和 "date" 作为标准字段名
         df = pl.DataFrame([
             {
-                "symbol": bar.symbol,
+                "asset": bar.symbol,
                 "date": bar.dt,
                 "open": bar.open,
                 "high": bar.high,
@@ -215,7 +216,7 @@ class IndexDAL:
         if df.is_empty():
             return pl.DataFrame(schema={
                 "date": pl.Date,
-                "symbol": pl.Utf8,
+                "asset": pl.Utf8,
                 "open": pl.Float64,
                 "high": pl.Float64,
                 "low": pl.Float64,

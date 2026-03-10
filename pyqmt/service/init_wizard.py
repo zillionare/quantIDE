@@ -86,6 +86,8 @@ class InitWizardService:
 
         try:
             db["app_state"].upsert(self._state.to_dict(), pk="id")
+            # 强制提交，确保其他连接能看到更新
+            db.conn.commit()
             logger.info("应用状态已保存")
         except Exception as e:
             logger.error(f"保存应用状态失败: {e}")

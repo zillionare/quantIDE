@@ -413,17 +413,22 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
         step: 当前步骤（1-5）
         form_data: 表单数据
     """
-    # 获取进度信息
-    progress = init_wizard.get_progress()
-    steps = progress["steps"]
-
     # 获取当前状态
-    state = init_wizard.get_state()
-    state_dict = state.to_dict()
-
-    # 合并表单数据
+    # 注意：使用 form_data 传入的状态，避免频繁刷新数据库
     if form_data:
-        state_dict.update(form_data)
+        state_dict = form_data
+    else:
+        state = init_wizard.get_state()
+        state_dict = state.to_dict()
+
+    # 获取进度信息（基于当前状态）
+    steps = [
+        {"id": 1, "name": "欢迎", "completed": state_dict.get("init_step", 0) > 1},
+        {"id": 2, "name": "数据源配置", "completed": state_dict.get("init_step", 0) > 2},
+        {"id": 3, "name": "任务调度", "completed": state_dict.get("init_step", 0) > 3},
+        {"id": 4, "name": "下载数据", "completed": state_dict.get("init_step", 0) > 4},
+        {"id": 5, "name": "完成", "completed": state_dict.get("init_step", 0) >= 5},
+    ]
 
     # 根据步骤渲染内容
     step_content_map = {
@@ -494,8 +499,8 @@ async def get(request: Request):
             logger.warning(f"开始初始化流程时出错：{e}")
 
     # 获取当前状态（包含已有配置）
-    # force=true 时强制从数据库刷新，确保获取最新配置
-    state = init_wizard.get_state(force_refresh=force)
+    # 始终从数据库刷新，确保获取最新保存的配置
+    state = init_wizard.get_state(force_refresh=True)
     
     # 显示第一步，带入已有配置
     return InitWizardPage(step=1, form_data=state.to_dict())
@@ -509,7 +514,8 @@ async def handle_step(request: Request, step: int):
     form_dict = dict(form_data)
 
     # 保存当前步骤的配置
-    if step == 2:
+    # 注意：如果表单中包含数据源配置字段（从第2步传递过来），也要保存
+    if "tushare_token" in form_dict:
         # 保存数据源配置
         init_wizard.save_data_source_config(
             tushare_token=str(form_dict.get("tushare_token", "")),
@@ -517,6 +523,10 @@ async def handle_step(request: Request, step: int):
             qmt_account_type=str(form_dict.get("qmt_account_type", "live")),
             qmt_path=str(form_dict.get("qmt_path", "")),
         )
+    
+    if step == 2:
+        # 第2步已完成，不需要额外操作
+        pass
     elif step == 3:
         # 保存调度配置
         init_wizard.save_schedule_config(
@@ -540,8 +550,9 @@ async def handle_step(request: Request, step: int):
     init_wizard.update_step(step)
 
     # 只返回步骤内容和导航按钮，不返回整个页面
-    state_dict = init_wizard.get_state().to_dict()
-    state_dict.update(form_dict)
+    # 从数据库获取最新状态（包含所有已保存的配置）
+    state = init_wizard.get_state(force_refresh=True)
+    state_dict = state.to_dict()
 
     step_content_map = {
         1: Step1_Welcome(),
