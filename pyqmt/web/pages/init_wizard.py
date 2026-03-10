@@ -323,30 +323,15 @@ def Step4_DownloadData(state: dict | None = None):
 
 
 def Step5_Complete():
-    """步骤5：完成页面"""
+    """步骤5：完成页面 - 显示数据下载进度"""
     return Div(
-        Div(
-            UkIcon("check-circle", width=64, height=64, cls="text-green-500"),
-            cls="mb-6",
-        ),
-        H3("初始化完成！", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        H3("正在下载数据...", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P(
-            "您的 PyQMT 系统已完成初始化配置。",
+            "系统正在下载历史行情数据，请耐心等待。",
             cls="text-gray-600 mb-4",
         ),
-        P(
-            "系统将自动开始执行数据同步任务，您现在可以：",
-            cls="text-gray-600 mb-4",
-        ),
-        Ul(
-            Li("查看实时行情"),
-            Li("创建和运行策略"),
-            Li("进行回测或实盘交易"),
-            Li("分析历史数据"),
-            cls="list-disc pl-6 mb-6 text-gray-600",
-        ),
-        # 同步进度对话框容器
-        Div(id="sync-dialog", cls="mt-6"),
+        # 同步进度对话框
+        SyncProgressDialog(),
         cls="py-4",
     )
 
@@ -374,21 +359,35 @@ def WizardButtons(current_step: int, total_steps: int = 5):
 
     # 下一步/完成按钮 - 放在右侧
     if current_step < total_steps:
-        right_buttons.append(
-            Button(
-                "下一步",
-                cls="btn px-6 py-2 rounded",
-                style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
-                hx_post=f"/init-wizard/step/{current_step + 1}",
-                hx_target="#wizard-form-container",
-                hx_swap="innerHTML",
-                hx_include="[name]",
+        # 第4步的按钮特殊处理：显示"开始下载"并触发下载
+        if current_step == 4:
+            right_buttons.append(
+                Button(
+                    "开始下载",
+                    cls="btn px-6 py-2 rounded",
+                    style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
+                    hx_post="/init-wizard/download",
+                    hx_target="#wizard-form-container",
+                    hx_swap="innerHTML",
+                    hx_include="[name]",
+                )
             )
-        )
+        else:
+            right_buttons.append(
+                Button(
+                    "下一步",
+                    cls="btn px-6 py-2 rounded",
+                    style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
+                    hx_post=f"/init-wizard/step/{current_step + 1}",
+                    hx_target="#wizard-form-container",
+                    hx_swap="innerHTML",
+                    hx_include="[name]",
+                )
+            )
     else:
         right_buttons.append(
             Button(
-                "开始同步",
+                "完成",
                 cls="btn px-6 py-2 rounded",
                 style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                 hx_post="/init-wizard/complete",
@@ -728,32 +727,58 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         _sync_status["is_running"] = False
 
 
+@rt("/download")
+async def handle_download(request: Request):
+    """第4步：开始下载历史数据"""
+    # 获取表单数据（历史数据起始日期）
+    form_data = await request.form()
+    form_dict = dict(form_data)
+    
+    # 保存历史数据配置
+    start_date_str = form_dict.get("history_start_date", "")
+    if start_date_str:
+        try:
+            start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            init_wizard.save_history_config(start_date)
+        except ValueError:
+            logger.warning(f"无效的日期格式：{start_date_str}")
+    
+    # 更新步骤到第5步
+    init_wizard.update_step(5)
+    
+    # 获取最新状态
+    state = init_wizard.get_state(force_refresh=True)
+    
+    # 启动后台同步任务
+    global _sync_status
+    _sync_status = {
+        "is_running": True,
+        "current_task": "",
+        "progress": 0,
+        "message": "正在初始化...",
+        "completed": False,
+        "error": None,
+    }
+    asyncio.create_task(_run_data_sync(state.history_start_date))
+    logger.info(f"开始下载历史数据，起始日期: {state.history_start_date}")
+    
+    # 返回第5步页面（包含同步进度对话框）
+    return InitWizardPage(step=5, form_data=state.to_dict())
+
+
 @rt("/complete")
 async def handle_complete():
-    """完成初始化 - 启动数据同步"""
-    global _sync_status
-
+    """完成初始化 - 标记初始化完成并跳转到首页"""
     try:
-        # 获取历史数据配置
-        state = init_wizard.get_state()
-        start_date = state.history_start_date
-
-        # 重置同步状态
-        _sync_status = {
-            "is_running": True,
-            "current_task": "",
-            "progress": 0,
-            "message": "正在初始化...",
-            "completed": False,
-            "error": None,
-        }
-
-        # 启动后台同步任务
-        asyncio.create_task(_run_data_sync(start_date))
-        logger.info(f"初始化向导完成，开始数据同步，起始日期: {start_date}")
-
-        # 返回同步进度对话框
-        return SyncProgressDialog()
+        # 标记初始化完成
+        init_wizard.complete_initialization()
+        logger.info("初始化完成")
+        
+        # 返回完成页面，自动跳转到首页
+        return Div(
+            Script("window.location.href = '/'"),
+            P("正在跳转到首页...", cls="text-center p-4"),
+        )
     except Exception as e:
         logger.error(f"完成初始化失败: {e}")
         return Div(
@@ -792,13 +817,15 @@ def SyncProgressDialog():
                     id="sync-status",
                     cls="text-sm text-gray-500 mb-4",
                 ),
-                # 进入系统按钮（初始隐藏）
+                # 完成按钮（初始隐藏）
                 Button(
-                    "进入系统",
-                    id="enter-system-btn",
+                    "完成",
+                    id="complete-btn",
                     cls="btn px-6 py-2 rounded hidden",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
-                    onclick="window.location.href='/'",
+                    hx_post="/init-wizard/complete",
+                    hx_target="#wizard-form-container",
+                    hx_swap="innerHTML",
                 ),
                 cls="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4",
             ),
@@ -809,7 +836,7 @@ def SyncProgressDialog():
             (function() {
                 const progressBar = document.getElementById('sync-progress-bar');
                 const statusText = document.getElementById('sync-status');
-                const enterBtn = document.getElementById('enter-system-btn');
+                const completeBtn = document.getElementById('complete-btn');
 
                 // 创建 EventSource 连接
                 const evtSource = new EventSource('/init-wizard/sync-progress');
@@ -824,7 +851,7 @@ def SyncProgressDialog():
 
                         // 检查是否完成
                         if (data.completed) {
-                            enterBtn.classList.remove('hidden');
+                            completeBtn.classList.remove('hidden');
                             evtSource.close();
                         }
 
@@ -832,6 +859,7 @@ def SyncProgressDialog():
                         if (data.error) {
                             statusText.textContent = '同步失败: ' + data.error;
                             statusText.classList.add('text-red-500');
+                            completeBtn.classList.remove('hidden');
                             evtSource.close();
                         }
                     } catch (e) {
@@ -843,7 +871,7 @@ def SyncProgressDialog():
                     console.error('SSE 连接错误:', err);
                     // 如果连接失败，显示完成按钮让用户可以手动继续
                     setTimeout(() => {
-                        enterBtn.classList.remove('hidden');
+                        completeBtn.classList.remove('hidden');
                     }, 5000);
                 };
             })();
