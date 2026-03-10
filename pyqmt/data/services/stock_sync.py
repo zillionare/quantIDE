@@ -4,6 +4,7 @@
 """
 
 import datetime
+from collections.abc import Callable
 
 import pandas as pd
 import polars as pl
@@ -57,15 +58,17 @@ class StockSyncService:
         self,
         start: datetime.date | None = None,
         end: datetime.date | None = None,
+        progress_callback: Callable | None = None,
     ) -> int:
         """同步日线行情数据
 
         Args:
             start: 开始日期，默认为 cfg.epoch
             end: 结束日期，默认为最近交易日
+            progress_callback: 进度回调函数，接收 (current_date, completed_count, total_count) 参数
 
         Returns:
-            同步的数据条数
+            同步的日期数量
         """
         if start is None:
             start = self._epoch
@@ -80,10 +83,11 @@ class StockSyncService:
             logger.warning(f"日期范围 {start} ~ {end} 内没有交易日")
             return 0
 
-        # 使用 DailyBarsStore 的 fetch 方法下载数据
+        # 使用逐日同步方法，提供详细进度
         try:
-            self.daily_store.fetch(trade_dates, use_calendar=False)
-            count = len(trade_dates)
+            count = self.daily_store.fetch_with_daily_progress(
+                start, end, progress_callback=progress_callback
+            )
             logger.info(f"日线行情同步完成，共 {count} 个交易日")
             return count
         except Exception as e:

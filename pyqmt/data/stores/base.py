@@ -6,6 +6,7 @@
 import datetime
 import glob
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Iterable, Literal
 
 import pandas as pd
@@ -361,6 +362,87 @@ class ParquetStorage:
 
         # 重新收集日期缓存，确保 _dates 刷新到最新范围
         self._collect_dates()
+
+    def fetch_with_daily_progress(
+        self,
+        start: datetime.date,
+        end: datetime.date,
+        progress_callback: Callable | None = None,
+        force: bool = False,
+    ) -> int:
+        """逐日下载数据并保存，提供详细的每日进度报告
+
+        Args:
+            start: 开始日期
+            end: 结束日期
+            progress_callback: 进度回调函数，接收 (current_date, completed_count, total_count) 参数
+            force: 是否强制重新下载
+
+        Returns:
+            同步的日期数量
+        """
+        start = self._calendar.ceiling(start, FrameType.DAY)
+        end = self._calendar.floor(end, FrameType.DAY)
+
+        expected_dates = self._calendar.get_frames(start, end, FrameType.DAY)
+
+        if force:
+            missing_dates = sorted(expected_dates)
+        else:
+            missing_dates = sorted(set(expected_dates) - set(self._dates.to_list()))
+
+        if len(missing_dates) == 0:
+            logger.info("本地数据已最新，无需更新")
+            return 0
+
+        if self._fetch_data_func is None:
+            raise ValueError("缓存中没有足够的数据，且未提供fetch_data_func方法")
+
+        total = len(missing_dates)
+        completed = 0
+
+        for i, date in enumerate(missing_dates, start=1):
+            try:
+                # 获取单日数据
+                df, errors = self._fetch_data_func([date])
+                self._error_handler(errors)
+
+                if df is not None and not df.empty:
+                    self.append_data(df)
+                    self._update_dates(pl.Series([date]))
+
+                completed += 1
+
+                # 报告进度
+                msg = f"正在同步 {date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
+                logger.info(msg)
+
+                if progress_callback:
+                    progress_callback(date, completed, total)
+
+                try:
+                    msg_hub.publish(
+                        topic="fetch_data_progress",
+                        msg_content={
+                            "current_date": date.strftime("%Y%m%d"),
+                            "completed": completed,
+                            "total": total,
+                            "progress": int(completed / total * 100),
+                        },
+                    )
+                except Exception:
+                    pass
+
+            except Exception as e:
+                logger.error(f"同步 {date} 数据失败: {e}")
+
+        try:
+            msg_hub.publish(topic="fetch_data_progress", msg_content=None)
+        except Exception:
+            pass
+
+        self._collect_dates()
+        return completed
 
     def get_and_fetch(
         self,

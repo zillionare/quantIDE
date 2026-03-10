@@ -4,6 +4,7 @@
 """
 
 import datetime
+from collections.abc import Callable
 
 import pandas as pd
 from loguru import logger
@@ -58,6 +59,7 @@ class IndexSyncService:
         symbol: str,
         start: datetime.date | None = None,
         end: datetime.date | None = None,
+        progress_callback: Callable | None = None,
     ) -> int:
         """同步指数行情数据
 
@@ -65,6 +67,7 @@ class IndexSyncService:
             symbol: 指数代码
             start: 开始日期，默认为 cfg.epoch
             end: 结束日期，默认为最近交易日
+            progress_callback: 进度回调函数，接收 (symbol, current_date, completed_count, total_count) 参数
 
         Returns:
             同步的行情记录数
@@ -76,29 +79,53 @@ class IndexSyncService:
 
         logger.info(f"开始同步指数 {symbol} 行情: {start} ~ {end}")
 
-        df = fetch_index_bars(symbol, start, end)
-        if df is None or df.empty:
-            logger.warning(f"未获取到指数 {symbol} 的行情数据")
+        # 获取交易日历
+        from pyqmt.data.models.calendar import calendar
+        trade_dates = calendar.get_trade_dates(start, end)
+        if not trade_dates:
+            logger.warning(f"日期范围 {start} ~ {end} 内没有交易日")
             return 0
 
-        # 转换为 IndexBar 对象
-        bars = []
-        for _, row in df.iterrows():
-            bar = IndexBar(
-                symbol=symbol,
-                dt=row["dt"],
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                volume=int(row["volume"]),
-                amount=float(row["amount"]),
-            )
-            bars.append(bar)
+        total = len(trade_dates)
+        completed = 0
+        all_bars = []
 
-        count = self.dal.save_index_bars(bars)
-        logger.info(f"指数 {symbol} 行情同步完成，共 {count} 条")
-        return count
+        # 逐日获取数据
+        for i, date in enumerate(trade_dates, start=1):
+            try:
+                df = fetch_index_bars(symbol, date, date)
+                if df is not None and not df.empty:
+                    for _, row in df.iterrows():
+                        bar = IndexBar(
+                            symbol=symbol,
+                            dt=row["dt"],
+                            open=float(row["open"]),
+                            high=float(row["high"]),
+                            low=float(row["low"]),
+                            close=float(row["close"]),
+                            volume=int(row["volume"]),
+                            amount=float(row["amount"]),
+                        )
+                        all_bars.append(bar)
+
+                completed += 1
+
+                # 报告进度
+                msg = f"正在同步指数 {symbol} {date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
+                logger.info(msg)
+
+                if progress_callback:
+                    progress_callback(symbol, date, completed, total)
+
+            except Exception as e:
+                logger.error(f"同步指数 {symbol} {date} 数据失败: {e}")
+
+        # 批量保存
+        if all_bars:
+            count = self.dal.save_index_bars(all_bars)
+            logger.info(f"指数 {symbol} 行情同步完成，共 {count} 条")
+            return count
+        return 0
 
     def sync_all_index_bars(
         self,

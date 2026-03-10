@@ -494,7 +494,8 @@ async def get(request: Request):
             logger.warning(f"开始初始化流程时出错：{e}")
 
     # 获取当前状态（包含已有配置）
-    state = init_wizard.get_state()
+    # force=true 时强制从数据库刷新，确保获取最新配置
+    state = init_wizard.get_state(force_refresh=force)
     
     # 显示第一步，带入已有配置
     return InitWizardPage(step=1, form_data=state.to_dict())
@@ -586,11 +587,12 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         # 重新导入已初始化的对象
         from pyqmt.data.models.stocks import stock_list as sl
         from pyqmt.data.models.daily_bars import daily_bars as dbars
+        from pyqmt.data.models.index_bars import index_bars as ibars
         from pyqmt.data.models.calendar import calendar as cal
 
         # 初始化 DAL 和服务
         sector_dal = SectorDAL(db)
-        index_dal = IndexDAL(db)
+        index_dal = IndexDAL(db, ibars)
 
         sector_sync = SectorSyncService(sector_dal)
         index_sync = IndexSyncService(index_dal)
@@ -652,12 +654,24 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         # 5. 同步历史行情数据 (60-95%)
         _update_sync_status(65, "正在同步历史行情数据...")
         try:
+            def stock_progress_callback(current_date, completed, total):
+                progress = 65 + int((completed / total) * 20)  # 65% ~ 85%
+                msg = f"正在同步个股行情 {current_date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
+                _update_sync_status(progress, msg)
+
             if start_date:
                 # 全量同步
-                await asyncio.to_thread(stock_sync.sync_daily_bars, start_date)
+                await asyncio.to_thread(
+                    stock_sync.sync_daily_bars,
+                    start_date,
+                    progress_callback=stock_progress_callback
+                )
             else:
                 # 只同步最近的数据
-                await asyncio.to_thread(stock_sync.sync_daily_bars)
+                await asyncio.to_thread(
+                    stock_sync.sync_daily_bars,
+                    progress_callback=stock_progress_callback
+                )
             _update_sync_status(85, "历史行情数据同步完成")
         except Exception as e:
             logger.error(f"同步历史行情数据失败: {e}")
@@ -668,7 +682,20 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         # 6. 同步指数行情 (85-95%)
         _update_sync_status(90, "正在同步指数行情...")
         try:
-            await asyncio.to_thread(index_sync.sync_all_index_bars)
+            def index_progress_callback(symbol, current_date, completed, total):
+                progress = 85 + int((completed / total) * 10)  # 85% ~ 95%
+                msg = f"正在同步指数 {symbol} {current_date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
+                _update_sync_status(progress, msg)
+
+            # 获取指数列表并逐个同步
+            indices = index_sync.dal.list_indices()
+            for index in indices:
+                await asyncio.to_thread(
+                    index_sync.sync_index_bars,
+                    index.symbol,
+                    start_date,
+                    progress_callback=index_progress_callback
+                )
             _update_sync_status(95, "指数行情同步完成")
         except Exception as e:
             logger.error(f"同步指数行情失败: {e}")
