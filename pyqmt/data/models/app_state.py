@@ -119,8 +119,36 @@ class AppState(Entity):
 
     @property
     def is_fully_initialized(self) -> bool:
-        """检查是否完全初始化"""
+        """检查是否完全初始化
+
+        Returns:
+            bool: True 表示已完成初始化
+        """
         return self.init_completed and self.init_step >= 5
+
+    def has_qmt_configured(self) -> bool:
+        """检查是否配置了 QMT 账号
+
+        Returns:
+            bool: True 表示已配置 QMT（账号ID和路径都不为空）
+        """
+        return bool(self.qmt_account_id) and bool(self.qmt_path)
+
+    def can_use_live_trading(self) -> bool:
+        """检查是否可以使用实盘/仿真交易功能
+
+        Returns:
+            bool: True 表示可以使用实盘/仿真功能
+        """
+        return self.is_fully_initialized and self.has_qmt_configured()
+
+    def can_use_backtest(self) -> bool:
+        """检查是否可以使用回测功能
+
+        Returns:
+            bool: True 表示可以使用回测功能
+        """
+        return self.is_fully_initialized and bool(self.tushare_token)
 
     @property
     def account_type_display(self) -> str:
