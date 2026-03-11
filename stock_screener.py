@@ -251,7 +251,7 @@ def calc_volatility(df: pl.DataFrame) -> float:
             daily_return = (closes[i] / closes[i - 1]) - 1
             returns.append(daily_return)
 
-    if not returns:
+    if len(returns) < 2:
         return 0.0
 
     # 计算标准差
