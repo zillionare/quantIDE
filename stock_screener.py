@@ -31,22 +31,27 @@ def fetch_history_data(pro, trade_date: datetime.date) -> pl.DataFrame:
     date_str = trade_date.strftime("%Y%m%d")
 
     try:
-        # 获取日线数据（包含换手率）
-        df_pd = pro.daily(trade_date=date_str, fields="ts_code,open,close,high,low,vol,turnover_rate")
-        if df_pd is None or df_pd.empty:
+        # 获取日线数据
+        df_daily = pro.daily(trade_date=date_str)
+        if df_daily is None or df_daily.empty:
             return pl.DataFrame()
 
-        df = pl.from_pandas(df_pd)
+        # 获取每日指标数据（包含换手率）
+        df_basic = pro.daily_basic(trade_date=date_str)
+        if df_basic is None or df_basic.empty:
+            return pl.DataFrame()
 
-        # 统一列名
-        df = df.rename({
-            "ts_code": "symbol",
-            "open": "open",
-            "close": "close",
-            "high": "high",
-            "low": "low",
-            "vol": "volume",
-        })
+        # 合并两个数据源
+        df_daily = df_daily.rename(columns={"ts_code": "symbol", "vol": "volume"})
+        df_basic = df_basic.rename(columns={"ts_code": "symbol"})
+
+        # 只保留需要的列
+        df_daily = df_daily[["symbol", "open", "close", "high", "low", "volume"]]
+        df_basic = df_basic[["symbol", "turnover_rate"]]
+
+        # 合并数据
+        df_merged = df_daily.merge(df_basic, on="symbol", how="left")
+        df = pl.from_pandas(df_merged)
 
         # 添加日期列
         df = df.with_columns(
