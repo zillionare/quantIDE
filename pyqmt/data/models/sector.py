@@ -31,12 +31,15 @@ class Sector(Entity):
     trade_date: datetime.date = field(default_factory=datetime.date.today)
     description: str = ""
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    updated_at: datetime.datetime = field(default_factory=datetime.datetime.now)
 
     def __post_init__(self):
         if isinstance(self.trade_date, str):
             self.trade_date = datetime.date.fromisoformat(self.trade_date)
         if isinstance(self.created_at, str):
             self.created_at = datetime.datetime.fromisoformat(self.created_at)
+        if isinstance(self.updated_at, str):
+            self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
 
 
 @dataclass
@@ -62,12 +65,15 @@ class SectorConstituent(Entity):
     name: str = ""
     weight: float = 0.0
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    updated_at: datetime.datetime = field(default_factory=datetime.datetime.now)
 
     def __post_init__(self):
         if isinstance(self.trade_date, str):
             self.trade_date = datetime.date.fromisoformat(self.trade_date)
         if isinstance(self.created_at, str):
             self.created_at = datetime.datetime.fromisoformat(self.created_at)
+        if isinstance(self.updated_at, str):
+            self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
 
 
 @dataclass

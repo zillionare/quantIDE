@@ -604,11 +604,11 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         sector_dal = SectorDAL(db)
         index_dal = IndexDAL(db, ibars)
 
-        sector_sync = SectorSyncService(sector_dal, calendar)
-        index_sync = IndexSyncService(index_dal)
-
         # 获取日历
         calendar = cal
+
+        sector_sync = SectorSyncService(sector_dal, calendar)
+        index_sync = IndexSyncService(index_dal)
 
         # 创建股票同步服务
         stock_sync = StockSyncService(sl, dbars.store, calendar)

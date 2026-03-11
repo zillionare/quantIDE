@@ -57,9 +57,13 @@ class SectorDAL:
         Returns:
             板块对象，不存在则返回None
         """
-        row = self.db["sectors"].get((sector_id, trade_date))
-        if row:
-            return Sector(**row)
+        rows = list(self.db["sectors"].rows_where(
+            "id = ? AND trade_date = ?",
+            (sector_id, trade_date),
+            limit=1,
+        ))
+        if rows:
+            return Sector(**rows[0])
         return None
 
     def list_sectors(
@@ -209,6 +213,34 @@ class SectorDAL:
         )
         return [SectorConstituent(**row) for row in rows]
 
+    def get_sector_stocks(
+        self,
+        sector_id: str,
+        trade_date: datetime.date | None = None,
+    ) -> list[SectorConstituent]:
+        """获取板块成分股（兼容旧接口）
+
+        Args:
+            sector_id: 板块ID
+            trade_date: 数据日期，默认为最新日期
+
+        Returns:
+            成分股列表
+        """
+        if trade_date is None:
+            rows = self.db["sector_constituents"].rows_where(
+                "sector_id = ?",
+                (sector_id,),
+                order_by="symbol",
+            )
+        else:
+            rows = self.db["sector_constituents"].rows_where(
+                "sector_id = ? AND trade_date = ?",
+                (sector_id, trade_date),
+                order_by="symbol",
+            )
+        return [SectorConstituent(**row) for row in rows]
+
     def get_constituents_df(
         self,
         sector_id: str,
@@ -262,26 +294,39 @@ class SectorDAL:
     def get_stock_sectors(
         self,
         symbol: str,
-        trade_date: datetime.date,
+        trade_date: datetime.date | None = None,
     ) -> list[Sector]:
         """获取个股所属板块
 
         Args:
             symbol: 股票代码
-            trade_date: 数据日期
+            trade_date: 数据日期，默认为None（获取最新日期的）
 
         Returns:
             板块列表
         """
-        rows = list(self.db["sector_constituents"].rows_where(
-            "symbol = ? AND trade_date = ?",
-            (symbol, trade_date),
-        ))
+        if trade_date is None:
+            rows = list(self.db["sector_constituents"].rows_where(
+                "symbol = ?",
+                (symbol,),
+            ))
+        else:
+            rows = list(self.db["sector_constituents"].rows_where(
+                "symbol = ? AND trade_date = ?",
+                (symbol, trade_date),
+            ))
 
         sectors = []
         for row in rows:
             sector_id = row["sector_id"]
-            sector = self.get_sector(sector_id, trade_date)
+            # 从行数据中获取 trade_date，如果不存在则跳过
+            row_trade_date = row.get("trade_date")
+            if row_trade_date is None:
+                continue
+            # 确保 trade_date 是 date 对象
+            if isinstance(row_trade_date, str):
+                row_trade_date = datetime.date.fromisoformat(row_trade_date)
+            sector = self.get_sector(sector_id, row_trade_date)
             if sector:
                 sectors.append(sector)
 

@@ -46,7 +46,7 @@ class SectorSyncService:
         self.calendar = calendar
 
         if bars_store_path is None:
-            bars_store_path = Path(cfg.pyqmt_home) / "data" / "sector_bars"
+            bars_store_path = Path(cfg.home) / "data" / "sector_bars"
 
         self.bars_store = SectorBarsStore(bars_store_path, calendar)
         self._epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
