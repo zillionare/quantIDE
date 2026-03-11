@@ -26,12 +26,13 @@ def fetch_history_data(pro, trade_date: datetime.date) -> pl.DataFrame:
         trade_date: 交易日期
 
     Returns:
-        Polars DataFrame，包含 open, close, volume 等列
+        Polars DataFrame，包含 open, close, volume, turnover_rate 等列
     """
     date_str = trade_date.strftime("%Y%m%d")
 
     try:
-        df_pd = pro.daily(trade_date=date_str)
+        # 获取日线数据（包含换手率）
+        df_pd = pro.daily(trade_date=date_str, fields="ts_code,open,close,high,low,vol,turnover_rate")
         if df_pd is None or df_pd.empty:
             return pl.DataFrame()
 
@@ -53,7 +54,7 @@ def fetch_history_data(pro, trade_date: datetime.date) -> pl.DataFrame:
         )
 
         # 选择需要的列
-        df = df.select(["symbol", "trade_date", "open", "close", "volume"])
+        df = df.select(["symbol", "trade_date", "open", "close", "volume", "turnover_rate"])
 
         return df
 
@@ -195,6 +196,33 @@ def check_consecutive_yang(df: pl.DataFrame, t0_date: datetime.date) -> bool:
     return True
 
 
+def check_high_turnover(df: pl.DataFrame, today: datetime.date) -> tuple[bool, datetime.date | None]:
+    """检查最近10日是否有某天（非当天）换手率超过40%
+
+    Args:
+        df: 单个股票的数据，包含 turnover_rate 列
+        today: 当天日期，用于排除
+
+    Returns:
+        (是否存在, 日期)
+    """
+    df = df.sort("trade_date")
+
+    # 排除当天的数据
+    df_history = df.filter(pl.col("trade_date") < today)
+
+    if df_history.is_empty():
+        return False, None
+
+    # 检查是否有换手率超过40%的日期
+    for row in df_history.iter_rows(named=True):
+        turnover_rate = row.get("turnover_rate", 0)
+        if turnover_rate and turnover_rate > 40:
+            return True, row["trade_date"]
+
+    return False, None
+
+
 def calc_volatility(df: pl.DataFrame) -> float:
     """计算每日收益率的波动率（标准差）
 
@@ -229,6 +257,11 @@ def calc_volatility(df: pl.DataFrame) -> float:
 def screen_stocks(df: pl.DataFrame, stock_names: dict[str, str]) -> list[dict]:
     """筛选符合条件的股票
 
+    筛选条件：
+    1. 存在某日成交量是之前5倍以上（t0日）
+    2. t0日之后都收阳线
+    3. 最近10日（非当天）有某天换手率超过40%
+
     Args:
         df: 合并后的全市场数据
         stock_names: symbol -> name 的字典
@@ -240,6 +273,7 @@ def screen_stocks(df: pl.DataFrame, stock_names: dict[str, str]) -> list[dict]:
         return []
 
     results = []
+    today = datetime.date.today()
 
     # 按股票分组处理
     for symbol in df["symbol"].unique():
@@ -252,22 +286,35 @@ def screen_stocks(df: pl.DataFrame, stock_names: dict[str, str]) -> list[dict]:
             continue
 
         # 检查 t0 日后是否都收阳线
-        if check_consecutive_yang(symbol_df, t0_date):
-            # 获取 t0 日的数据
-            t0_data = symbol_df.filter(pl.col("trade_date") == t0_date).row(0, named=True)
+        if not check_consecutive_yang(symbol_df, t0_date):
+            continue
 
-            # 计算波动率
-            volatility = calc_volatility(symbol_df)
+        # 检查是否有高换手率日期（非当天，超过40%）
+        has_high_turnover, turnover_date = check_high_turnover(symbol_df, today)
 
-            results.append({
-                "symbol": symbol,
-                "name": stock_names.get(symbol, "未知"),
-                "t0_date": t0_date,
-                "t0_close": t0_data["close"],
-                "t0_volume": t0_data["volume"],
-                "days_after": len(symbol_df.filter(pl.col("trade_date") > t0_date)),
-                "volatility": volatility,
-            })
+        if not has_high_turnover:
+            continue
+
+        # 获取 t0 日的数据
+        t0_data = symbol_df.filter(pl.col("trade_date") == t0_date).row(0, named=True)
+
+        # 获取高换手率日的数据
+        turnover_data = symbol_df.filter(pl.col("trade_date") == turnover_date).row(0, named=True)
+
+        # 计算波动率
+        volatility = calc_volatility(symbol_df)
+
+        results.append({
+            "symbol": symbol,
+            "name": stock_names.get(symbol, "未知"),
+            "t0_date": t0_date,
+            "t0_close": t0_data["close"],
+            "t0_volume": t0_data["volume"],
+            "turnover_date": turnover_date,
+            "turnover_rate": turnover_data.get("turnover_rate", 0),
+            "days_after": len(symbol_df.filter(pl.col("trade_date") > t0_date)),
+            "volatility": volatility,
+        })
 
     return results
 
@@ -306,7 +353,8 @@ def main():
 
         # 调整列顺序
         result_df = result_df.select([
-            "symbol", "name", "t0_date", "t0_close", "t0_volume", "days_after", "volatility"
+            "symbol", "name", "t0_date", "t0_close", "t0_volume",
+            "turnover_date", "turnover_rate", "days_after", "volatility"
         ])
 
         # 格式化输出
