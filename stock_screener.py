@@ -366,14 +366,7 @@ def main():
 
         # 格式化输出
         print(f"共找到 {len(results)} 只符合条件的股票:\n")
-
-        # 按匹配类型分组显示
-        for result in results:
-            print(f"\n【{result['symbol']} {result['name']}】 波动率: {result['volatility']:.4f}")
-            if "match_type" in result:
-                print(f"  - {result['match_type']}: t0日={result['t0_date']}, 收盘价={result['t0_close']}, 成交量={result['t0_volume']}, 后续天数={result['days_after']}")
-            if "match_type_turnover" in result:
-                print(f"  - {result['match_type_turnover']}: 日期={result['turnover_date']}, 换手率={result['turnover_rate']:.2f}%")
+        print(result_df.to_pandas().to_string(index=False))
 
     print("=" * 80)
 
