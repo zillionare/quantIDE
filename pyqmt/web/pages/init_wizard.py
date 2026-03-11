@@ -604,7 +604,7 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         sector_dal = SectorDAL(db)
         index_dal = IndexDAL(db, ibars)
 
-        sector_sync = SectorSyncService(sector_dal)
+        sector_sync = SectorSyncService(sector_dal, calendar)
         index_sync = IndexSyncService(index_dal)
 
         # 获取日历
@@ -630,9 +630,15 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         # 2. 同步板块数据 (20-40%)
         _update_sync_status(25, "正在同步板块列表...")
         try:
-            sector_result = await asyncio.to_thread(sector_sync.sync_all_sectors)
-            total_sectors = sector_result.get("industry", 0) + sector_result.get("concept", 0)
-            _update_sync_status(35, f"板块列表同步完成，共 {total_sectors} 个")
+            def sector_list_progress(current, total, message):
+                progress = 25 + int((current / total) * 10)
+                _update_sync_status(progress, message)
+
+            sector_count = await asyncio.to_thread(
+                sector_sync.sync_sector_list,
+                progress_callback=sector_list_progress
+            )
+            _update_sync_status(35, f"板块列表同步完成，共 {sector_count} 个")
         except Exception as e:
             logger.error(f"同步板块列表失败: {e}")
             _update_sync_status(35, f"板块列表同步失败: {e}")
@@ -642,8 +648,15 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         # 3. 同步板块成分股 (40-50%)
         _update_sync_status(40, "正在同步板块成分股...")
         try:
-            await asyncio.to_thread(sector_sync.sync_all_sector_stocks)
-            _update_sync_status(50, "板块成分股同步完成")
+            def sector_constituent_progress(current, total, message):
+                progress = 40 + int((current / total) * 10)
+                _update_sync_status(progress, message)
+
+            constituent_count = await asyncio.to_thread(
+                sector_sync.sync_sector_constituents,
+                progress_callback=sector_constituent_progress
+            )
+            _update_sync_status(50, f"板块成分股同步完成，共 {constituent_count} 个")
         except Exception as e:
             logger.error(f"同步板块成分股失败: {e}")
             _update_sync_status(50, f"板块成分股同步失败: {e}")

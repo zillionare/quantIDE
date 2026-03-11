@@ -12,7 +12,7 @@ from loguru import logger
 
 from pyqmt.config import cfg
 from pyqmt.data.fetchers.tushare import fetch_stock_list
-from pyqmt.data.fetchers.tushare_ext import get_last_trade_date
+from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.calendar import Calendar
 from pyqmt.data.models.stocks import StockList
 from pyqmt.data.stores.bars import DailyBarsStore
@@ -73,7 +73,7 @@ class StockSyncService:
         if start is None:
             start = self._epoch
         if end is None:
-            end = get_last_trade_date()
+            end = calendar.last_trade_date()
 
         logger.info(f"开始同步日线行情: {start} ~ {end}")
 
@@ -110,7 +110,7 @@ class StockSyncService:
         stock_count = self.sync_stock_list()
 
         # 2. 同步日线行情（只同步最近7天的数据，避免重复下载）
-        end = get_last_trade_date()
+        end = calendar.last_trade_date()
         start = end - datetime.timedelta(days=7)
         bar_count = self.sync_daily_bars(start, end)
 

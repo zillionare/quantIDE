@@ -1,42 +1,38 @@
-"""指数行情存储类
+"""板块行情存储类
 
-使用 Parquet 文件存储指数行情数据，按年分区。
+使用 Parquet 文件存储板块行情数据，按年分区。
 """
 
 import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 import polars as pl
-from loguru import logger
 
 from pyqmt.data.fetchers.xtdata_sectors import fetch_sector_bars
 from pyqmt.data.models.calendar import Calendar
 from pyqmt.data.stores.base import ParquetStorage
 
 
-class IndexBarsStore(ParquetStorage):
-    """指数行情存储类
+class SectorBarsStore(ParquetStorage):
+    """板块行情存储类
 
     使用 Parquet 文件存储，按年分区。
-    字段：symbol, date, open, high, low, close, volume, amount
+    字段：sector_id, date, open, high, low, close, volume, amount
     """
 
     def __init__(self, path: str | Path, calendar: Calendar):
-        """初始化指数行情存储
+        """初始化板块行情存储
 
         Args:
             path: 存储路径（目录）
             calendar: 日历对象
         """
         path = Path(path).expanduser()
-        if path.suffix == ".parquet":
-            partition_by = None
-        else:
-            partition_by = "year"
+        partition_by = "year"
 
         super().__init__(
-            "IndexBars",
+            "SectorBars",
             path,
             calendar,
             fetch_sector_bars,
@@ -46,15 +42,15 @@ class IndexBarsStore(ParquetStorage):
 
     def get(
         self,
-        symbols: list[str] | None = None,
+        sector_ids: list[str] | None = None,
         start: datetime.date | datetime.datetime | None = None,
         end: datetime.date | datetime.datetime | None = None,
         eager_mode: bool = True,
     ) -> pl.DataFrame | pl.LazyFrame:
-        """获取指数行情数据
+        """获取板块行情数据
 
         Args:
-            symbols: 指数代码列表，None 表示所有指数
+            sector_ids: 板块ID列表，None 表示所有板块
             start: 开始日期
             end: 结束日期
             eager_mode: 是否立即执行
@@ -72,9 +68,9 @@ class IndexBarsStore(ParquetStorage):
         if end is not None:
             lf = lf.filter(pl.col("date") <= end)
 
-        # 过滤指数
-        if symbols is not None:
-            lf = lf.filter(pl.col("sector_id").is_in(symbols))
+        # 过滤板块
+        if sector_ids is not None:
+            lf = lf.filter(pl.col("sector_id").is_in(sector_ids))
 
         if eager_mode:
             return lf.collect()
@@ -82,15 +78,15 @@ class IndexBarsStore(ParquetStorage):
 
     def fetch(
         self,
-        symbol: str,
+        sector_id: str,
         start: datetime.date,
         end: datetime.date,
         progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> int:
-        """获取并保存指数行情数据
+        """获取并保存板块行情数据
 
         Args:
-            symbol: 指数代码
+            sector_id: 板块ID
             start: 开始日期
             end: 结束日期
             progress_callback: 进度回调函数 (current, total, message)
@@ -99,23 +95,56 @@ class IndexBarsStore(ParquetStorage):
             获取的记录数
         """
         try:
-            df = fetch_sector_bars(symbol, start, end)
+            df = fetch_sector_bars(sector_id, start, end)
             if len(df) == 0:
                 return 0
 
             # 重命名列以匹配存储格式
-            df = df.rename({"sector_id": "symbol", "dt": "date"})
+            df = df.rename({"dt": "date"})
 
             self.append_data(df)
 
             if progress_callback:
-                progress_callback(1, 1, f"已获取 {symbol} {len(df)} 条数据")
+                progress_callback(1, 1, f"已获取 {sector_id} {len(df)} 条数据")
 
             return len(df)
 
         except Exception as e:
-            logger.error(f"获取指数 {symbol} 行情失败: {e}")
+            logger.error(f"获取板块 {sector_id} 行情失败: {e}")
             return 0
+
+    def fetch_multiple(
+        self,
+        sector_ids: list[str],
+        start: datetime.date,
+        end: datetime.date,
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> int:
+        """批量获取板块行情数据
+
+        Args:
+            sector_ids: 板块ID列表
+            start: 开始日期
+            end: 结束日期
+            progress_callback: 进度回调函数 (current, total, message)
+
+        Returns:
+            获取的总记录数
+        """
+        total = len(sector_ids)
+        total_records = 0
+
+        for i, sector_id in enumerate(sector_ids):
+            if progress_callback:
+                progress_callback(i, total, f"正在获取 {sector_id}...")
+
+            count = self.fetch(sector_id, start, end)
+            total_records += count
+
+        if progress_callback:
+            progress_callback(total, total, f"完成，共获取 {total_records} 条数据")
+
+        return total_records
 
     def rec_counts_per_date(
         self, start: datetime.date | None = None, end: datetime.date | None = None
