@@ -262,10 +262,12 @@ def calc_volatility(df: pl.DataFrame) -> float:
 def screen_stocks(df: pl.DataFrame, stock_names: dict[str, str]) -> list[dict]:
     """筛选符合条件的股票
 
-    筛选条件：
-    1. 存在某日成交量是之前5倍以上（t0日）
-    2. t0日之后都收阳线
-    3. 最近10日（非当天）有某天换手率超过40%
+    筛选条件（满足以下任一条件即可）：
+    条件A：
+      1. 存在某日成交量是之前5倍以上（t0日）
+      2. t0日之后都收阳线
+    条件B：
+      1. 最近10日（非当天）有某天换手率超过40%
 
     Args:
         df: 合并后的全市场数据
@@ -284,42 +286,48 @@ def screen_stocks(df: pl.DataFrame, stock_names: dict[str, str]) -> list[dict]:
     for symbol in df["symbol"].unique():
         symbol_df = df.filter(pl.col("symbol") == symbol)
 
-        # 检查成交量放大
+        # 条件A：成交量放大 + 连续阳线
         has_spike, t0_date = check_volume_spike(symbol_df, symbol)
+        condition_a = has_spike and t0_date is not None and check_consecutive_yang(symbol_df, t0_date)
 
-        if not has_spike or t0_date is None:
-            continue
-
-        # 检查 t0 日后是否都收阳线
-        if not check_consecutive_yang(symbol_df, t0_date):
-            continue
-
-        # 检查是否有高换手率日期（非当天，超过40%）
+        # 条件B：高换手率（非当天，超过40%）
         has_high_turnover, turnover_date = check_high_turnover(symbol_df, today)
+        condition_b = has_high_turnover
 
-        if not has_high_turnover:
+        # 满足任一条件即可
+        if not condition_a and not condition_b:
             continue
-
-        # 获取 t0 日的数据
-        t0_data = symbol_df.filter(pl.col("trade_date") == t0_date).row(0, named=True)
-
-        # 获取高换手率日的数据
-        turnover_data = symbol_df.filter(pl.col("trade_date") == turnover_date).row(0, named=True)
 
         # 计算波动率
         volatility = calc_volatility(symbol_df)
 
-        results.append({
+        result = {
             "symbol": symbol,
             "name": stock_names.get(symbol, "未知"),
-            "t0_date": t0_date,
-            "t0_close": t0_data["close"],
-            "t0_volume": t0_data["volume"],
-            "turnover_date": turnover_date,
-            "turnover_rate": turnover_data.get("turnover_rate", 0),
-            "days_after": len(symbol_df.filter(pl.col("trade_date") > t0_date)),
             "volatility": volatility,
-        })
+        }
+
+        # 添加条件A的相关信息
+        if condition_a:
+            t0_data = symbol_df.filter(pl.col("trade_date") == t0_date).row(0, named=True)
+            result.update({
+                "t0_date": t0_date,
+                "t0_close": t0_data["close"],
+                "t0_volume": t0_data["volume"],
+                "days_after": len(symbol_df.filter(pl.col("trade_date") > t0_date)),
+                "match_type": "成交量放大+连续阳线",
+            })
+
+        # 添加条件B的相关信息
+        if condition_b:
+            turnover_data = symbol_df.filter(pl.col("trade_date") == turnover_date).row(0, named=True)
+            result.update({
+                "turnover_date": turnover_date,
+                "turnover_rate": turnover_data.get("turnover_rate", 0),
+                "match_type_turnover": "高换手率>40%",
+            })
+
+        results.append(result)
 
     return results
 
@@ -356,15 +364,16 @@ def main():
         # 转换为 DataFrame
         result_df = pl.DataFrame(results)
 
-        # 调整列顺序
-        result_df = result_df.select([
-            "symbol", "name", "t0_date", "t0_close", "t0_volume",
-            "turnover_date", "turnover_rate", "days_after", "volatility"
-        ])
-
         # 格式化输出
         print(f"共找到 {len(results)} 只符合条件的股票:\n")
-        print(result_df.to_pandas().to_string(index=False))
+
+        # 按匹配类型分组显示
+        for result in results:
+            print(f"\n【{result['symbol']} {result['name']}】 波动率: {result['volatility']:.4f}")
+            if "match_type" in result:
+                print(f"  - {result['match_type']}: t0日={result['t0_date']}, 收盘价={result['t0_close']}, 成交量={result['t0_volume']}, 后续天数={result['days_after']}")
+            if "match_type_turnover" in result:
+                print(f"  - {result['match_type_turnover']}: 日期={result['turnover_date']}, 换手率={result['turnover_rate']:.2f}%")
 
     print("=" * 80)
 
