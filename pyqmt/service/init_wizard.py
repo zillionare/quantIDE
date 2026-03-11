@@ -42,15 +42,18 @@ class InitWizardService:
         if not db._initialized:
             raise RuntimeError("数据库未初始化，请先调用 db.init()")
 
-    def get_state(self) -> AppState:
+    def get_state(self, force_refresh: bool = False) -> AppState:
         """获取当前应用状态
+
+        Args:
+            force_refresh: 是否强制从数据库刷新，忽略缓存
 
         Returns:
             AppState: 应用状态对象（如果不存在则返回默认状态）
         """
         self._ensure_db()
 
-        if self._state is not None:
+        if not force_refresh and self._state is not None:
             return self._state
 
         try:
@@ -83,6 +86,8 @@ class InitWizardService:
 
         try:
             db["app_state"].upsert(self._state.to_dict(), pk="id")
+            # 强制提交，确保其他连接能看到更新
+            db.conn.commit()
             logger.info("应用状态已保存")
         except Exception as e:
             logger.error(f"保存应用状态失败: {e}")

@@ -10,7 +10,11 @@ import pandas as pd
 from arrow import Arrow
 from numpy.typing import NDArray
 
+from pyqmt.core.enums import FrameType
+from pyqmt.core.errors import XtQuantError
 from pyqmt.core.utils import date2str, time2minute
+
+Frame = datetime.datetime | datetime.date
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,11 @@ def _require_xt() -> Any:
         from xtquant import xtdata as xt
         _xt = xt
     return _xt
+
+
+def require_xt() -> Any:
+    """获取 xtquant.xtdata 模块，延迟导入（公开版本）"""
+    return _require_xt()
 
 
 def _format_date(dt: datetime.date):

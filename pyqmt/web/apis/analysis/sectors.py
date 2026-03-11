@@ -43,7 +43,7 @@ async def list_sectors(
 ):
     """列出板块"""
     dal = get_sector_dal()
-    sectors = dal.list_sectors(sector_type=sector_type, source=source)
+    sectors = dal.list_sectors(sector_type=sector_type)
 
     # 计算成分股数量
     result = []

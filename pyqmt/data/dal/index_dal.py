@@ -1,6 +1,13 @@
-"""指数数据访问层"""
+"""指数数据访问层
+
+指数基本信息保存在 SQLite 的 indices 表中。
+指数行情数据保存在 Parquet 文件中（通过 IndexBars）。
+"""
+
+from __future__ import annotations
 
 import datetime
+from typing import TYPE_CHECKING
 
 import polars as pl
 from loguru import logger
@@ -8,12 +15,43 @@ from loguru import logger
 from pyqmt.data.models.index import Index, IndexBar
 from pyqmt.data.sqlite import SQLiteDB
 
+if TYPE_CHECKING:
+    from pyqmt.data.models.index_bars import IndexBars
+
 
 class IndexDAL:
-    """指数数据访问层"""
+    """指数数据访问层
 
-    def __init__(self, db: SQLiteDB):
+    指数基本信息：SQLite (indices 表)
+    指数行情数据：Parquet 文件 (通过 IndexBars)
+    """
+
+    def __init__(self, db: SQLiteDB, index_bars: "IndexBars" | None = None):
+        """初始化指数数据访问层
+
+        Args:
+            db: SQLite 数据库实例
+            index_bars: IndexBars 实例，用于访问行情数据
+        """
         self.db = db
+        self._index_bars = index_bars
+
+    @property
+    def index_bars(self) -> "IndexBars":
+        """获取 IndexBars 实例"""
+        if self._index_bars is None:
+            raise RuntimeError("IndexBars 未初始化")
+        return self._index_bars
+
+    def set_index_bars(self, index_bars: "IndexBars") -> None:
+        """设置 IndexBars 实例
+
+        Args:
+            index_bars: IndexBars 实例
+        """
+        self._index_bars = index_bars
+
+    # ========== 指数基本信息操作（SQLite） ==========
 
     def create_index(self, index: Index) -> Index:
         """创建指数记录
@@ -119,6 +157,8 @@ class IndexDAL:
         )
         return len(indices)
 
+    # ========== 指数行情数据操作（Parquet） ==========
+
     def save_index_bars(self, bars: list[IndexBar]) -> int:
         """保存指数行情数据
 
@@ -131,9 +171,23 @@ class IndexDAL:
         if not bars:
             return 0
 
-        self.db["index_bars"].insert_all(
-            [bar.to_dict() for bar in bars], pk=IndexBar.__pk__, replace=True
-        )
+        # 转换为 DataFrame 并追加到 Parquet
+        # 注意：ParquetStorage 使用 "asset" 和 "date" 作为标准字段名
+        df = pl.DataFrame([
+            {
+                "asset": bar.symbol,
+                "date": bar.dt,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+                "amount": bar.amount,
+            }
+            for bar in bars
+        ])
+
+        self.index_bars.append_data(df)
         return len(bars)
 
     def get_index_bars(
@@ -150,18 +204,19 @@ class IndexDAL:
             end: 结束日期
 
         Returns:
-            行情数据DataFrame
+            行情数据 DataFrame
         """
-        rows = list(self.db["index_bars"].rows_where(
-            "symbol = ? AND dt >= ? AND dt <= ?",
-            (symbol, start, end),
-            order_by="dt",
-        ))
+        df = self.index_bars.get_bars_in_range(
+            start=start,
+            end=end,
+            symbols=[symbol],
+            eager_mode=True,
+        )
 
-        if not rows:
+        if df.is_empty():
             return pl.DataFrame(schema={
-                "dt": pl.Date,
-                "symbol": pl.Utf8,
+                "date": pl.Date,
+                "asset": pl.Utf8,
                 "open": pl.Float64,
                 "high": pl.Float64,
                 "low": pl.Float64,
@@ -170,5 +225,25 @@ class IndexDAL:
                 "amount": pl.Float64,
             })
 
-        df = pl.DataFrame(rows)
-        return df.with_columns(pl.col("dt").cast(pl.Date))
+        return df
+
+    def get_index_bars_all(
+        self,
+        start: datetime.date,
+        end: datetime.date,
+    ) -> pl.DataFrame:
+        """获取所有指数的行情数据
+
+        Args:
+            start: 开始日期
+            end: 结束日期
+
+        Returns:
+            行情数据 DataFrame
+        """
+        return self.index_bars.get_bars_in_range(
+            start=start,
+            end=end,
+            symbols=None,
+            eager_mode=True,
+        )

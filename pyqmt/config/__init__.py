@@ -49,6 +49,10 @@ def init_config(config_dir: str | Path | None = None):
         cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
     cfg_.TIMEZONE = pytz.timezone("Asia/Shanghai")
 
+    # 展开 home 路径中的 ~
+    if hasattr(cfg_, "home") and isinstance(cfg_.home, str):
+        cfg_.home = str(Path(cfg_.home).expanduser())
+
 
 cfg: Config = cfg4py.get_instance()
 

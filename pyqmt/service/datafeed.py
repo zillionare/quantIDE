@@ -4,13 +4,19 @@
 自动合并历史数据和实时数据。
 """
 
+from __future__ import annotations
+
 import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import polars as pl
 from loguru import logger
 
 from pyqmt.core.enums import FrameType
+
+if TYPE_CHECKING:
+    from pyqmt.data.models.daily_bars import DailyBars
+    from pyqmt.data.models.live_quote import LiveQuote
 
 
 Frame = datetime.date | datetime.datetime
@@ -127,7 +133,11 @@ class BarsFeedImpl:
     为策略提供统一的数据接口。
     """
 
-    def __init__(self, daily_bars=None, live_quote=None):
+    def __init__(
+        self,
+        daily_bars: "DailyBars" | None = None,
+        live_quote: "LiveQuote" | None = None,
+    ):
         """初始化 BarsFeedImpl
 
         Args:

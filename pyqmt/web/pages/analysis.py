@@ -1,4 +1,4 @@
-"""分析页面 - 新设计（v0.4）"""
+"""分析页面 - 新设计（v0.5）"""
 
 import datetime
 
@@ -18,14 +18,29 @@ def get_sector_dal() -> SectorDAL:
     return SectorDAL(db)
 
 
+def _get_sector_type_label(sector_type: str) -> str:
+    """获取板块类型的中文标签"""
+    labels = {
+        "concept": "概念",
+        "industry": "行业",
+        "index": "指数",
+        "etf": "ETF",
+        "sw1": "同花顺一级",
+        "sw2": "同花顺二级",
+        "convertible": "转债",
+        "custom": "自选",
+    }
+    return labels.get(sector_type, sector_type)
+
+
 def analysis_page(request: Request):
     """分析页面 - 新设计（无sidebar）"""
     session = request.scope.get("session", {})
     user = session.get("auth")
 
-    # 获取板块列表
+    # 获取板块列表 - 默认加载指数类型
     dal = get_sector_dal()
-    sectors = dal.list_sectors()
+    sectors = dal.list_sectors(sector_type="index")
     sectors_data = [
         {
             "id": s.id,
@@ -39,6 +54,7 @@ def analysis_page(request: Request):
     # 默认选中第一个板块
     selected_sector_id = sectors_data[0]["id"] if sectors_data else None
     selected_sector_name = sectors_data[0]["name"] if sectors_data else ""
+    selected_sector_type = "index"
 
     # 获取选中板块的成分股
     stocks_data = []
@@ -64,56 +80,43 @@ def analysis_page(request: Request):
 
     # 左侧 Sidebar 内容
     left_sidebar = Div(
-        # 第一行：板块选择 Select
+        # 第一行：板块分类链接按钮（指数、行业、概念）
         Div(
-            Label("板块选择", cls="block text-xs text-gray-500 mb-1"),
-            Select(
+            Div(
                 *[
-                    Option(
-                        f"{s['name']} -- {s['sector_type']}",
-                        value=s["id"],
-                        selected=(s["id"] == selected_sector_id),
+                    A(
+                        label,
+                        cls=f"text-sm px-2 py-1 rounded cursor-pointer transition-colors {'bg-blue-100 text-blue-700 font-medium' if st == selected_sector_type else 'text-gray-600 hover:text-blue-600 hover:bg-gray-100'}",
+                        data_type=st,
+                        onclick=f"onSectorTypeChange('{st}')",
                     )
-                    for s in sectors_data
+                    for st, label in [("index", "指数"), ("industry", "行业"), ("concept", "概念")]
                 ],
-                Option("──────────", disabled=True),
-                Option("+ 新建板块", value="__new__", cls="text-blue-600"),
-                cls="w-full p-2 border rounded text-sm",
-                id="sector-select",
-                onchange="onSectorChange(this.value)",
+                cls="flex gap-1",
             ),
             cls="p-3 border-b bg-gray-50",
         ),
-        # 第二行：板块个股列表
+        # 第二行：板块列表
         Div(
             Div(
-                f"板块个股 ({selected_sector_name})",
+                id="sector-list",
+                cls="space-y-1 max-h-48 overflow-y-auto",
+            ),
+            cls="p-3 border-b bg-gray-50",
+        ),
+        # 第三行：板块个股列表
+        Div(
+            Div(
+                id="sector-stocks-header",
                 cls="text-sm font-medium text-gray-700 mb-2",
             ),
             Div(
-                *[
-                    Div(
-                        Div(
-                            "▶" if i == 0 else "",
-                            cls=f"text-xs w-4 {'text-blue-600' if i == 0 else 'text-transparent'}",
-                        ),
-                        Div(
-                            Div(s["name"], cls="font-medium text-gray-900"),
-                            Div(s["symbol"], cls="text-xs text-gray-500"),
-                        ),
-                        cls=f"flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 {'bg-blue-50 border-l-3 border-blue-600' if i == 0 else ''}",
-                        data_symbol=s["symbol"],
-                        data_name=s["name"],
-                        onclick=f"onStockClick('{s['symbol']}', '{s['name']}')",
-                    )
-                    for i, s in enumerate(stocks_data[:20])
-                ],
                 id="stock-list",
                 cls="divide-y",
             ),
             cls="flex-1 overflow-y-auto p-3",
         ),
-        # 第三行：所属板块
+        # 第四行：所属板块
         Div(
             Label("所属板块", cls="block text-xs text-gray-500 mb-2"),
             Div(
@@ -146,6 +149,7 @@ def analysis_page(request: Request):
                     maxlength="8",
                     id="search-input",
                     oninput="onSearchInput(this.value)",
+                    onkeydown="onSearchKeyDown(event)",
                 ),
                 # 搜索建议下拉
                 Div(
@@ -185,8 +189,17 @@ def analysis_page(request: Request):
         ),
         # K线图列表区域
         Div(
-            id="kline-list",
-            cls="flex-1 overflow-y-auto p-4 space-y-4",
+            # 固定K线行（搜索选中的资产）
+            Div(
+                id="pinned-kline-row",
+                cls="hidden",
+            ),
+            # 普通K线列表
+            Div(
+                id="kline-list",
+                cls="space-y-4",
+            ),
+            cls="flex-1 overflow-y-auto p-4",
         ),
         cls="flex-1 flex flex-col bg-gray-100 overflow-hidden h-full",
     )
@@ -213,7 +226,7 @@ def analysis_page(request: Request):
         # 主内容区
         main_layout,
         # JavaScript 交互逻辑
-        Script(get_analysis_js(sectors_data, stocks_data, default_symbol, default_name)),
+        Script(get_analysis_js(sectors_data, stocks_data, default_symbol, default_name, selected_sector_type)),
         # Lightweight Charts CDN
         Script(src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"),
         cls="h-screen flex flex-col",
@@ -231,7 +244,7 @@ def analysis_page(request: Request):
     return HTMLResponse(html_content)
 
 
-def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
+def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name, default_sector_type):
     """生成分析页面的 JavaScript 代码"""
     sectors_json = str(sectors_data).replace("'", '"')
     stocks_json = str(stocks_data).replace("'", '"')
@@ -242,6 +255,8 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         sectors: {sectors_json},
         stocks: {stocks_json},
         selectedSectorId: '{sectors_data[0]["id"] if sectors_data else ""}',
+        selectedSectorName: '{sectors_data[0]["name"] if sectors_data else ""}',
+        selectedSectorType: '{default_sector_type}',
         selectedStockSymbol: '{default_symbol}',
         selectedStockName: '{default_name}',
         freq: 'day',
@@ -253,29 +268,118 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         loading: false,
         multiFreqMode: false,
         multiFreqStock: null,
+        pinnedStock: null,  // 固定的股票（通过搜索选择）
     }};
 
     // 初始化
     document.addEventListener('DOMContentLoaded', function() {{
+        // 加载初始板块列表
+        loadSectorList(state.selectedSectorType);
+        // 加载初始个股列表
+        renderStockList();
+        // 加载初始K线列表（前10个）
         loadKlineList();
-        loadStockSectors(state.selectedStockSymbol);
+        // 加载第一个股票的所属板块
+        if (state.selectedStockSymbol) {{
+            loadStockSectors(state.selectedStockSymbol);
+        }}
         setupInfiniteScroll();
     }});
 
-    // 板块切换
-    async function onSectorChange(sectorId) {{
-        if (sectorId === '__new__') {{
-            showCreateSectorModal();
-            return;
-        }}
+    // 板块分类切换（指数、行业、概念）
+    async function onSectorTypeChange(sectorType) {{
+        state.selectedSectorType = sectorType;
+        state.page = 1;
+        state.hasMore = true;
+        state.klineData = {{}};
+        state.pinnedStock = null;
 
+        // 更新按钮样式
+        document.querySelectorAll('[data-type]').forEach(btn => {{
+            const isActive = btn.dataset.type === sectorType;
+            btn.className = isActive
+                ? 'text-sm px-2 py-1 rounded cursor-pointer transition-colors bg-blue-100 text-blue-700 font-medium'
+                : 'text-sm px-2 py-1 rounded cursor-pointer transition-colors text-gray-600 hover:text-blue-600 hover:bg-gray-100';
+        }});
+
+        // 加载该分类下的板块列表
+        await loadSectorList(sectorType);
+
+        // 清空K线列表和固定行
+        document.getElementById('kline-list').innerHTML = '';
+        hidePinnedRow();
+
+        // 如果有板块，加载第一个板块的K线
+        if (state.sectors.length > 0) {{
+            state.selectedSectorId = state.sectors[0].id;
+            state.selectedSectorName = state.sectors[0].name;
+            await updateStockList(state.selectedSectorId);
+            loadKlineList();
+        }}
+    }}
+
+    // 加载板块列表
+    async function loadSectorList(sectorType) {{
+        try {{
+            const response = await fetch(`/api/v1/sectors?sector_type=${{sectorType}}`);
+            const result = await response.json();
+
+            if (result.code === 0) {{
+                state.sectors = result.data.items || [];
+
+                const container = document.getElementById('sector-list');
+
+                if (state.sectors.length === 0) {{
+                    container.innerHTML = '<div class="text-sm text-gray-400 py-2">暂无板块数据</div>';
+                    return;
+                }}
+
+                let html = '';
+                state.sectors.forEach((sector, i) => {{
+                    const isSelected = i === 0;
+                    if (isSelected) {{
+                        state.selectedSectorId = sector.id;
+                        state.selectedSectorName = sector.name;
+                    }}
+                    html += `
+                        <div class="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-100 rounded ${{isSelected ? 'bg-blue-50 border-l-3 border-blue-600' : ''}}"
+                             data-sector-id="${{sector.id}}"
+                             onclick="onSectorSelect('${{sector.id}}', '${{sector.name}}')">
+                            <div class="text-xs w-4 ${{isSelected ? 'text-blue-600' : 'text-transparent'}}">▶</div>
+                            <div class="font-medium text-gray-900 text-sm">${{sector.name}}</div>
+                        </div>
+                    `;
+                }});
+                container.innerHTML = html;
+            }}
+        }} catch (error) {{
+            console.error('Error loading sectors:', error);
+        }}
+    }}
+
+    // 选择板块
+    async function onSectorSelect(sectorId, sectorName) {{
         state.selectedSectorId = sectorId;
+        state.selectedSectorName = sectorName;
         state.page = 1;
         state.hasMore = true;
         state.klineData = {{}};
 
+        // 更新板块列表选中样式
+        document.querySelectorAll('#sector-list > div[data-sector-id]').forEach(el => {{
+            const isSelected = el.dataset.sectorId === sectorId;
+            el.classList.toggle('bg-blue-50', isSelected);
+            el.classList.toggle('border-l-3', isSelected);
+            el.classList.toggle('border-blue-600', isSelected);
+            el.querySelector('.text-xs.w-4').classList.toggle('text-blue-600', isSelected);
+            el.querySelector('.text-xs.w-4').classList.toggle('text-transparent', !isSelected);
+            el.querySelector('.text-xs.w-4').textContent = isSelected ? '▶' : '';
+        }});
+
+        // 更新个股列表
         await updateStockList(sectorId);
 
+        // 清空并重新加载K线列表
         document.getElementById('kline-list').innerHTML = '';
         loadKlineList();
     }}
@@ -288,29 +392,7 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
 
             if (result.code === 0) {{
                 state.stocks = result.data;
-
-                const container = document.getElementById('stock-list');
-                const sectorName = state.sectors.find(s => s.id === sectorId)?.name || '';
-
-                let html = `<div class="text-sm font-medium text-gray-700 mb-2">板块个股 (${{sectorName}})</div>`;
-
-                result.data.forEach((stock, i) => {{
-                    const isSelected = i === 0;
-                    html += `
-                        <div class="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 ${{isSelected ? 'bg-blue-50 border-l-3 border-blue-600' : ''}}"
-                             data-symbol="${{stock.symbol}}"
-                             data-name="${{stock.name}}"
-                             onclick="onStockClick('${{stock.symbol}}', '${{stock.name}}')">
-                            <div class="text-xs w-4 ${{isSelected ? 'text-blue-600' : 'text-transparent'}}">▶</div>
-                            <div>
-                                <div class="font-medium text-gray-900">${{stock.name}}</div>
-                                <div class="text-xs text-gray-500">${{stock.symbol}}</div>
-                            </div>
-                        </div>
-                    `;
-                }});
-
-                container.innerHTML = html;
+                renderStockList();
 
                 if (result.data.length > 0) {{
                     state.selectedStockSymbol = result.data[0].symbol;
@@ -321,6 +403,37 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         }} catch (error) {{
             console.error('Error loading stocks:', error);
         }}
+    }}
+
+    // 渲染个股列表
+    function renderStockList() {{
+        const container = document.getElementById('stock-list');
+        const header = document.getElementById('sector-stocks-header');
+
+        header.textContent = `板块个股 (${{state.selectedSectorName}})`;
+
+        if (state.stocks.length === 0) {{
+            container.innerHTML = '<div class="text-sm text-gray-400 py-2">暂无个股数据</div>';
+            return;
+        }}
+
+        let html = '';
+        state.stocks.forEach((stock, i) => {{
+            const isSelected = i === 0;
+            html += `
+                <div class="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-50 ${{isSelected ? 'bg-blue-50 border-l-3 border-blue-600' : ''}}"
+                     data-symbol="${{stock.symbol}}"
+                     data-name="${{stock.name}}"
+                     onclick="onStockClick('${{stock.symbol}}', '${{stock.name}}')">
+                    <div class="text-xs w-4 ${{isSelected ? 'text-blue-600' : 'text-transparent'}}">▶</div>
+                    <div>
+                        <div class="font-medium text-gray-900">${{stock.name}}</div>
+                        <div class="text-xs text-gray-500">${{stock.symbol}}</div>
+                    </div>
+                </div>
+            `;
+        }});
+        container.innerHTML = html;
     }}
 
     // 个股点击
@@ -384,8 +497,7 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
 
     // 从所属板块点击切换到板块
     async function onSectorClickFromStock(sectorId, stockSymbol) {{
-        document.getElementById('sector-select').value = sectorId;
-        await onSectorChange(sectorId);
+        await onSectorSelect(sectorId, '');
         setTimeout(() => {{
             onStockClick(stockSymbol, '');
         }}, 100);
@@ -409,10 +521,14 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         state.page = 1;
         state.hasMore = true;
         loadKlineList();
+
+        // 重新加载固定行
+        if (state.pinnedStock) {{
+            loadPinnedRow();
+        }}
     }}
 
     // 多周期视图 - 显示当前选中个股的日/周/月线
-    // 布局：左侧日线（半届），右侧上周线，右侧下月线
     async function onMultiFreqView() {{
         if (!state.selectedStockSymbol) {{
             alert('请先选择一只个股');
@@ -843,8 +959,13 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
 
     // 搜索输入
     let searchTimeout;
+    let currentSearchResults = [];
+    let selectedSearchIndex = -1;
+
     async function onSearchInput(value) {{
         clearTimeout(searchTimeout);
+        selectedSearchIndex = -1;
+        currentSearchResults = [];
 
         if (value.length < 1) {{
             document.getElementById('search-suggestions').classList.add('hidden');
@@ -857,12 +978,14 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
                 const result = await response.json();
 
                 const container = document.getElementById('search-suggestions');
+                currentSearchResults = result.data || [];
 
-                if (result.code === 0 && result.data.length > 0) {{
+                if (result.code === 0 && currentSearchResults.length > 0) {{
                     let html = '';
-                    result.data.forEach(stock => {{
+                    currentSearchResults.forEach((stock, index) => {{
                         html += `
-                            <div class="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                            <div class="p-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 search-suggestion-item"
+                                 data-index="${{index}}"
                                  onclick="onSearchSelect('${{stock.symbol}}', '${{stock.name}}')">
                                 <div class="flex justify-between">
                                     <span class="font-medium">${{stock.name}}</span>
@@ -883,45 +1006,107 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
         }}, 300);
     }}
 
-    // 搜索选择
+    // 搜索键盘事件
+    function onSearchKeyDown(event) {{
+        const suggestions = document.getElementById('search-suggestions');
+        if (suggestions.classList.contains('hidden')) return;
+
+        const items = suggestions.querySelectorAll('.search-suggestion-item');
+
+        if (event.key === 'ArrowDown') {{
+            event.preventDefault();
+            selectedSearchIndex = Math.min(selectedSearchIndex + 1, items.length - 1);
+            updateSearchSelection(items);
+        }} else if (event.key === 'ArrowUp') {{
+            event.preventDefault();
+            selectedSearchIndex = Math.max(selectedSearchIndex - 1, 0);
+            updateSearchSelection(items);
+        }} else if (event.key === 'Enter') {{
+            event.preventDefault();
+            if (selectedSearchIndex >= 0 && selectedSearchIndex < currentSearchResults.length) {{
+                const stock = currentSearchResults[selectedSearchIndex];
+                onSearchSelect(stock.symbol, stock.name);
+            }} else if (currentSearchResults.length === 1) {{
+                // 只有一个结果时直接选择
+                const stock = currentSearchResults[0];
+                onSearchSelect(stock.symbol, stock.name);
+            }}
+        }} else if (event.key === 'Escape') {{
+            suggestions.classList.add('hidden');
+        }}
+    }}
+
+    // 更新搜索选择高亮
+    function updateSearchSelection(items) {{
+        items.forEach((item, index) => {{
+            if (index === selectedSearchIndex) {{
+                item.classList.add('bg-blue-50');
+                item.scrollIntoView({{ block: 'nearest' }});
+            }} else {{
+                item.classList.remove('bg-blue-50');
+            }}
+        }});
+    }}
+
+    // 搜索选择 - 固定到第一行
     async function onSearchSelect(symbol, name) {{
         document.getElementById('search-input').value = '';
         document.getElementById('search-suggestions').classList.add('hidden');
 
-        const inCurrentSector = state.stocks.some(s => s.symbol === symbol);
+        // 设置为固定股票
+        state.pinnedStock = {{ symbol: symbol, name: name }};
 
-        if (inCurrentSector) {{
-            onStockClick(symbol, name);
-        }} else {{
-            // 临时加入对比队列
-            state.selectedStockSymbol = symbol;
-            state.selectedStockName = name;
-            loadStockSectors(symbol);
+        // 加载固定行
+        await loadPinnedRow();
 
-            // 检查是否已经在对比队列中
-            const container = document.getElementById('kline-list');
-            const existingCard = container.querySelector(`.kline-card[data-symbol="${{symbol}}"]`);
+        // 高亮左侧列表中的对应股票
+        onStockClick(symbol, name);
+    }}
 
-            if (!existingCard) {{
-                // 创建临时对比卡片
-                const tempStock = {{ symbol: symbol, name: name }};
-                const card = createKlineCard(tempStock);
-                card.classList.add('temp-compare-card');
-                card.dataset.temp = 'true';
+    // 加载固定行
+    async function loadPinnedRow() {{
+        if (!state.pinnedStock) return;
 
-                // 添加到对比队列区域（在第一个位置）
-                if (container.firstChild) {{
-                    container.insertBefore(card, container.firstChild);
-                }} else {{
-                    container.appendChild(card);
-                }}
+        const container = document.getElementById('pinned-kline-row');
+        container.classList.remove('hidden');
 
-                await loadKlineData(symbol, name, card);
-                highlightKlineCard(symbol);
-            }} else {{
-                highlightKlineCard(symbol);
-            }}
-        }}
+        // 创建固定行内容
+        container.innerHTML = `
+            <div class="kline-card pinned-kline-card bg-white rounded-lg shadow overflow-hidden mb-4 border-2 border-blue-400">
+                <div class="p-3 border-b flex items-center justify-between bg-blue-50">
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-gray-900">${{state.pinnedStock.name}}</span>
+                        <span class="text-xs text-gray-500">${{state.pinnedStock.symbol}}</span>
+                        <span class="px-2 py-0.5 text-xs rounded bg-blue-600 text-white">固定</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="text-xs font-mono ma-info" data-symbol="${{state.pinnedStock.symbol}}">
+                            <span class="text-gray-400">加载中...</span>
+                        </div>
+                        <button onclick="unpinStock()" class="text-gray-400 hover:text-gray-600 text-xs px-2 py-1 rounded hover:bg-gray-200">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+                <div class="kline-chart" style="height: 300px;"></div>
+            </div>
+        `;
+
+        // 加载K线数据
+        await loadKlineData(state.pinnedStock.symbol, state.pinnedStock.name, container.querySelector('.kline-card'));
+    }}
+
+    // 取消固定
+    function unpinStock() {{
+        state.pinnedStock = null;
+        hidePinnedRow();
+    }}
+
+    // 隐藏固定行
+    function hidePinnedRow() {{
+        const container = document.getElementById('pinned-kline-row');
+        container.classList.add('hidden');
+        container.innerHTML = '';
     }}
 
     // 无限滚动
@@ -959,21 +1144,13 @@ def get_analysis_js(sectors_data, stocks_data, default_symbol, default_name):
             transform: scale(1.01);
             transition: all 0.2s ease;
         }}
-        .temp-compare-card {{
-            border: 2px dashed #f59e0b;
-            background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+        .pinned-kline-card {{
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }}
-        .temp-compare-card::before {{
-            content: '对比';
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: #f59e0b;
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            z-index: 5;
+        .search-suggestion-item.selected {{
+            background-color: #eff6ff;
         }}
     `;
     document.head.appendChild(style);

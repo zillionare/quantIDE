@@ -1,20 +1,20 @@
 """指数数据同步服务
 
+基于 xtdata (QMT) 实现指数列表和行情的同步。
 支持历史数据下载和每日增量更新。
 """
 
 import datetime
+from collections.abc import Callable
 
 import pandas as pd
+import polars as pl
 from loguru import logger
 
 from pyqmt.config import cfg
 from pyqmt.data.dal.index_dal import IndexDAL
-from pyqmt.data.fetchers.tushare_ext import (
-    fetch_index_bars,
-    fetch_index_list,
-    get_last_trade_date,
-)
+from pyqmt.data.fetchers.xtdata_sectors import fetch_sector_bars, get_index_list
+from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.index import Index, IndexBar
 
 
@@ -26,26 +26,36 @@ class IndexSyncService:
         self._epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
 
     def sync_index_list(self) -> int:
-        """同步指数列表（从tushare）
+        """同步指数列表（从QMT）
 
         Returns:
             同步的指数数量
         """
         logger.info("开始同步指数列表...")
 
-        df = fetch_index_list()
-        if df is None or df.empty:
+        index_codes = get_index_list()
+        if not index_codes:
             logger.warning("未获取到指数数据")
             return 0
 
         indices = []
-        for _, row in df.iterrows():
+        for code in index_codes:
+            # 从代码推断名称和类型
+            name = code  # 简化处理，实际可以通过 get_instrument_detail 获取
+            index_type = "stock"
+            if code.startswith("0"):
+                index_type = "sh"
+            elif code.startswith("3") or code.startswith("2"):
+                index_type = "sz"
+            elif code.startswith("8") or code.startswith("9"):
+                index_type = "csi"
+
             index = Index(
-                symbol=row["symbol"],
-                name=row["name"],
-                index_type=row["index_type"],
-                category=row.get("category", ""),
-                publisher=row.get("publisher", ""),
+                symbol=code,
+                name=name,
+                index_type=index_type,
+                category="",
+                publisher="",
             )
             indices.append(index)
 
@@ -58,6 +68,7 @@ class IndexSyncService:
         symbol: str,
         start: datetime.date | None = None,
         end: datetime.date | None = None,
+        progress_callback: Callable | None = None,
     ) -> int:
         """同步指数行情数据
 
@@ -65,6 +76,7 @@ class IndexSyncService:
             symbol: 指数代码
             start: 开始日期，默认为 cfg.epoch
             end: 结束日期，默认为最近交易日
+            progress_callback: 进度回调函数，接收 (symbol, current_date, completed_count, total_count) 参数
 
         Returns:
             同步的行情记录数
@@ -72,33 +84,56 @@ class IndexSyncService:
         if start is None:
             start = self._epoch
         if end is None:
-            end = get_last_trade_date()
+            end = calendar.last_trade_date()
 
         logger.info(f"开始同步指数 {symbol} 行情: {start} ~ {end}")
 
-        df = fetch_index_bars(symbol, start, end)
-        if df is None or df.empty:
-            logger.warning(f"未获取到指数 {symbol} 的行情数据")
+        # 获取交易日历
+        trade_dates = calendar.get_trade_dates(start, end)
+        if not trade_dates:
+            logger.warning(f"日期范围 {start} ~ {end} 内没有交易日")
             return 0
 
-        # 转换为 IndexBar 对象
-        bars = []
-        for _, row in df.iterrows():
-            bar = IndexBar(
-                symbol=symbol,
-                dt=row["dt"],
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                volume=int(row["volume"]),
-                amount=float(row["amount"]),
-            )
-            bars.append(bar)
+        total = len(trade_dates)
+        completed = 0
+        all_bars = []
 
-        count = self.dal.save_index_bars(bars)
-        logger.info(f"指数 {symbol} 行情同步完成，共 {count} 条")
-        return count
+        # 使用 xtdata 获取数据
+        try:
+            df = fetch_sector_bars(symbol, start, end)
+            if len(df) > 0:
+                for row in df.to_dicts():
+                    bar = IndexBar(
+                        symbol=symbol,
+                        dt=row["dt"],
+                        open=float(row["open"]),
+                        high=float(row["high"]),
+                        low=float(row["low"]),
+                        close=float(row["close"]),
+                        volume=int(row["volume"]),
+                        amount=float(row["amount"]),
+                    )
+                    all_bars.append(bar)
+
+                    completed += 1
+                    current_date = row["dt"]
+
+                    # 报告进度
+                    msg = f"正在同步指数 {symbol} {current_date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
+                    logger.info(msg)
+
+                    if progress_callback:
+                        progress_callback(symbol, current_date, completed, total)
+
+        except Exception as e:
+            logger.error(f"同步指数 {symbol} 数据失败: {e}")
+
+        # 批量保存
+        if all_bars:
+            count = self.dal.save_index_bars(all_bars)
+            logger.info(f"指数 {symbol} 行情同步完成，共 {count} 条")
+            return count
+        return 0
 
     def sync_all_index_bars(
         self,
@@ -117,7 +152,7 @@ class IndexSyncService:
         if start is None:
             start = self._epoch
         if end is None:
-            end = get_last_trade_date()
+            end = calendar.last_trade_date()
 
         indices = self.dal.list_indices()
         results = {}
@@ -148,7 +183,7 @@ class IndexSyncService:
         index_count = self.sync_index_list()
 
         # 2. 同步行情（只同步最近7天的数据，避免重复下载）
-        end = get_last_trade_date()
+        end = calendar.last_trade_date()
         start = end - datetime.timedelta(days=7)
         bar_counts = self.sync_all_index_bars(start, end)
 

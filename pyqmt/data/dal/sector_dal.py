@@ -6,12 +6,12 @@ from pathlib import Path
 import polars as pl
 from loguru import logger
 
-from pyqmt.data.models.sector import Sector, SectorBar, SectorStock
+from pyqmt.data.models.sector import Sector, SectorBar, SectorConstituent
 from pyqmt.data.sqlite import SQLiteDB
 
 
 class SectorDAL:
-    """板块数据访问层"""
+    """板块数据访问层，支持PIT（Point In Time）查询"""
 
     def __init__(self, db: SQLiteDB):
         self.db = db
@@ -25,191 +25,312 @@ class SectorDAL:
         Returns:
             创建后的板块对象
         """
-        sector.updated_at = datetime.datetime.now()
         self.db["sectors"].insert(sector.to_dict(), pk=Sector.__pk__)
         return sector
 
-    def get_sector(self, sector_id: str) -> Sector | None:
-        """获取板块
+    def create_sectors_batch(self, sectors: list[Sector]) -> int:
+        """批量创建板块
+
+        Args:
+            sectors: 板块对象列表
+
+        Returns:
+            创建的记录数
+        """
+        if not sectors:
+            return 0
+
+        self.db["sectors"].insert_all(
+            [s.to_dict() for s in sectors],
+            pk=Sector.__pk__,
+            replace=True,
+        )
+        return len(sectors)
+
+    def get_sector(self, sector_id: str, trade_date: datetime.date) -> Sector | None:
+        """获取特定日期的板块
 
         Args:
             sector_id: 板块ID
+            trade_date: 数据日期
 
         Returns:
             板块对象，不存在则返回None
         """
-        row = self.db["sectors"].get(sector_id)
-        if row:
-            return Sector(**row)
+        rows = list(self.db["sectors"].rows_where(
+            "id = ? AND trade_date = ?",
+            (sector_id, trade_date),
+            limit=1,
+        ))
+        if rows:
+            return Sector(**rows[0])
         return None
 
     def list_sectors(
-        self, sector_type: str | None = None, source: str | None = None
+        self,
+        sector_type: str | None = None,
+        trade_date: datetime.date | None = None,
     ) -> list[Sector]:
         """列出板块
 
         Args:
-            sector_type: 板块类型过滤：custom/industry/concept
-            source: 来源过滤：user/tushare
+            sector_type: 板块类型过滤
+            trade_date: 数据日期，默认为最新日期
 
         Returns:
             板块列表
         """
         table = self.db["sectors"]
 
-        if sector_type and source:
-            rows = table.rows_where(
-                "sector_type = ? AND source = ?", (sector_type, source)
-            )
-        elif sector_type:
-            rows = table.rows_where("sector_type = ?", (sector_type,))
-        elif source:
-            rows = table.rows_where("source = ?", (source,))
+        if trade_date is None:
+            # 获取最新日期的板块
+            if sector_type:
+                rows = table.rows_where(
+                    "sector_type = ?",
+                    (sector_type,),
+                )
+            else:
+                rows = table.rows
         else:
-            rows = table.rows
+            if sector_type:
+                rows = table.rows_where(
+                    "sector_type = ? AND trade_date = ?",
+                    (sector_type, trade_date),
+                )
+            else:
+                rows = table.rows_where(
+                    "trade_date = ?",
+                    (trade_date,),
+                )
 
         return [Sector(**row) for row in rows]
 
-    def update_sector(self, sector: Sector) -> Sector:
-        """更新板块
+    def get_sectors_by_date(self, trade_date: datetime.date) -> pl.DataFrame:
+        """获取指定日期的所有板块
 
         Args:
-            sector: 板块对象
+            trade_date: 数据日期
 
         Returns:
-            更新后的板块对象
+            板块DataFrame
         """
-        sector.updated_at = datetime.datetime.now()
-        self.db["sectors"].update(sector.id, sector.to_dict())
-        return sector
+        rows = list(self.db["sectors"].rows_where(
+            "trade_date = ?",
+            (trade_date,),
+        ))
 
-    def delete_sector(self, sector_id: str) -> bool:
-        """删除板块
+        if not rows:
+            return pl.DataFrame(schema={
+                "id": pl.Utf8,
+                "name": pl.Utf8,
+                "sector_type": pl.Utf8,
+                "source": pl.Utf8,
+                "trade_date": pl.Date,
+                "description": pl.Utf8,
+            })
+
+        return pl.DataFrame(rows)
+
+    def delete_sectors_by_date(self, trade_date: datetime.date) -> int:
+        """删除指定日期的板块数据
 
         Args:
-            sector_id: 板块ID
+            trade_date: 数据日期
 
         Returns:
-            是否删除成功
+            删除的记录数
         """
         try:
-            self.db["sectors"].delete(sector_id)
-            return True
+            cursor = self.db.execute(
+                "DELETE FROM sectors WHERE trade_date = ?",
+                (trade_date,),
+            )
+            return cursor.rowcount
         except Exception as e:
-            logger.error(f"删除板块失败: {e}")
-            return False
+            logger.error(f"删除板块数据失败: {e}")
+            return 0
 
-    def add_stock_to_sector(
-        self, sector_id: str, symbol: str, name: str = "", weight: float = 0.0
-    ) -> bool:
-        """添加股票到板块
+    def add_constituent(self, constituent: SectorConstituent) -> bool:
+        """添加板块成分股
 
         Args:
-            sector_id: 板块ID
-            symbol: 股票代码
-            name: 股票名称
-            weight: 权重
+            constituent: 成分股对象
 
         Returns:
             是否添加成功
         """
         try:
-            stock = SectorStock(
-                sector_id=sector_id, symbol=symbol, name=name, weight=weight
+            self.db["sector_constituents"].insert(
+                constituent.to_dict(),
+                pk=SectorConstituent.__pk__,
             )
-            self.db["sector_stocks"].insert(stock.to_dict(), pk=SectorStock.__pk__)
             return True
         except Exception as e:
-            logger.error(f"添加股票到板块失败: {e}")
+            logger.error(f"添加板块成分股失败: {e}")
             return False
 
-    def remove_stock_from_sector(self, sector_id: str, symbol: str) -> bool:
-        """从板块移除股票
+    def add_constituents_batch(self, constituents: list[SectorConstituent]) -> int:
+        """批量添加板块成分股
 
         Args:
-            sector_id: 板块ID
-            symbol: 股票代码
+            constituents: 成分股对象列表
 
         Returns:
-            是否移除成功
+            添加的记录数
         """
-        try:
-            self.db["sector_stocks"].delete((sector_id, symbol))
-            return True
-        except Exception as e:
-            logger.error(f"从板块移除股票失败: {e}")
-            return False
+        if not constituents:
+            return 0
 
-    def get_sector_stocks(self, sector_id: str) -> list[SectorStock]:
+        try:
+            self.db["sector_constituents"].insert_all(
+                [c.to_dict() for c in constituents],
+                pk=SectorConstituent.__pk__,
+                replace=True,
+            )
+            return len(constituents)
+        except Exception as e:
+            logger.error(f"批量添加板块成分股失败: {e}")
+            return 0
+
+    def get_constituents(
+        self,
+        sector_id: str,
+        trade_date: datetime.date,
+    ) -> list[SectorConstituent]:
         """获取板块成分股
 
         Args:
             sector_id: 板块ID
+            trade_date: 数据日期
 
         Returns:
             成分股列表
         """
-        rows = self.db["sector_stocks"].rows_where(
-            "sector_id = ?", (sector_id,), order_by="symbol"
+        rows = self.db["sector_constituents"].rows_where(
+            "sector_id = ? AND trade_date = ?",
+            (sector_id, trade_date),
+            order_by="symbol",
         )
-        return [SectorStock(**row) for row in rows]
+        return [SectorConstituent(**row) for row in rows]
 
-    def import_stocks_from_file(
-        self, sector_id: str, file_path: str
-    ) -> tuple[int, int, list[str]]:
-        """从文件导入股票列表
-
-        文件格式：
-        - 每行一个股票代码
-        - 支持格式：000001.SZ 或 000001
-        - 可选：代码后加空格和名称，如 "000001.SZ 平安银行"
+    def get_sector_stocks(
+        self,
+        sector_id: str,
+        trade_date: datetime.date | None = None,
+    ) -> list[SectorConstituent]:
+        """获取板块成分股（兼容旧接口）
 
         Args:
             sector_id: 板块ID
-            file_path: 文件路径
+            trade_date: 数据日期，默认为最新日期
 
         Returns:
-            (成功数, 失败数, 失败代码列表)
+            成分股列表
         """
-        path = Path(file_path)
-        if not path.exists():
-            logger.error(f"文件不存在: {file_path}")
-            return 0, 0, []
+        if trade_date is None:
+            rows = self.db["sector_constituents"].rows_where(
+                "sector_id = ?",
+                (sector_id,),
+                order_by="symbol",
+            )
+        else:
+            rows = self.db["sector_constituents"].rows_where(
+                "sector_id = ? AND trade_date = ?",
+                (sector_id, trade_date),
+                order_by="symbol",
+            )
+        return [SectorConstituent(**row) for row in rows]
 
-        success_count = 0
-        failed_count = 0
-        failed_symbols = []
+    def get_constituents_df(
+        self,
+        sector_id: str,
+        trade_date: datetime.date,
+    ) -> pl.DataFrame:
+        """获取板块成分股DataFrame
 
+        Args:
+            sector_id: 板块ID
+            trade_date: 数据日期
+
+        Returns:
+            成分股DataFrame
+        """
+        rows = list(self.db["sector_constituents"].rows_where(
+            "sector_id = ? AND trade_date = ?",
+            (sector_id, trade_date),
+            order_by="symbol",
+        ))
+
+        if not rows:
+            return pl.DataFrame(schema={
+                "sector_id": pl.Utf8,
+                "trade_date": pl.Date,
+                "symbol": pl.Utf8,
+                "name": pl.Utf8,
+                "weight": pl.Float64,
+            })
+
+        return pl.DataFrame(rows)
+
+    def delete_constituents_by_date(self, trade_date: datetime.date) -> int:
+        """删除指定日期的成分股数据
+
+        Args:
+            trade_date: 数据日期
+
+        Returns:
+            删除的记录数
+        """
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    # 解析行：代码 [名称]
-                    parts = line.split(maxsplit=1)
-                    symbol = parts[0]
-                    name = parts[1] if len(parts) > 1 else ""
-
-                    # 标准化代码格式
-                    if "." not in symbol:
-                        # 根据代码规则添加后缀
-                        if symbol.startswith("6"):
-                            symbol = f"{symbol}.SH"
-                        else:
-                            symbol = f"{symbol}.SZ"
-
-                    if self.add_stock_to_sector(sector_id, symbol, name):
-                        success_count += 1
-                    else:
-                        failed_count += 1
-                        failed_symbols.append(symbol)
-
+            cursor = self.db.execute(
+                "DELETE FROM sector_constituents WHERE trade_date = ?",
+                (trade_date,),
+            )
+            return cursor.rowcount
         except Exception as e:
-            logger.error(f"导入文件失败: {e}")
+            logger.error(f"删除成分股数据失败: {e}")
+            return 0
 
-        return success_count, failed_count, failed_symbols
+    def get_stock_sectors(
+        self,
+        symbol: str,
+        trade_date: datetime.date | None = None,
+    ) -> list[Sector]:
+        """获取个股所属板块
+
+        Args:
+            symbol: 股票代码
+            trade_date: 数据日期，默认为None（获取最新日期的）
+
+        Returns:
+            板块列表
+        """
+        if trade_date is None:
+            rows = list(self.db["sector_constituents"].rows_where(
+                "symbol = ?",
+                (symbol,),
+            ))
+        else:
+            rows = list(self.db["sector_constituents"].rows_where(
+                "symbol = ? AND trade_date = ?",
+                (symbol, trade_date),
+            ))
+
+        sectors = []
+        for row in rows:
+            sector_id = row["sector_id"]
+            # 从行数据中获取 trade_date，如果不存在则跳过
+            row_trade_date = row.get("trade_date")
+            if row_trade_date is None:
+                continue
+            # 确保 trade_date 是 date 对象
+            if isinstance(row_trade_date, str):
+                row_trade_date = datetime.date.fromisoformat(row_trade_date)
+            sector = self.get_sector(sector_id, row_trade_date)
+            if sector:
+                sectors.append(sector)
+
+        return sectors
 
     def save_sector_bars(self, bars: list[SectorBar]) -> int:
         """保存板块行情数据
@@ -224,7 +345,9 @@ class SectorDAL:
             return 0
 
         self.db["sector_bars"].insert_all(
-            [bar.to_dict() for bar in bars], pk=SectorBar.__pk__, replace=True
+            [bar.to_dict() for bar in bars],
+            pk=SectorBar.__pk__,
+            replace=True,
         )
         return len(bars)
 
@@ -265,25 +388,34 @@ class SectorDAL:
         df = pl.DataFrame(rows)
         return df.with_columns(pl.col("dt").cast(pl.Date))
 
-    def get_stock_sectors(self, symbol: str) -> list[Sector]:
-        """获取个股所属板块
+    def get_sector_bars_by_date(
+        self,
+        trade_date: datetime.date,
+    ) -> pl.DataFrame:
+        """获取指定日期的所有板块行情
 
         Args:
-            symbol: 股票代码
+            trade_date: 交易日期
 
         Returns:
-            板块列表
+            行情数据DataFrame
         """
-        # 查询 sector_stocks 表获取包含该股票的板块ID
-        rows = list(self.db["sector_stocks"].rows_where(
-            "symbol = ?", (symbol,)
+        rows = list(self.db["sector_bars"].rows_where(
+            "dt = ?",
+            (trade_date,),
         ))
 
-        sectors = []
-        for row in rows:
-            sector_id = row["sector_id"]
-            sector = self.get_sector(sector_id)
-            if sector:
-                sectors.append(sector)
+        if not rows:
+            return pl.DataFrame(schema={
+                "dt": pl.Date,
+                "sector_id": pl.Utf8,
+                "open": pl.Float64,
+                "high": pl.Float64,
+                "low": pl.Float64,
+                "close": pl.Float64,
+                "volume": pl.Int64,
+                "amount": pl.Float64,
+            })
 
-        return sectors
+        df = pl.DataFrame(rows)
+        return df.with_columns(pl.col("dt").cast(pl.Date))
