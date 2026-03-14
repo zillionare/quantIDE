@@ -15,7 +15,7 @@ from qmt_gateway.apis import (
     quote_ws,
     register_auth_routes,
     register_quotes_routes,
-    register_sectors_routes,
+    register_stock_routes,
     register_trade_routes,
 )
 from qmt_gateway.apis.auth import hash_password
@@ -67,8 +67,8 @@ def create_app():
     # 注册 API 路由
     register_auth_routes(app)
     register_trade_routes(app)
-    register_sectors_routes(app)
     register_quotes_routes(app)
+    register_stock_routes(app)
 
     # 初始化向导路由
     @app.get("/init-wizard")
@@ -243,9 +243,9 @@ def create_app():
             return RedirectResponse("/login", status_code=302)
 
         # 获取交易数据
-        from qmt_gateway.apis.trade import trade_service
-        asset = trade_service.get_asset()
-        positions = trade_service.get_positions()
+        from qmt_gateway.apis.trade import get_latest_asset_data, get_latest_positions_data, trade_service
+        asset = get_latest_asset_data()
+        positions = get_latest_positions_data()
         orders = trade_service.get_orders()
         trades = trade_service.get_trades()
 
@@ -267,9 +267,9 @@ def create_app():
         if not user:
             return RedirectResponse("/login", status_code=302)
 
-        from qmt_gateway.apis.trade import trade_service
-        asset = trade_service.get_asset()
-        positions = trade_service.get_positions()
+        from qmt_gateway.apis.trade import get_latest_asset_data, get_latest_positions_data, trade_service
+        asset = get_latest_asset_data()
+        positions = get_latest_positions_data()
         orders = trade_service.get_orders()
         trades = trade_service.get_trades()
 
