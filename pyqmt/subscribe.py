@@ -1,3 +1,8 @@
+"""QMT 行情订阅模块
+
+用于从 QMT 订阅实时行情数据。
+"""
+
 import datetime
 import json
 import os
@@ -10,8 +15,6 @@ import cfg4py
 import numpy as np
 import pandas as pd
 from coretypes import FrameType
-from xtquant import xtdata as xtd
-from xtquant.xtdata import run
 
 from pyqmt.core.constants import key_price
 from pyqmt.core.context import g
@@ -96,12 +99,20 @@ def on_subscribe_callback(data):
 
 
 def subscribe_live():
+    """订阅实时行情"""
+    # 延迟导入 xtquant
+    from xtquant import xtdata as xtd
+
     os.environ[cfg4py.envar] = "DEV"
     g.init_dal()
     xtd.subscribe_whole_quote(["SH", "SZ"], on_subscribe_callback)
 
 
 def sync_1m_bars(codes: List[str]):
+    """同步1分钟K线数据"""
+    # 延迟导入 xtquant
+    from xtquant import xtdata as xtd
+
     start_ = "20240312"
     xtd.download_history_data2(
         codes, period="1m", start_time=start_, end_time="", callback=lambda x: x
@@ -115,6 +126,12 @@ def sync_1m_bars(codes: List[str]):
     print(f"{os.getpid()} records: {len(barss)}, {codes[0]}")
 
 
+def _run_qmt_loop():
+    """运行 QMT 数据循环"""
+    from xtquant.xtdata import run
+    run()
+
+
 if __name__ == "__main__":
     # t = Thread(target = subscribe_live)
     # t.start()
@@ -122,4 +139,4 @@ if __name__ == "__main__":
     global f
     f = open("live.json", "w", encoding="utf-8")
     subscribe_live()
-    run()
+    _run_qmt_loop()

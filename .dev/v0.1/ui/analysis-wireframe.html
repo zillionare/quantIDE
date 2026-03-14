@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分析界面原型 v0.4 - 线框图（单股票每行）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 线框图样式 */
+        .wireframe-box {
+            border: 2px dashed #9ca3af;
+            background: #f9fafb;
+        }
+        .wireframe-component {
+            border: 1px solid #d1d5db;
+            background: #ffffff;
+        }
+        .wireframe-label {
+            color: #6b7280;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        /* 选中状态 */
+        .selected-item {
+            background: #eff6ff;
+            border-left: 3px solid #3b82f6;
+        }
+        /* 模拟K线图 */
+        .kline-placeholder {
+            background: linear-gradient(135deg, #f3f4f6 25%, #e5e7eb 25%, #e5e7eb 50%, #f3f4f6 50%, #f3f4f6 75%, #e5e7eb 75%);
+            background-size: 20px 20px;
+        }
+        /* 高亮卡片 */
+        .highlighted-card {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        /* 隐藏滚动条但保持功能 */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b h-14 flex items-center px-4 shadow-sm flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">Q</div>
+            <span class="font-semibold text-gray-800">PyQMT</span>
+        </div>
+        <nav class="ml-8 flex gap-6">
+            <a href="#" class="text-gray-600 hover:text-blue-600">首页</a>
+            <a href="#" class="text-blue-600 font-medium">分析</a>
+            <a href="#" class="text-gray-600 hover:text-blue-600">回测</a>
+            <a href="#" class="text-gray-600 hover:text-blue-600">交易</a>
+        </nav>
+        <div class="ml-auto flex items-center gap-4">
+            <span class="text-sm text-gray-600">用户名</span>
+            <div class="w-8 h-8 bg-gray-300 rounded-full"></div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar - 三行结构 -->
+        <aside class="w-72 bg-white border-r flex flex-col flex-shrink-0">
+            
+            <!-- 第一行：板块选择 Select -->
+            <div class="p-3 border-b bg-gray-50">
+                <label class="wireframe-label block mb-2">板块选择</label>
+                <select class="w-full p-2 border rounded wireframe-component text-sm bg-white">
+                    <option>test -- 自定义</option>
+                    <option>钢铁行业 -- 行业</option>
+                    <option>新能源车 -- 概念</option>
+                    <option>深圳 -- 地区</option>
+                    <option>沪深300 -- 指数</option>
+                    <option>中证500 -- 指数</option>
+                    <option>创业板50 -- 指数</option>
+                    <option>芯片概念 -- 概念</option>
+                    <option>医药生物 -- 行业</option>
+                    <option disabled>──────────</option>
+                    <option class="text-blue-600 font-medium">+ 新建板块</option>
+                </select>
+            </div>
+
+            <!-- 第二行：板块个股列表 -->
+            <div class="flex-1 overflow-y-auto hide-scrollbar">
+                <div class="p-3 border-b bg-gray-50">
+                    <span class="text-sm font-medium text-gray-700">板块个股 (test)</span>
+                </div>
+                
+                <!-- 个股列表 -->
+                <div class="divide-y">
+                    <!-- 选中项 -->
+                    <div class="p-3 selected-item cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-600">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">平安银行</div>
+                                <div class="text-xs text-gray-500">000001.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">万科A</div>
+                                <div class="text-xs text-gray-500">000002.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">国农科技</div>
+                                <div class="text-xs text-gray-500">000004.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">世纪星源</div>
+                                <div class="text-xs text-gray-500">000005.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">深振业A</div>
+                                <div class="text-xs text-gray-500">000006.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">全新好</div>
+                                <div class="text-xs text-gray-500">000007.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">神州高铁</div>
+                                <div class="text-xs text-gray-500">000008.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">中国宝安</div>
+                                <div class="text-xs text-gray-500">000009.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">美丽生态</div>
+                                <div class="text-xs text-gray-500">000010.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-3 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex items-center gap-2">
+                            <span class="text-transparent">▶</span>
+                            <div>
+                                <div class="font-medium text-gray-900">深物业A</div>
+                                <div class="text-xs text-gray-500">000011.SZ</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 第三行：所属板块（选中个股后显示） -->
+            <div class="border-t p-4 bg-gray-50">
+                <label class="wireframe-label block mb-2">所属板块</label>
+                <div class="space-y-2">
+                    <div class="text-sm text-blue-600 cursor-pointer hover:underline flex items-center gap-1">
+                        <span>•</span> 沪深300
+                    </div>
+                    <div class="text-sm text-blue-600 cursor-pointer hover:underline flex items-center gap-1">
+                        <span>•</span> 银行板块
+                    </div>
+                    <div class="text-sm text-blue-600 cursor-pointer hover:underline flex items-center gap-1">
+                        <span>•</span> 深证50
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col bg-gray-100 overflow-hidden">
+            <!-- 工具条 -->
+            <div class="bg-white border-b p-3 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <!-- 类型切换 -->
+                    <select class="p-2 border rounded wireframe-component text-sm">
+                        <option>个股</option>
+                        <option>指数</option>
+                    </select>
+                    
+                    <!-- 搜索输入框 - 8字符宽度 -->
+                    <div class="relative">
+                        <input 
+                            type="text" 
+                            placeholder="代码/名称" 
+                            class="w-32 p-2 border rounded wireframe-component text-sm"
+                            maxlength="8"
+                        >
+                    </div>
+                    
+                    <!-- 周期按钮组 -->
+                    <div class="flex gap-1 ml-auto">
+                        <button class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white">日线</button>
+                        <button class="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                        <button class="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        <select class="px-2 py-1.5 text-sm border rounded bg-gray-100">
+                            <option>多周期 ▼</option>
+                            <option>季线</option>
+                            <option>年线</option>
+                            <option>1分钟</option>
+                            <option>5分钟</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- 搜索建议下拉（默认隐藏） -->
+                <div class="mt-2 bg-white border rounded shadow-lg w-48 hidden">
+                    <div class="p-2 hover:bg-gray-50 cursor-pointer border-b">
+                        <div class="flex justify-between">
+                            <span class="font-medium">平安银行</span>
+                            <span class="text-gray-500 text-xs">000001</span>
+                        </div>
+                    </div>
+                    <div class="p-2 hover:bg-gray-50 cursor-pointer">
+                        <div class="flex justify-between">
+                            <span class="font-medium">平安证券</span>
+                            <span class="text-gray-500 text-xs">002739</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- K线图列表区域 - 每行一支个股 -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                
+                <!-- K线卡片 1 - 高亮示例（对应左侧选中的平安银行） -->
+                <div class="bg-white rounded-lg shadow highlighted-card overflow-hidden">
+                    <div class="p-3 border-b bg-blue-50 flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">平安银行</span>
+                                <span class="text-xs text-gray-500">000001.SZ</span>
+                                <span class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">选中</span>
+                            </div>
+                            <div class="text-xs mt-1">
+                                <span class="text-red-600 font-medium">9.21</span>
+                                <span class="text-red-600 ml-2">+0.05 (+0.54%)</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white">日线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        </div>
+                    </div>
+                    <div class="h-64 kline-placeholder relative">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div class="text-4xl text-gray-300 mb-2">📈</div>
+                                <div class="text-xs text-gray-400">K线图</div>
+                            </div>
+                        </div>
+                        <!-- 模拟均线 -->
+                        <div class="absolute top-2 left-2 flex gap-2 text-xs">
+                            <span class="text-orange-500">MA5</span>
+                            <span class="text-blue-500">MA10</span>
+                            <span class="text-green-500">MA20</span>
+                        </div>
+                    </div>
+                    <div class="h-16 border-t bg-gray-50 flex items-center px-3">
+                        <div class="text-xs text-gray-500">成交量</div>
+                        <div class="flex-1 flex items-end gap-0.5 ml-2 h-10">
+                            <div class="flex-1 bg-red-400" style="height: 40%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 60%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 30%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 80%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 50%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 70%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 45%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 65%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 55%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 75%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- K线卡片 2 -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-3 border-b flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">万科A</span>
+                                <span class="text-xs text-gray-500">000002.SZ</span>
+                            </div>
+                            <div class="text-xs mt-1">
+                                <span class="text-green-600 font-medium">15.68</span>
+                                <span class="text-green-600 ml-2">-0.12 (-0.76%)</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white">日线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        </div>
+                    </div>
+                    <div class="h-64 kline-placeholder relative">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div class="text-4xl text-gray-300 mb-2">📉</div>
+                                <div class="text-xs text-gray-400">K线图</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-16 border-t bg-gray-50 flex items-center px-3">
+                        <div class="text-xs text-gray-500">成交量</div>
+                        <div class="flex-1 flex items-end gap-0.5 ml-2 h-10">
+                            <div class="flex-1 bg-green-400" style="height: 50%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 70%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 40%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 60%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 80%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 55%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 75%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 45%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 65%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 85%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- K线卡片 3 -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-3 border-b flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">国农科技</span>
+                                <span class="text-xs text-gray-500">000004.SZ</span>
+                            </div>
+                            <div class="text-xs mt-1">
+                                <span class="text-red-600 font-medium">12.35</span>
+                                <span class="text-red-600 ml-2">+0.23 (+1.90%)</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white">日线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        </div>
+                    </div>
+                    <div class="h-64 kline-placeholder relative">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div class="text-4xl text-gray-300 mb-2">📈</div>
+                                <div class="text-xs text-gray-400">K线图</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-16 border-t bg-gray-50 flex items-center px-3">
+                        <div class="text-xs text-gray-500">成交量</div>
+                        <div class="flex-1 flex items-end gap-0.5 ml-2 h-10">
+                            <div class="flex-1 bg-red-400" style="height: 60%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 80%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 40%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 70%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 90%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 50%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 75%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 65%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 85%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 45%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- K线卡片 4 -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-3 border-b flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">世纪星源</span>
+                                <span class="text-xs text-gray-500">000005.SZ</span>
+                            </div>
+                            <div class="text-xs mt-1">
+                                <span class="text-green-600 font-medium">3.45</span>
+                                <span class="text-green-600 ml-2">-0.02 (-0.58%)</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white">日线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        </div>
+                    </div>
+                    <div class="h-64 kline-placeholder relative">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div class="text-4xl text-gray-300 mb-2">📉</div>
+                                <div class="text-xs text-gray-400">K线图</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-16 border-t bg-gray-50 flex items-center px-3">
+                        <div class="text-xs text-gray-500">成交量</div>
+                        <div class="flex-1 flex items-end gap-0.5 ml-2 h-10">
+                            <div class="flex-1 bg-green-400" style="height: 30%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 50%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 40%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 60%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 45%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 70%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 55%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 75%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 65%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 85%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- K线卡片 5 -->
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="p-3 border-b flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-gray-900">深振业A</span>
+                                <span class="text-xs text-gray-500">000006.SZ</span>
+                            </div>
+                            <div class="text-xs mt-1">
+                                <span class="text-red-600 font-medium">6.78</span>
+                                <span class="text-red-600 ml-2">+0.08 (+1.19%)</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-1">
+                            <button class="px-2 py-1 text-xs rounded bg-blue-600 text-white">日线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">周线</button>
+                            <button class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300">月线</button>
+                        </div>
+                    </div>
+                    <div class="h-64 kline-placeholder relative">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <div class="text-center">
+                                <div class="text-4xl text-gray-300 mb-2">📈</div>
+                                <div class="text-xs text-gray-400">K线图</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-16 border-t bg-gray-50 flex items-center px-3">
+                        <div class="text-xs text-gray-500">成交量</div>
+                        <div class="flex-1 flex items-end gap-0.5 ml-2 h-10">
+                            <div class="flex-1 bg-red-400" style="height: 55%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 70%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 85%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 60%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 40%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 75%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 50%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 80%"></div>
+                            <div class="flex-1 bg-green-400" style="height: 65%"></div>
+                            <div class="flex-1 bg-red-400" style="height: 90%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 加载更多提示 -->
+                <div class="text-center py-6 text-gray-500 text-sm">
+                    向下滚动加载更多...
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 新建板块模态框（默认隐藏） -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-96 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">新建板块</h3>
+                <button class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">板块名称</label>
+                    <input type="text" class="w-full p-2 border rounded wireframe-component" placeholder="输入板块名称">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">板块类型</label>
+                    <select class="w-full p-2 border rounded wireframe-component">
+                        <option>自定义</option>
+                        <option>行业</option>
+                        <option>概念</option>
+                        <option>地区</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">导入方式</label>
+                    <div class="flex gap-2">
+                        <button class="flex-1 py-2 px-4 border rounded hover:bg-gray-50 text-sm">手动输入</button>
+                        <button class="flex-1 py-2 px-4 border rounded hover:bg-gray-50 text-sm">文件导入</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="px-4 py-2 text-gray-600 hover:text-gray-800">取消</button>
+                <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">创建</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

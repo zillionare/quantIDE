@@ -4,8 +4,10 @@ from unittest.mock import patch
 
 import cfg4py
 import numpy as np
+import pytest
 from pytest import approx
-from xtquant import xtdata
+
+xtdata = pytest.importorskip("xtquant.xtdata")
 
 from pyqmt.core.xtwrapper import (
     cache_bars,

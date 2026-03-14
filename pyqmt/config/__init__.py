@@ -6,26 +6,30 @@ Author: Aaron-Yang [code@jieyu.ai]
 Contributors:
 
 """
+import datetime
 import os
-import sys
 from importlib.metadata import version
-from os import path
+from pathlib import Path
 
 import cfg4py
+import pytz
+from loguru import logger
+
+from .schema import Config
 
 
-def get_config_dir():
+def get_config_dir() -> str:
     server_role = os.environ.get(cfg4py.envar)
 
     if server_role == "DEV":
-        _dir = path.normpath(path.join(path.dirname(__file__), "../config"))
+        _dir = Path(__file__).parent
     elif server_role == "TEST":
-        _dir = path.expanduser("~/.zillionare/pyqmt/config")
+        _dir = Path.home() / ".zillionare" / "pyqmt_test" / "config"
     else:
-        _dir = path.expanduser("~/zillionare/pyqmt/config")
+        _dir = Path.home() / ".zillionare" / "pyqmt" / "config"
 
-    sys.path.insert(0, _dir)
-    return _dir
+    logger.info(f"config dir: {_dir}")
+    return str(_dir)
 
 
 def endpoint():
@@ -34,3 +38,24 @@ def endpoint():
     major, minor, *_ = version("zillionare-pyqmt").split(".")
     prefix = cfg.server.prefix.rstrip("/")
     return f"{prefix}/v{major}.{minor}"
+
+
+def init_config(config_dir: str | Path | None = None):
+    config_dir = config_dir or get_config_dir()
+    cfg4py.init(str(config_dir))
+
+    cfg_ = cfg4py.get_instance()
+    if not hasattr(cfg_, "epoch"):
+        cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
+    cfg_.TIMEZONE = pytz.timezone("Asia/Shanghai")
+
+    # 展开 home 路径中的 ~
+    if hasattr(cfg_, "home") and isinstance(cfg_.home, str):
+        cfg_.home = str(Path(cfg_.home).expanduser())
+
+
+cfg: Config = cfg4py.get_instance()
+
+
+
+__all__ = ["cfg", "endpoint", "init_config"]

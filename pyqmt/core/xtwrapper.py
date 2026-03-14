@@ -8,19 +8,34 @@ import cfg4py
 import numpy as np
 import pandas as pd
 from arrow import Arrow
-from coretypes import Frame, FrameType, SecurityType
 from numpy.typing import NDArray
-from xtquant import xtdata as xt
 
-from pyqmt.core.constants import EPOCH, key_price, min_level_frames
-from pyqmt.core.context import g
+from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import XtQuantError
-from pyqmt.core.timeframe import tf
 from pyqmt.core.utils import date2str, time2minute
+
+Frame = datetime.datetime | datetime.date
 
 logger = logging.getLogger(__name__)
 
 cfg = cfg4py.get_instance()
+
+# xtquant 延迟导入
+_xt = None
+
+
+def _require_xt() -> Any:
+    """获取 xtquant.xtdata 模块，延迟导入"""
+    global _xt
+    if _xt is None:
+        from xtquant import xtdata as xt
+        _xt = xt
+    return _xt
+
+
+def require_xt() -> Any:
+    """获取 xtquant.xtdata 模块，延迟导入（公开版本）"""
+    return _require_xt()
 
 
 def _format_date(dt: datetime.date):
@@ -69,7 +84,7 @@ def on_subscribe_callback(data):
 
 
 def subcribe_live():
-    xt.subscribe_whole_quote(["SH", "SZ"])
+    _require_xt().subscribe_whole_quote(["SH", "SZ"])
 
 
 def cache_bars(frame_type: FrameType):
@@ -93,12 +108,13 @@ def cache_bars(frame_type: FrameType):
     if start >= end:
         logger.info("%s is cached already.", frame_type)
         return
-    
+
     # todo: 增加重启重连功能、超时功能
     try:
+        xt_ = _require_xt()
         symbols = get_stock_list()
         # 以下API提供了返回值，但该返回值并不可信。经测试，它可能返回None,但缓存已成功
-        xt.download_history_data2(
+        xt_.download_history_data2(
             symbols, frame_type.value, date2str(start), date2str(end)
         )  # type: ignore
     except Exception as e:
@@ -128,7 +144,7 @@ def get_bars(
         "suspendFlag",
     ]
 
-    data = xt.get_market_data_ex(
+    data = _require_xt().get_market_data_ex(
         field_list,
         stock_list=symbols,
         period=frame_type.value,
@@ -142,23 +158,27 @@ def get_bars(
     # convert to dataframe. Since py3.6, keys() and values() are all same order
     for symbol, df in data.items():
         df["symbol"] = symbol
-        
+
     df = pd.concat(data.values(), ignore_index=True)
 
     df.time = np.array(df.time, dtype="datetime64[ms]").astype(datetime.datetime)
     df.time = df["time"].dt.tz_localize("UTC").dt.tz_convert("Asia/Shanghai")
-    df.rename({"time": "frame", "amount": "money", "suspendFlag": "suspend"}, axis='columns', inplace=True)
+    df.rename(
+        {"time": "frame", "amount": "money", "suspendFlag": "suspend"},
+        axis="columns",
+        inplace=True,
+    )
     return df
 
 
 @cache
 def get_stock_list():
     ashare_all = "沪深A股"
-    return xt.get_stock_list_in_sector(ashare_all)
+    return _require_xt().get_stock_list_in_sector(ashare_all)
 
 
 def get_sectors():
-    sectors = xt.download_sector_data()
+    sectors = _require_xt().download_sector_data()
 
 
 @cache
@@ -182,7 +202,7 @@ def get_calendar(end: datetime.date | None = None) -> NDArray:  # type: ignore
     else:
         end_time = f"{end.year:04d}{end.month:02d}{end.day:02d}"
 
-    days = xt.get_trading_dates(market, start_time=EPOCH, end_time=end_time)
+    days = _require_xt().get_trading_dates(market, start_time=EPOCH, end_time=end_time)
     utc_datetime = pd.Series(days, dtype="datetime64[ms]").dt.tz_localize("UTC")
     return utc_datetime.dt.tz_convert("Asia/Shanghai").dt.date.values  # type: ignore
 
@@ -195,7 +215,7 @@ def get_security_info(symbol: str) -> Tuple[str, datetime.date, str]:
     Returns:
         证券显示名、IPO日和类型。其它信息忽略掉。
     """
-    item = xt.get_instrument_detail(symbol)
+    item = _require_xt().get_instrument_detail(symbol)
     if item is None:
         raise ValueError(f"invalid symbol: {symbol}")
 
@@ -237,7 +257,7 @@ def get_factor_ratio(
 
     start_ = tf.date2int(start)
     end_ = tf.date2int(end)
-    df = xt.get_divid_factors(symbol, EPOCH)
+    df = _require_xt().get_divid_factors(symbol, EPOCH)
 
     df.index = df.index.astype(int)
     frames = pd.DataFrame([], index=tf.day_frames)
