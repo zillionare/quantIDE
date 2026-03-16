@@ -25,7 +25,7 @@ CREATE INDEX idx_sectors_type ON sectors(sector_type);
 CREATE INDEX idx_sectors_source ON sectors(source);
 ```
 
-### 2.2 板块成分股表 (sector_stocks)
+### 2.2 板块成分股表 (sector\_stocks)
 
 存储板块与个股的关联关系。
 
@@ -66,7 +66,7 @@ CREATE INDEX idx_indices_type ON indices(index_type);
 CREATE INDEX idx_indices_category ON indices(category);
 ```
 
-### 2.4 板块行情表 (sector_bars)
+### 2.4 板块行情表 (sector\_bars)
 
 存储板块日线行情数据。
 
@@ -87,7 +87,7 @@ CREATE TABLE sector_bars (
 CREATE INDEX idx_sector_bars_date ON sector_bars(dt);
 ```
 
-### 2.5 指数行情表 (index_bars)
+### 2.5 指数行情表 (index\_bars)
 
 存储指数日线行情数据。
 
@@ -439,3 +439,4 @@ index_bars (表) - 依赖 indices
 2. **性能考虑**：板块成分股可能较多，查询时需要优化
 3. **重采样精度**：周线和月线按自然周/月聚合，注意节假日处理
 4. **错误处理**：同步失败时记录日志，不影响其他数据同步
+

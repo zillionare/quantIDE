@@ -1,6 +1,7 @@
 """实时行情服务
 
 订阅 QMT 全推行情，合成 K 线并通过 WebSocket 发布。
+非交易时间自动停止订阅以节省资源。
 """
 
 import datetime
@@ -20,6 +21,7 @@ class QuoteService:
     订阅 QMT 全推行情，合成 1分钟、30分钟和日线 K 线。
     1. 通过 subscribe_whole_quote 订阅个股行情
     2. 通过 subscribe_whole_quote 单独订阅指数行情（指数不能通过市场代码订阅）
+    3. 非交易时间自动停止订阅
     """
 
     # 主要指数代码列表
@@ -32,6 +34,12 @@ class QuoteService:
         "000688.SH",  # 科创50
     ]
 
+    # 交易时间配置
+    TRADE_START_AM = datetime.time(9, 15)   # 上午开盘前 15 分钟开始
+    TRADE_END_AM = datetime.time(11, 45)    # 上午收盘后 15 分钟停止
+    TRADE_START_PM = datetime.time(12, 45)  # 下午开盘前 15 分钟开始
+    TRADE_END_PM = datetime.time(15, 15)    # 下午收盘后 15 分钟停止
+
     def __init__(self):
         self._xtdata = None
         self._running = False
@@ -41,6 +49,26 @@ class QuoteService:
         self._bars_1m: dict[str, dict] = defaultdict(dict)
         self._bars_30m: dict[str, dict] = defaultdict(dict)
         self._bars_1d: dict[str, dict] = defaultdict(dict)
+        self._subscribed = False  # 是否已订阅
+
+    def _is_trade_time(self) -> bool:
+        """检查当前是否为交易时间（包含前后缓冲时间）"""
+        now = datetime.datetime.now().time()
+        weekday = datetime.datetime.now().weekday()
+
+        # 周末不交易
+        if weekday >= 5:  # 5=周六, 6=周日
+            return False
+
+        # 上午时段
+        if self.TRADE_START_AM <= now <= self.TRADE_END_AM:
+            return True
+
+        # 下午时段
+        if self.TRADE_START_PM <= now <= self.TRADE_END_PM:
+            return True
+
+        return False
 
     def _get_xtdata(self):
         """获取 xtdata 模块"""
@@ -70,10 +98,30 @@ class QuoteService:
         logger.info("实时行情服务已停止")
 
     def _run(self) -> None:
-        """运行行情订阅循环"""
+        """运行行情订阅循环（带交易时间检查）"""
         try:
             xtdata = self._get_xtdata()
 
+            while self._running:
+                is_trade_time = self._is_trade_time()
+
+                if is_trade_time and not self._subscribed:
+                    # 交易时间开始，订阅行情
+                    self._subscribe(xtdata)
+                elif not is_trade_time and self._subscribed:
+                    # 交易时间结束，取消订阅
+                    self._unsubscribe(xtdata)
+
+                # 每分钟检查一次
+                self._stop_event.wait(60)
+
+        except Exception as e:
+            logger.error(f"行情服务运行错误: {e}")
+            self._running = False
+
+    def _subscribe(self, xtdata) -> None:
+        """订阅行情"""
+        try:
             # 1. 订阅个股行情（通过市场代码）
             code_list = ["SH", "SZ", "BJ"]
             xtdata.subscribe_whole_quote(code_list, self._on_tick)
@@ -83,12 +131,25 @@ class QuoteService:
             xtdata.subscribe_whole_quote(self.INDEX_CODES, self._on_tick)
             logger.info(f"已订阅指数行情: {self.INDEX_CODES}")
 
-            # 保持运行，使用事件等待（比 time.sleep 更优雅，不占用 CPU）
-            self._stop_event.wait()
-
+            self._subscribed = True
         except Exception as e:
-            logger.error(f"行情服务运行错误: {e}")
-            self._running = False
+            logger.error(f"订阅行情失败: {e}")
+
+    def _unsubscribe(self, xtdata) -> None:
+        """取消订阅行情"""
+        try:
+            # 1. 取消订阅个股行情
+            code_list = ["SH", "SZ", "BJ"]
+            xtdata.unsubscribe_whole_quote(code_list)
+            logger.info(f"已取消订阅个股行情，市场: {code_list}")
+
+            # 2. 取消订阅指数行情
+            xtdata.unsubscribe_whole_quote(self.INDEX_CODES)
+            logger.info(f"已取消订阅指数行情: {self.INDEX_CODES}")
+
+            self._subscribed = False
+        except Exception as e:
+            logger.error(f"取消订阅行情失败: {e}")
 
     def _on_tick(self, data: dict) -> None:
         """处理 tick 数据
@@ -96,6 +157,10 @@ class QuoteService:
         Args:
             data: tick 数据字典
         """
+        # 非交易时间不处理数据
+        if not self._is_trade_time():
+            return
+
         try:
             symbol = data.get("code")
             if not symbol:

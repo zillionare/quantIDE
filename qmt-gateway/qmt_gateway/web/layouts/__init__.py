@@ -4,7 +4,7 @@
 """
 
 from qmt_gateway.web.layouts.base import BaseLayout, create_base_page
-from qmt_gateway.web.layouts.main import MainLayout, create_main_page, Header, Sidebar
+from qmt_gateway.web.layouts.main import MainLayout, create_main_page, Header
 
 __all__ = [
     "BaseLayout",
@@ -12,5 +12,4 @@ __all__ = [
     "MainLayout",
     "create_main_page",
     "Header",
-    "Sidebar",
 ]

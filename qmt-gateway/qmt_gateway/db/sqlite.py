@@ -13,12 +13,9 @@ from loguru import logger
 
 from qmt_gateway.db.models import (
     Asset,
-    Entity,
     Order,
+    Portfolio,
     Position,
-    Sector,
-    SectorBar,
-    SectorConstituent,
     Settings,
     SyncLog,
     Trade,
@@ -106,9 +103,7 @@ class SQLiteDB:
         entities = [
             User,
             Settings,
-            Sector,
-            SectorConstituent,
-            SectorBar,
+            Portfolio,
             SyncLog,
             Order,
             Trade,
@@ -185,74 +180,134 @@ class SQLiteDB:
         user.updated_at = __import__("datetime").datetime.now()
         self["users"].upsert(user.to_dict(), pk="id")
 
-    def get_sector(self, sector_id: str) -> Sector | None:
-        """根据ID获取板块"""
+    def get_order(self, qtoid: str) -> Order | None:
+        """根据ID获取订单"""
         try:
-            row = self["sectors"].get(sector_id)
-            return Sector.from_dict(dict(row))
+            row = self["orders"].get(qtoid)
+            return Order.from_dict(dict(row))
         except Exception:
             return None
 
-    def list_sectors(self, sector_type: str | None = None, trade_date: Any = None) -> list[Sector]:
-        """获取板块列表"""
+    def get_order_by_foid(self, foid: str) -> Order | None:
+        """根据代理订单ID获取订单"""
+        rows = list(self["orders"].rows_where("foid = ?", (foid,)))
+        if len(rows) == 0:
+            return None
+        return Order.from_dict(dict(rows[0]))
+
+    def insert_order(self, order: Order) -> None:
+        """插入订单"""
+        self["orders"].insert(order.to_dict(), pk=Order.__pk__, ignore=True)
+
+    def update_order(self, qtoid: str, **kwargs) -> None:
+        """更新订单"""
+        self["orders"].update(qtoid, kwargs)
+
+    def get_orders(self, portfolio_id: str | None = None, status: Any = None, start: Any = None, end: Any = None) -> list[Order]:
+        """获取订单列表"""
         where_clauses = []
         params = []
 
-        if sector_type:
-            where_clauses.append("sector_type = ?")
-            params.append(sector_type)
+        if portfolio_id:
+            where_clauses.append("portfolio_id = ?")
+            params.append(portfolio_id)
 
-        if trade_date:
-            where_clauses.append("trade_date = ?")
-            params.append(trade_date)
+        if status is not None:
+            where_clauses.append("status = ?")
+            params.append(int(status))
+
+        if start:
+            where_clauses.append("tm >= ?")
+            params.append(start)
+
+        if end:
+            where_clauses.append("tm <= ?")
+            params.append(end)
 
         where = " AND ".join(where_clauses) if where_clauses else None
 
-        rows = self["sectors"].rows_where(where, params)
-        return [Sector.from_dict(dict(row)) for row in rows]
+        rows = self["orders"].rows_where(where, params)
+        return [Order.from_dict(dict(row)) for row in rows]
 
-    def get_sector_constituents(self, sector_id: str, trade_date: Any) -> list[SectorConstituent]:
-        """获取板块成分股"""
-        rows = self["sector_constituents"].rows_where(
-            "sector_id = ? AND trade_date = ?",
-            (sector_id, trade_date),
-        )
-        return [SectorConstituent.from_dict(dict(row)) for row in rows]
+    def get_trade(self, tid: str) -> Trade | None:
+        """根据ID获取成交"""
+        try:
+            row = self["trades"].get(tid)
+            return Trade.from_dict(dict(row))
+        except Exception:
+            return None
 
-    def list_constituents(self, sector_id: str, trade_date: Any = None) -> list[SectorConstituent]:
-        """获取板块成分股列表（简化版，使用最新日期）"""
-        if trade_date is None:
-            # 获取最新交易日
-            row = self.db.execute(
-                "SELECT MAX(trade_date) as max_date FROM sector_constituents WHERE sector_id = ?",
-                (sector_id,)
-            ).fetchone()
-            if row and row["max_date"]:
-                trade_date = row["max_date"]
-            else:
-                return []
-        
-        return self.get_sector_constituents(sector_id, trade_date)
+    def insert_trade(self, trade: Trade) -> None:
+        """插入成交"""
+        self["trades"].insert(trade.to_dict(), pk=Trade.__pk__, ignore=True)
 
-    def insert_sectors(self, sectors: list[Sector]) -> None:
-        """批量插入板块"""
-        if not sectors:
-            return
-        self["sectors"].insert_all(
-            [s.to_dict() for s in sectors],
-            pk=Sector.__pk__,
-            ignore=True,
-        )
+    def get_trades(self, portfolio_id: str | None = None, start: Any = None, end: Any = None) -> list[Trade]:
+        """获取成交列表"""
+        where_clauses = []
+        params = []
 
-    def insert_constituents(self, constituents: list[SectorConstituent]) -> None:
-        """批量插入成分股"""
-        if not constituents:
-            return
-        self["sector_constituents"].insert_all(
-            [c.to_dict() for c in constituents],
-            pk=SectorConstituent.__pk__,
-            ignore=True,
-        )
+        if portfolio_id:
+            where_clauses.append("portfolio_id = ?")
+            params.append(portfolio_id)
+
+        if start:
+            where_clauses.append("tm >= ?")
+            params.append(start)
+
+        if end:
+            where_clauses.append("tm <= ?")
+            params.append(end)
+
+        where = " AND ".join(where_clauses) if where_clauses else None
+
+        rows = self["trades"].rows_where(where, params)
+        return [Trade.from_dict(dict(row)) for row in rows]
+
+    def get_trades_by_qtoid(self, qtoid: str) -> list[Trade]:
+        """根据订单ID获取成交列表"""
+        rows = self["trades"].rows_where("qtoid = ?", (qtoid,))
+        return [Trade.from_dict(dict(row)) for row in rows]
+
+    def get_position(self, portfolio_id: str, asset: str, dt: Any) -> Position | None:
+        """获取持仓"""
+        try:
+            row = self["positions"].get((portfolio_id, dt, asset))
+            return Position.from_dict(dict(row))
+        except Exception:
+            return None
+
+    def get_positions(self, portfolio_id: str, dt: Any) -> list[Position]:
+        """获取持仓列表"""
+        rows = self["positions"].rows_where("portfolio_id = ? AND dt = ?", (portfolio_id, dt))
+        return [Position.from_dict(dict(row)) for row in rows]
+
+    def insert_position(self, position: Position) -> None:
+        """插入持仓"""
+        self["positions"].insert(position.to_dict(), pk=Position.__pk__, ignore=True)
+
+    def get_asset(self, portfolio_id: str, dt: Any) -> Asset | None:
+        """获取资金"""
+        try:
+            row = self["assets"].get((portfolio_id, dt))
+            return Asset.from_dict(dict(row))
+        except Exception:
+            return None
+
+    def insert_asset(self, asset: Asset) -> None:
+        """插入资金"""
+        self["assets"].insert(asset.to_dict(), pk=Asset.__pk__, ignore=True)
+
+    def get_portfolio(self, portfolio_id: str) -> Portfolio | None:
+        """获取投资组合"""
+        try:
+            row = self["portfolios"].get(portfolio_id)
+            return Portfolio.from_dict(dict(row))
+        except Exception:
+            return None
+
+    def insert_portfolio(self, portfolio: Portfolio) -> None:
+        """插入投资组合"""
+        self["portfolios"].insert(portfolio.to_dict(), pk=Portfolio.__pk__, ignore=True)
 
 
 # 全局数据库实例
