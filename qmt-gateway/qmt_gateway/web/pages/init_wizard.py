@@ -1,10 +1,11 @@
 """初始化向导页面
 
-4 步初始化向导：
+5 步初始化向导：
 1. 欢迎页面
 2. 管理员设置
 3. 服务器设置
-4. QMT 配置
+4. 本金设置
+5. QMT 配置
 """
 
 from fasthtml.common import *
@@ -14,13 +15,14 @@ from qmt_gateway.web.layouts.base import create_base_page
 from qmt_gateway.web.theme import PRIMARY_COLOR, PrimaryButton, SecondaryButton
 
 
-def StepIndicator(current_step: int, total_steps: int = 4):
+def StepIndicator(current_step: int, total_steps: int = 5):
     """步骤指示器"""
     steps = [
         ("欢迎", 1),
         ("管理员", 2),
         ("服务器", 3),
-        ("QMT配置", 4),
+        ("本金", 4),
+        ("QMT配置", 5),
     ]
 
     items = []
@@ -174,8 +176,35 @@ def Step3_Server():
     )
 
 
-def Step4_QMT():
-    """步骤4：QMT 配置"""
+def Step4_Principal():
+    """步骤4：本金设置"""
+    return Div(
+        H4("本金设置", cls="text-xl font-semibold mb-4", style=f"color: {PRIMARY_COLOR};"),
+        P("设置账户起始资金，用于盈亏和仓位计算基准。", cls="text-gray-600 mb-4"),
+        Card(
+            CardBody(
+                Div(
+                    Label("初始本金（元）", cls="label"),
+                    Input(
+                        type="number",
+                        name="principal",
+                        value="1000000",
+                        min="0.01",
+                        step="0.01",
+                        cls="input input-bordered w-full",
+                        required=True,
+                    ),
+                    cls="mb-2",
+                ),
+            ),
+            cls="mb-4",
+        ),
+        cls="max-w-lg mx-auto",
+    )
+
+
+def Step5_QMT():
+    """步骤5：QMT 配置"""
     return Div(
         H4("QMT 配置", cls="text-xl font-semibold mb-4", style=f"color: {PRIMARY_COLOR};"),
         Card(
@@ -227,12 +256,13 @@ def WizardContent(step: int, form_data: dict | None = None):
         1: Step1_Welcome(),
         2: Step2_Admin(),
         3: Step3_Server(),
-        4: Step4_QMT(),
+        4: Step4_Principal(),
+        5: Step5_QMT(),
     }
     return content_map.get(step, Step1_Welcome())
 
 
-def WizardButtons(step: int, total_steps: int = 4):
+def WizardButtons(step: int, total_steps: int = 5):
     """向导导航按钮"""
     left_buttons = []
     right_buttons = []

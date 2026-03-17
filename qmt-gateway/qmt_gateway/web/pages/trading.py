@@ -125,6 +125,7 @@ def OrderForm(available_cash: float = 0):
             # 隐藏字段存储选中的股票代码
             Input(type="hidden", id="selected-symbol", name="symbol"),
             Input(type="hidden", id="selected-stock-name", name="stock_name"),
+            Input(type="hidden", id="selected-last-close", name="last_close", value="0"),
             cls="mb-4 relative",
         ),
         # 显示选中的股票
@@ -265,7 +266,7 @@ def SpeedDialGrid(last_close: float = 0):
             price_text = f"{price:.2f}"
             price_cls = "speed-dial-price absolute right-2 bottom-1 text-[11px] font-medium text-gray-400 leading-none"
             onclick_action = (
-                f"if(window.applySpeedDialPrice){{window.applySpeedDialPrice({price:.2f});}}"
+                f"if(window.applySpeedDialPrice){{window.applySpeedDialPrice({price:.2f}, {pct}, event);}}"
             )
             clickable_cls = "cursor-pointer"
         else:
@@ -483,10 +484,18 @@ def OrdersTable(orders: list[dict] | None = None):
             status_text, status_cls = status_map.get(status, ("未知", "bg-gray-100 text-gray-600"))
             can_cancel = bool(order.get("can_cancel", False)) and status != "filled"
             order_id = str(order.get("qtoid", ""))
+            symbol = str(order.get("symbol", ""))
+            name = str(order.get("name", ""))
+            safe_name = name.replace("\\", "\\\\").replace("'", "\\'")
+            price_text = f"{float(order.get('price', 0)):.2f}"
+            shares_text = str(order.get("shares", 0))
             row_attrs = {}
             row_cls = "hover:bg-gray-50"
             if can_cancel and order_id:
-                row_attrs["ondblclick"] = f"window.cancelOrder('{order_id}', true);"
+                row_attrs["ondblclick"] = (
+                    f"window.cancelOrder('{order_id}', true, '{symbol}', '{safe_name}', "
+                    f"'{side_text}', '{price_text}', '{shares_text}');"
+                )
                 row_cls += " cursor-pointer"
 
             rows.append(
@@ -503,7 +512,10 @@ def OrdersTable(orders: list[dict] | None = None):
                         Button(
                             "撤单",
                             cls="text-blue-600 hover:underline",
-                            onclick=f"window.cancelOrder('{order_id}', true); return false;",
+                            onclick=(
+                                f"window.cancelOrder('{order_id}', true, '{symbol}', '{safe_name}', "
+                                f"'{side_text}', '{price_text}', '{shares_text}'); return false;"
+                            ),
                         ) if can_cancel and order_id else "",
                     ),
                     cls=row_cls,
@@ -531,12 +543,22 @@ def OrdersTable(orders: list[dict] | None = None):
             cls="overflow-x-auto",
         ),
         Script("""
-            window.cancelOrder = function(orderId, needConfirm) {
+            window.cancelOrder = function(orderId, needConfirm, symbol, name, side, price, shares) {
                 if (!orderId) {
                     return;
                 }
-                if (needConfirm && !window.confirm('确定要撤单吗？')) {
-                    return;
+                if (needConfirm) {
+                    var detailLines = [
+                        '股票代码：' + String(symbol || '--'),
+                        '股票名称：' + String(name || '--'),
+                        '委托方向：' + String(side || '--'),
+                        '委托价格：' + String(price || '--'),
+                        '委托数量：' + String(shares || '--'),
+                    ];
+                    var message = detailLines.join('\n') + '\n\n确定要撤单吗？';
+                    if (!window.confirm(message)) {
+                        return;
+                    }
                 }
                 htmx.ajax('POST', '/api/trade/cancel?view=table&order_id=' + encodeURIComponent(orderId), {
                     target: '#positions-orders-container',
@@ -559,9 +581,22 @@ def TradingPage(
     
     # JavaScript 函数
     stock_selection_script = Script("""
-        window.applySpeedDialPrice = function(price) {
-            if (!(Number(price) > 0)) {
+        window.applySpeedDialPrice = function(price, pct, evt) {
+            var targetPrice = Number(price);
+            if (!(targetPrice > 0)) {
                 return;
+            }
+            var useRelative = !!(evt && (evt.ctrlKey || evt.metaKey));
+            if (useRelative) {
+                var currentPrice = getCurrentPrice();
+                if (!(currentPrice > 0)) {
+                    var lastCloseInput = document.getElementById('selected-last-close');
+                    currentPrice = Number(lastCloseInput && lastCloseInput.value ? lastCloseInput.value : 0);
+                }
+                var pctValue = Number(pct);
+                if (currentPrice > 0 && Number.isFinite(pctValue)) {
+                    targetPrice = currentPrice * (1 + pctValue / 100);
+                }
             }
             var orderType = document.getElementById('order-type');
             if (orderType && orderType.value !== 'limit') {
@@ -572,7 +607,7 @@ def TradingPage(
             }
             var priceInput = document.getElementById('order-price');
             if (priceInput) {
-                priceInput.value = Number(price).toFixed(2);
+                priceInput.value = Number(targetPrice).toFixed(2);
             }
             if (window.refreshOrderEstimate) {
                 window.refreshOrderEstimate();
@@ -650,6 +685,10 @@ def TradingPage(
             if (!String(raw).trim()) {
                 symbolInput.value = '';
                 nameInput.value = '';
+                var lastCloseInput = document.getElementById('selected-last-close');
+                if (lastCloseInput) {
+                    lastCloseInput.value = '0';
+                }
                 resetSpeedDial();
                 return;
             }
@@ -684,6 +723,10 @@ def TradingPage(
                     if (nameInput) {
                         nameInput.value = '';
                     }
+                    var lastCloseInput = document.getElementById('selected-last-close');
+                    if (lastCloseInput) {
+                        lastCloseInput.value = '0';
+                    }
                     resetSpeedDial();
                     return;
                 }
@@ -699,6 +742,11 @@ def TradingPage(
                 // 填充隐藏字段
                 document.getElementById('selected-symbol').value = symbol;
                 document.getElementById('selected-stock-name').value = name;
+                var lastCloseInput = document.getElementById('selected-last-close');
+                if (lastCloseInput) {
+                    var lastCloseValue = Number(lastClose || 0);
+                    lastCloseInput.value = lastCloseValue > 0 ? lastCloseValue.toFixed(4) : '0';
+                }
                 
                 // 在搜索框中显示选中的股票
                 var searchInput = document.getElementById('stock-search');
@@ -765,9 +813,9 @@ def TradingPage(
                         );
                     }
                     btn.disabled = false;
-                    btn.onclick = function() {
+                    btn.onclick = function(event) {
                         if (window.applySpeedDialPrice) {
-                            window.applySpeedDialPrice(price);
+                            window.applySpeedDialPrice(price, pct, event);
                         }
                     };
                 }

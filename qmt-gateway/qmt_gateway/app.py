@@ -21,7 +21,7 @@ from qmt_gateway.apis import (
 from qmt_gateway.apis.auth import hash_password
 from qmt_gateway.config import config
 from qmt_gateway.db import db
-from qmt_gateway.db.models import Settings, User
+from qmt_gateway.db.models import Asset, Settings, User
 from qmt_gateway.runtime import runtime
 from qmt_gateway.services.scheduler import scheduler
 from qmt_gateway.web.pages.data_mgmt import DataMgmtPage
@@ -164,7 +164,45 @@ def create_app():
             settings.qmt_path = str(Path(_wizard_data.get("qmt_path", "")).expanduser().resolve()) if _wizard_data.get("qmt_path") else ""
             settings.xtquant_path = str(Path(_wizard_data.get("xtquant_path", "")).expanduser().resolve()) if _wizard_data.get("xtquant_path") else ""
 
-            settings.init_step = 4
+            principal = float(_wizard_data.get("principal", 1000000))
+            if principal <= 0:
+                principal = 1000000
+
+            today = datetime.date.today()
+            portfolio_id = "default"
+            asset_row = db.conn.execute(
+                """
+                select cash, frozen_cash, market_value, total
+                from assets
+                where portfolio_id = ?
+                order by dt desc
+                limit 1
+                """,
+                (portfolio_id,),
+            ).fetchone()
+            if asset_row:
+                cash = float(asset_row[0] or 0)
+                frozen_cash = float(asset_row[1] or 0)
+                market_value = float(asset_row[2] or 0)
+                total = float(asset_row[3] or principal)
+            else:
+                cash = principal
+                frozen_cash = 0.0
+                market_value = 0.0
+                total = principal
+
+            initial_asset = Asset(
+                portfolio_id=portfolio_id,
+                dt=today,
+                principal=principal,
+                cash=cash,
+                frozen_cash=frozen_cash,
+                market_value=market_value,
+                total=total if total > 0 else principal,
+            )
+            db["assets"].upsert(initial_asset.to_dict(), pk=Asset.__pk__)
+
+            settings.init_step = 5
             db.save_settings(settings)
 
             # 重新加载配置
@@ -179,7 +217,7 @@ def create_app():
                     Button(
                         "返回修改配置",
                         cls="btn btn-secondary px-6 py-2",
-                        hx_get="/init-wizard/step/4",
+                        hx_get="/init-wizard/step/5",
                         hx_target="#wizard-form-container",
                     ),
                     cls="text-center py-8",
