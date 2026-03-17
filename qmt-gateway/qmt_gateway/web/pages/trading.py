@@ -86,7 +86,7 @@ def AccountInfo(asset: dict | None = None):
     )
 
 
-def OrderForm():
+def OrderForm(available_cash: float = 0):
     """委托下单表单（左侧）"""
     return Div(
         # 股票搜索（带自动补全）
@@ -99,6 +99,7 @@ def OrderForm():
                     placeholder="请输入股票名、拼音或者代码",
                     cls="input input-bordered w-full pr-10",
                     autocomplete="off",
+                    oninput="if(window.onStockInputChange){window.onStockInputChange(this.value);}",
                     hx_get="/api/stocks/search",
                     hx_trigger="keyup changed delay:200ms",
                     hx_target="#stock-suggestions",
@@ -159,40 +160,53 @@ def OrderForm():
         # 下单方式切换 - 调小尺寸，默认选中按金额
         Div(
             Label(
-                Input(type="radio", name="order-mode", value="amount", checked=True, cls="radio radio-sm radio-primary mr-1"),
+                Input(
+                    type="radio",
+                    id="order-mode-amount",
+                    name="order-mode",
+                    value="amount",
+                    checked=True,
+                    cls="mr-2 h-4 w-4 accent-blue-600",
+                    onchange="onOrderModeChange()",
+                ),
                 Span("按金额下单", cls="text-sm"),
                 cls="flex items-center cursor-pointer mr-4",
             ),
             Label(
-                Input(type="radio", name="order-mode", value="quantity", cls="radio radio-sm radio-primary mr-1"),
+                Input(
+                    type="radio",
+                    id="order-mode-quantity",
+                    name="order-mode",
+                    value="quantity",
+                    cls="mr-2 h-4 w-4 accent-blue-600",
+                    onchange="onOrderModeChange()",
+                ),
                 Span("按数量下单", cls="text-sm"),
                 cls="flex items-center cursor-pointer",
             ),
             cls="flex mb-4",
         ),
-        # 买入金额（初始空白）
         Div(
-            Label("买入金额（万元）", cls="label text-sm"),
-            Input(
-                type="number",
-                id="order-amount",
-                placeholder="请输入金额",
-                step="0.1",
-                cls="input input-bordered w-full",
-                oninput="onAmountChange(this.value)",
+            Label("下单值", cls="label text-sm", id="order-value-label"),
+            Div(
+                Input(
+                    type="number",
+                    id="order-value",
+                    placeholder="请输入金额",
+                    step="0.1",
+                    cls="input input-bordered w-full",
+                    oninput="refreshOrderEstimate()",
+                ),
+                Span("万元", id="order-value-unit", cls="text-gray-500 text-sm ml-2 whitespace-nowrap"),
+                cls="flex items-center",
             ),
-            cls="mb-4",
-        ),
-        # 预估数量（初始空白，可编辑）
-        Div(
-            Label("预估数量（股）", cls="label text-sm"),
-            Input(
-                type="number",
-                id="est-shares",
-                placeholder="请输入数量",
-                cls="input input-bordered w-full",
-                oninput="onSharesChange(this.value)",
+            Div(
+                Span("预估手数：", id="order-estimate-label", cls="text-sm text-gray-500"),
+                Span("--", id="order-estimate", cls="text-sm font-medium ml-1"),
+                cls="mt-2",
             ),
+            Input(type="hidden", id="est-shares"),
+            Input(type="hidden", id="available-cash", value=f"{float(available_cash or 0):.2f}"),
             cls="mb-4",
         ),
         # 仓位按钮
@@ -239,36 +253,49 @@ def SpeedDialGrid(last_close: float = 0):
 
     buttons = []
     for display_num, pct in levels:
-        # 颜色：正数为红色（涨），负数为绿色（跌）
         if pct > 0:
-            color = "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+            pct_style = "color: #dc2626;"
         elif pct < 0:
-            color = "bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+            pct_style = "color: #16a34a;"
         else:
-            color = "bg-gray-50 text-gray-600 border-gray-200"
+            pct_style = "color: #4b5563;"
 
-        # 如果有昨收价格，计算并显示价格；否则只显示百分比
         if last_close > 0:
             price = last_close * (1 + pct / 100)
             price_text = f"{price:.2f}"
-            onclick_action = f"document.getElementById('order-price').value = '{price:.2f}'"
+            price_cls = "speed-dial-price absolute right-2 bottom-1 text-[11px] font-medium text-gray-400 leading-none"
+            onclick_action = (
+                f"if(window.applySpeedDialPrice){{window.applySpeedDialPrice({price:.2f});}}"
+            )
+            clickable_cls = "cursor-pointer"
         else:
-            price_text = "--"
+            price_text = ""
+            price_cls = "speed-dial-price hidden"
             onclick_action = ""
+            clickable_cls = "cursor-default"
 
         buttons.append(
             Button(
-                Div(str(display_num), cls="text-base font-bold leading-tight"),
-                Div(price_text, cls="text-xs mt-0.5"),
-                cls=f"btn btn-sm aspect-square h-16 w-16 p-0 flex flex-col items-center justify-center border {color}",
+                Span(
+                    f"{display_num:+d}%",
+                    cls="speed-dial-pct text-[24px] font-medium italic leading-none",
+                    style=pct_style,
+                ),
+                Span(
+                    price_text,
+                    cls=price_cls,
+                ),
+                cls=(
+                    "btn h-32 w-32 min-h-0 rounded-xl p-0 relative bg-white "
+                    f"flex items-center justify-center border border-gray-200 shadow-sm {clickable_cls}"
+                ),
                 onclick=onclick_action if onclick_action else None,
-                disabled=last_close <= 0,
             )
         )
 
     return Div(
         *buttons,
-        cls="grid grid-cols-4 gap-2",
+        cls="grid grid-cols-4 gap-x-2 gap-y-1",
     )
 
 
@@ -309,30 +336,49 @@ def PositionTable(positions: list[dict] | None = None):
     if positions is None:
         positions = []
 
-    headers = ["代码", "名称", "持有数", "可卖数", "现价", "成本", "盈亏比", "浮盈", "买入均价", "市值", "持有成本", "卖出盈亏", "仓位"]
+    headers = ["代码", "名称", "持有数", "可卖数", "现价", "成本", "盈亏比", "浮盈", "市值", "持有成本", "卖出盈亏", "仓位"]
 
     rows = []
     if positions:
         for pos in positions:
             profit_ratio = pos.get("profit_ratio", 0)
             profit_color = "text-red-600" if profit_ratio >= 0 else "text-green-600"
+            symbol = str(pos.get("symbol", ""))
+            name = str(pos.get("name", ""))
+            price = float(pos.get("price", 0))
+            avail = float(pos.get("avail", 0))
+            can_sell = avail > 0
+            row_attrs = {}
+            row_cls = "hover:bg-gray-50"
+            if can_sell and symbol:
+                safe_symbol = symbol.replace("\\", "\\\\").replace("'", "\\'")
+                safe_name = name.replace("\\", "\\\\").replace("'", "\\'")
+                row_attrs["ondblclick"] = (
+                    "window.fillSellFromPosition("
+                    f"'{safe_symbol}',"
+                    f"'{safe_name}',"
+                    f"{price},"
+                    f"{avail}"
+                    ");"
+                )
+                row_cls += " cursor-pointer"
 
             rows.append(
                 Tr(
-                    Td(pos.get("symbol", "")),
-                    Td(pos.get("name", "")),
+                    Td(symbol),
+                    Td(name),
                     Td(str(pos.get("shares", 0))),
-                    Td(str(pos.get("avail", 0))),
-                    Td(f"{pos.get('price', 0):.2f}"),
-                    Td(f"{pos.get('cost', 0):.2f}"),
+                    Td(str(avail)),
+                    Td(f"{price:.2f}"),
+                    Td(f"{pos.get('cost', 0):.4f}"),
                     Td(f"{profit_ratio:.2f}%", cls=profit_color),
                     Td(f"{pos.get('float_profit', 0):.0f}", cls=profit_color),
-                    Td(f"{pos.get('buy_avg', 0):.2f}"),
                     Td(f"{pos.get('market_value', 0):.0f}"),
                     Td(f"{pos.get('hold_cost', 0):.0f}"),
                     Td(f"{pos.get('sell_profit', 0):.0f}"),
                     Td(f"{pos.get('position_ratio', 0):.1f}%"),
-                    cls="hover:bg-gray-50",
+                    cls=row_cls,
+                    **row_attrs,
                 )
             )
     else:
@@ -355,7 +401,52 @@ def PositionTable(positions: list[dict] | None = None):
             ),
             cls="overflow-x-auto",
         ),
+        Script("""
+            window.fillSellFromPosition = function(symbol, name, price, avail) {
+                if (!symbol || !avail || Number(avail) <= 0) {
+                    return;
+                }
+                var searchInput = document.getElementById('stock-search');
+                var symbolInput = document.getElementById('selected-symbol');
+                var nameInput = document.getElementById('selected-stock-name');
+                var priceInput = document.getElementById('order-price');
+                var modeAmount = document.getElementById('order-mode-amount');
+                var modeQuantity = document.getElementById('order-mode-quantity');
+                var orderValueInput = document.getElementById('order-value');
+                if (searchInput) {
+                    searchInput.value = (name || symbol) + ' (' + symbol + ')';
+                }
+                if (symbolInput) {
+                    symbolInput.value = symbol;
+                }
+                if (nameInput) {
+                    nameInput.value = name || symbol;
+                }
+                if (priceInput && Number(price) > 0) {
+                    priceInput.value = Number(price).toFixed(2);
+                }
+                if (modeQuantity) {
+                    modeQuantity.checked = true;
+                }
+                if (modeAmount) {
+                    modeAmount.checked = false;
+                }
+                if (window.onOrderModeChange) {
+                    window.onOrderModeChange();
+                }
+                if (orderValueInput) {
+                    orderValueInput.value = String(Math.floor(Number(avail) / 100));
+                }
+                if (window.refreshOrderEstimate) {
+                    window.refreshOrderEstimate();
+                }
+            };
+        """),
         id="positions-orders-container",
+        hx_get="/api/trade/positions?view=table",
+        hx_trigger="every 5s",
+        hx_target="#positions-orders-container",
+        hx_swap="outerHTML",
     )
 
 
@@ -368,11 +459,17 @@ def OrdersTable(orders: list[dict] | None = None):
 
     # 状态映射
     status_map = {
+        "unreported": ("未报", "bg-gray-100 text-gray-600"),
         "pending": ("待成交", "bg-yellow-100 text-yellow-800"),
+        "reported": ("已报", "bg-blue-100 text-blue-800"),
+        "canceling": ("已报待撤", "bg-orange-100 text-orange-800"),
+        "partial_canceling": ("部成待撤", "bg-orange-100 text-orange-800"),
+        "partial_cancelled": ("部撤", "bg-gray-100 text-gray-600"),
         "partial": ("部分成交", "bg-blue-100 text-blue-800"),
         "filled": ("已成交", "bg-green-100 text-green-800"),
         "cancelled": ("已撤单", "bg-gray-100 text-gray-600"),
-        "rejected": ("已拒绝", "bg-red-100 text-red-800"),
+        "rejected": ("废单", "bg-red-100 text-red-800"),
+        "unknown": ("未知", "bg-gray-100 text-gray-600"),
     }
 
     rows = []
@@ -384,6 +481,13 @@ def OrdersTable(orders: list[dict] | None = None):
 
             status = order.get("status", "pending")
             status_text, status_cls = status_map.get(status, ("未知", "bg-gray-100 text-gray-600"))
+            can_cancel = bool(order.get("can_cancel", False)) and status != "filled"
+            order_id = str(order.get("qtoid", ""))
+            row_attrs = {}
+            row_cls = "hover:bg-gray-50"
+            if can_cancel and order_id:
+                row_attrs["ondblclick"] = f"window.cancelOrder('{order_id}', true);"
+                row_cls += " cursor-pointer"
 
             rows.append(
                 Tr(
@@ -399,11 +503,11 @@ def OrdersTable(orders: list[dict] | None = None):
                         Button(
                             "撤单",
                             cls="text-blue-600 hover:underline",
-                            hx_post=f"/api/trade/cancel?order_id={order.get('qtoid', '')}",
-                            hx_confirm="确定要撤单吗？",
-                        ) if status in ["pending", "partial"] else "",
+                            onclick=f"window.cancelOrder('{order_id}', true); return false;",
+                        ) if can_cancel and order_id else "",
                     ),
-                    cls="hover:bg-gray-50",
+                    cls=row_cls,
+                    **row_attrs,
                 )
             )
     else:
@@ -426,6 +530,20 @@ def OrdersTable(orders: list[dict] | None = None):
             ),
             cls="overflow-x-auto",
         ),
+        Script("""
+            window.cancelOrder = function(orderId, needConfirm) {
+                if (!orderId) {
+                    return;
+                }
+                if (needConfirm && !window.confirm('确定要撤单吗？')) {
+                    return;
+                }
+                htmx.ajax('POST', '/api/trade/cancel?view=table&order_id=' + encodeURIComponent(orderId), {
+                    target: '#positions-orders-container',
+                    swap: 'outerHTML'
+                });
+            };
+        """),
         id="positions-orders-container",
     )
 
@@ -441,6 +559,138 @@ def TradingPage(
     
     # JavaScript 函数
     stock_selection_script = Script("""
+        window.applySpeedDialPrice = function(price) {
+            if (!(Number(price) > 0)) {
+                return;
+            }
+            var orderType = document.getElementById('order-type');
+            if (orderType && orderType.value !== 'limit') {
+                orderType.value = 'limit';
+            }
+            if (window.onOrderTypeChange) {
+                window.onOrderTypeChange('limit');
+            }
+            var priceInput = document.getElementById('order-price');
+            if (priceInput) {
+                priceInput.value = Number(price).toFixed(2);
+            }
+            if (window.refreshOrderEstimate) {
+                window.refreshOrderEstimate();
+            }
+        };
+
+        function fetchAndRenderSpeedDial(symbol) {
+            var container = document.getElementById('speed-dial-container');
+            if (!container || !symbol) {
+                return;
+            }
+            fetch('/api/stock/info?symbol=' + encodeURIComponent(symbol))
+                .then(function(resp) { return resp.text(); })
+                .then(function(html) { container.innerHTML = html; })
+                .catch(function() {});
+        }
+
+        function resetSpeedDial() {
+            var container = document.getElementById('speed-dial-container');
+            if (!container) {
+                return;
+            }
+            fetch('/api/stock/info')
+                .then(function(resp) { return resp.text(); })
+                .then(function(html) { container.innerHTML = html; })
+                .catch(function() {});
+        }
+
+        function parseSymbolFromInputValue(raw) {
+            if (!raw) {
+                return '';
+            }
+            var text = String(raw).trim().toUpperCase();
+            var match = text.match(/([0-9]{6}[.](?:SH|SZ|BJ))/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            var six = text.match(/^([0-9]{6})$/);
+            if (six && six[1]) {
+                return six[1];
+            }
+            return '';
+        }
+
+        function resolveStockByKeyword(raw) {
+            var keyword = String(raw || '').trim();
+            if (!keyword) {
+                return;
+            }
+            fetch('/api/stock/resolve?q=' + encodeURIComponent(keyword))
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (!data || !data.ok || !data.symbol) {
+                        return;
+                    }
+                    if (window.selectStock) {
+                        window.selectStock(
+                            data.symbol,
+                            data.name || data.symbol,
+                            Number(data.last_close || 0),
+                        );
+                    }
+                })
+                .catch(function() {});
+        }
+
+        function syncStockByInput() {
+            var searchInput = document.getElementById('stock-search');
+            var symbolInput = document.getElementById('selected-symbol');
+            var nameInput = document.getElementById('selected-stock-name');
+            if (!searchInput || !symbolInput || !nameInput) {
+                return;
+            }
+            var raw = searchInput.value || '';
+            if (!String(raw).trim()) {
+                symbolInput.value = '';
+                nameInput.value = '';
+                resetSpeedDial();
+                return;
+            }
+            var symbol = parseSymbolFromInputValue(raw);
+            if (!symbol) {
+                resolveStockByKeyword(raw);
+                return;
+            }
+            if (symbol.indexOf('.') === -1) {
+                resolveStockByKeyword(raw);
+                return;
+            }
+            var name = raw.split('(')[0].trim() || symbol;
+            symbolInput.value = symbol;
+            nameInput.value = name;
+            fetchAndRenderSpeedDial(symbol);
+        }
+
+        var stockInputTimer = null;
+        window.onStockInputChange = function(raw) {
+            if (stockInputTimer) {
+                clearTimeout(stockInputTimer);
+            }
+            stockInputTimer = setTimeout(function() {
+                var value = String(raw || '').trim();
+                if (value.length < 2) {
+                    var symbolInput = document.getElementById('selected-symbol');
+                    var nameInput = document.getElementById('selected-stock-name');
+                    if (symbolInput) {
+                        symbolInput.value = '';
+                    }
+                    if (nameInput) {
+                        nameInput.value = '';
+                    }
+                    resetSpeedDial();
+                    return;
+                }
+                syncStockByInput();
+            }, 250);
+        };
+
         // 选择股票
         window.selectStock = function(symbol, name, lastClose) {
             console.log('[DEBUG] selectStock called:', symbol, name, lastClose);
@@ -464,11 +714,14 @@ def TradingPage(
                 var priceInput = document.getElementById('order-price');
                 if (priceInput && lastClose > 0) {
                     priceInput.value = lastClose.toFixed(2);
+                    refreshOrderEstimate();
                 }
                 
                 // 更新 Speed Dial 价格
                 if (lastClose > 0) {
                     updateSpeedDial(lastClose);
+                } else if (symbol) {
+                    fetchAndRenderSpeedDial(symbol);
                 }
                 
                 console.log('[DEBUG] selectStock completed');
@@ -490,15 +743,32 @@ def TradingPage(
             var buttons = document.querySelectorAll('#speed-dial-container button');
             buttons.forEach(function(btn, index) {
                 if (index < levels.length) {
+                    var displayNum = levels[index][0];
                     var pct = levels[index][1];
                     var price = lastClose * (1 + pct / 100);
-                    var priceDiv = btn.querySelector('div:last-child');
+                    var pctEl = btn.querySelector('.speed-dial-pct');
+                    if (pctEl) {
+                        pctEl.textContent = (displayNum > 0 ? '+' : '') + String(displayNum) + '%';
+                    }
+                    var priceDiv = btn.querySelector('.speed-dial-price');
                     if (priceDiv) {
                         priceDiv.textContent = price.toFixed(2);
+                        priceDiv.classList.remove('hidden');
+                        priceDiv.classList.add(
+                            'absolute',
+                            'right-2',
+                            'bottom-1',
+                            'text-[11px]',
+                            'font-medium',
+                            'text-gray-400',
+                            'leading-none',
+                        );
                     }
                     btn.disabled = false;
                     btn.onclick = function() {
-                        document.getElementById('order-price').value = price.toFixed(2);
+                        if (window.applySpeedDialPrice) {
+                            window.applySpeedDialPrice(price);
+                        }
                     };
                 }
             });
@@ -514,27 +784,107 @@ def TradingPage(
         }
         
         // 金额变化时计算数量
-        window.onAmountChange = function(amount) {
-            var price = getCurrentPrice();
-            if (price > 0 && amount) {
-                var amountWan = parseFloat(amount);
-                var amountYuan = amountWan * 10000;
-                var shares = Math.floor(amountYuan / price / 100) * 100; // 向下取整到100股
-                document.getElementById('est-shares').value = shares;
+        function getOrderMode() {
+            var selected = document.querySelector('input[name="order-mode"]:checked');
+            return selected ? selected.value : 'amount';
+        }
+
+        function formatNumber(value, digits) {
+            return Number(value || 0).toLocaleString('zh-CN', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: digits,
+            });
+        }
+
+        function calcSharesByAmountWan(amountWan, price) {
+            if (price <= 0 || amountWan <= 0) {
+                return 0;
             }
-        };
-        
-        // 数量变化时计算金额
-        window.onSharesChange = function(shares) {
-            var price = getCurrentPrice();
-            if (price > 0 && shares) {
-                var sharesNum = parseFloat(shares);
-                var amountYuan = sharesNum * price;
-                var amountWan = amountYuan / 10000;
-                document.getElementById('order-amount').value = amountWan.toFixed(2);
+            return Math.floor((amountWan * 10000) / price / 100) * 100;
+        }
+
+        function calcSharesByHands(hands) {
+            if (hands <= 0) {
+                return 0;
             }
+            return Math.floor(hands) * 100;
+        }
+
+        function getAvailableCash() {
+            var cashInput = document.getElementById('available-cash');
+            if (!cashInput || !cashInput.value) {
+                return 0;
+            }
+            var cash = parseFloat(cashInput.value);
+            return Number.isFinite(cash) ? cash : 0;
+        }
+
+        window.refreshOrderEstimate = function() {
+            var price = getCurrentPrice();
+            var mode = getOrderMode();
+            var orderValueInput = document.getElementById('order-value');
+            var estimate = document.getElementById('order-estimate');
+            var sharesInput = document.getElementById('est-shares');
+            if (!orderValueInput || !estimate || !sharesInput) {
+                return;
+            }
+            var value = parseFloat(orderValueInput.value || '0');
+            if (!(value > 0) || !(price > 0)) {
+                estimate.textContent = '--';
+                sharesInput.value = '';
+                return;
+            }
+            if (mode === 'amount') {
+                var sharesByAmount = calcSharesByAmountWan(value, price);
+                var hands = sharesByAmount / 100;
+                sharesInput.value = String(sharesByAmount);
+                estimate.textContent = formatNumber(hands, 2) + ' 手';
+                return;
+            }
+            var sharesByHands = calcSharesByHands(value);
+            var amountWan = (sharesByHands * price) / 10000;
+            sharesInput.value = String(sharesByHands);
+            estimate.textContent = formatNumber(amountWan, 2) + ' 万元';
         };
-        
+
+        window.onAmountChange = function() {
+            refreshOrderEstimate();
+        };
+        window.onSharesChange = function() {
+            refreshOrderEstimate();
+        };
+
+        window.onOrderModeChange = function() {
+            var mode = getOrderMode();
+            var valueLabel = document.getElementById('order-value-label');
+            var valueUnit = document.getElementById('order-value-unit');
+            var estimateLabel = document.getElementById('order-estimate-label');
+            var valueInput = document.getElementById('order-value');
+            var estimate = document.getElementById('order-estimate');
+            if (
+                !valueLabel || !valueUnit || !estimateLabel ||
+                !valueInput || !estimate
+            ) {
+                return;
+            }
+            if (mode === 'amount') {
+                valueLabel.textContent = '下单金额';
+                valueUnit.textContent = '万元';
+                estimateLabel.textContent = '预估手数：';
+                valueInput.placeholder = '请输入金额';
+                valueInput.step = '0.1';
+            } else {
+                valueLabel.textContent = '下单数量';
+                valueUnit.textContent = '手';
+                estimateLabel.textContent = '预估金额：';
+                valueInput.placeholder = '请输入手数';
+                valueInput.step = '1';
+            }
+            if (!valueInput.value) {
+                estimate.textContent = '--';
+            }
+            refreshOrderEstimate();
+        };
         // 订单类型切换
         window.onOrderTypeChange = function(orderType) {
             var priceInput = document.getElementById('order-price');
@@ -546,25 +896,69 @@ def TradingPage(
                 priceInput.disabled = false;
                 priceInput.placeholder = '委托价格';
             }
+            refreshOrderEstimate();
         };
-        
         // 设置仓位比例
         window.setPositionRatio = function(ratio) {
-            // TODO: 根据可用资金计算金额
-            console.log('Set position ratio:', ratio);
+            var mode = getOrderMode();
+            var price = getCurrentPrice();
+            var orderValueInput = document.getElementById('order-value');
+            var availableCash = getAvailableCash();
+            if (!orderValueInput || !(ratio > 0) || !(availableCash > 0)) {
+                return;
+            }
+            if (mode === 'amount') {
+                var amountWan = (availableCash * ratio) / 10000;
+                orderValueInput.value = amountWan.toFixed(2);
+                refreshOrderEstimate();
+                return;
+            }
+            if (!(price > 0)) {
+                orderValueInput.value = '';
+                refreshOrderEstimate();
+                return;
+            }
+            var shares = Math.floor((availableCash * ratio) / price / 100) * 100;
+            var hands = shares / 100;
+            orderValueInput.value = String(Math.max(hands, 0));
+            refreshOrderEstimate();
         };
-        
         // 点击页面其他地方时隐藏下拉列表
         document.addEventListener('click', function(e) {
             var searchContainer = document.getElementById('stock-search');
             var suggestions = document.getElementById('stock-suggestions');
-            if (searchContainer && suggestions && 
-                !searchContainer.contains(e.target) && !suggestions.contains(e.target)) {
+            if (!searchContainer || !suggestions) {
+                return;
+            }
+            var isOutsideSearch = !searchContainer.contains(e.target);
+            var isOutsideSuggestions = !suggestions.contains(e.target);
+            if (isOutsideSearch && isOutsideSuggestions) {
                 suggestions.innerHTML = '';
             }
         });
+
+        function attachStockInputListeners() {
+            var searchInput = document.getElementById('stock-search');
+            if (!searchInput) {
+                return;
+            }
+            searchInput.addEventListener('change', syncStockByInput);
+            searchInput.addEventListener('blur', syncStockByInput);
+            searchInput.addEventListener('keyup', function(e) {
+                if (e && e.key === 'Enter') {
+                    syncStockByInput();
+                }
+            });
+        }
+
+        onOrderModeChange();
+        attachStockInputListeners();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            onOrderModeChange();
+            attachStockInputListeners();
+        });
     """)
-    
     return create_main_page(
         # JavaScript
         stock_selection_script,
@@ -572,7 +966,7 @@ def TradingPage(
         AccountInfo(asset),
         # 第2行：下单表单 + Speed Dial
         Div(
-            Div(OrderForm(), cls="w-1/3 pr-4"),
+            Div(OrderForm(asset.get("cash", 0) if asset else 0), cls="w-1/3 pr-4"),
             Div(
                 SpeedDialGrid(),
                 id="speed-dial-container",

@@ -281,6 +281,30 @@ class QuoteService:
         """检查服务是否运行中"""
         return self._running
 
+    def get_latest_price(self, symbol: str) -> float:
+        """获取最新价。
+
+        Args:
+            symbol: 证券代码
+
+        Returns:
+            最新价。无可用数据时返回 0
+        """
+        bars = self._bars_1m.get(symbol, {})
+        if not bars:
+            return 0
+        latest_bar = max(
+            bars.values(),
+            key=lambda item: str(item.get("time", "")),
+            default=None,
+        )
+        if not latest_bar:
+            return 0
+        try:
+            return float(latest_bar.get("close", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
 
 # 全局服务实例
 quote_service = QuoteService()

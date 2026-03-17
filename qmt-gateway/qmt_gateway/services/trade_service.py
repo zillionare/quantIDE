@@ -10,10 +10,14 @@ from typing import Any, Optional
 from loguru import logger
 
 from qmt_gateway.config import config
+from qmt_gateway.core.enums import BidType, OrderSide, OrderStatus
+from qmt_gateway.db.models import Order
+from qmt_gateway.db.sqlite import db
 
 
 # xtquant 模块（延迟导入）
 _xtquant_modules: dict[str, Any] = {}
+DEFAULT_PORTFOLIO_ID = "default"
 
 
 def _get_xtquant(name: str):
@@ -44,6 +48,9 @@ def _get_xtquant(name: str):
 class TradeCallback:
     """交易回调实现"""
 
+    def __init__(self, service: "TradeService"):
+        self._service = service
+
     def on_disconnected(self):
         """连接断开"""
         logger.warning("交易接口连接断开")
@@ -51,6 +58,7 @@ class TradeCallback:
     def on_stock_order(self, order):
         """委托回报推送"""
         logger.info(f"委托回报: {order.stock_code} {order.order_status}")
+        self._service.persist_callback_order(order)
 
     def on_stock_asset(self, asset):
         """资产回报推送"""
@@ -113,7 +121,7 @@ class TradeService:
             self._trader = XtQuantTrader(qmt_path, session_id)
 
             # 注册回调
-            callback = TradeCallback()
+            callback = TradeCallback(self)
             self._trader.register_callback(callback)
 
             # 启动交易接口
@@ -354,18 +362,21 @@ class TradeService:
 
             orders = []
             for o in xt_orders:
+                status_code = self._convert_order_status_code(o.order_status)
                 order = {
                     "symbol": o.stock_code,
                     "name": "",
-                    "side": "buy" if o.order_type == 23 else "sell",  # 23 = STOCK_BUY
+                    "side": self._convert_order_side(o.order_type),
                     "price": o.price,
                     "shares": o.order_volume,
                     "filled": o.traded_volume,
-                    "status": self._convert_order_status(o.order_status),
+                    "status": self._status_code_to_text(status_code),
+                    "status_code": status_code,
                     "time": datetime.datetime.fromtimestamp(o.order_time).strftime("%H:%M:%S"),
                     "qtoid": str(o.order_id),
                 }
                 orders.append(order)
+                self._persist_order_snapshot(order)
 
             return orders
 
@@ -406,32 +417,132 @@ class TradeService:
             logger.error(f"获取成交失败: {e}")
             return []
 
-    def _convert_order_status(self, xt_status: int) -> str:
-        """转换订单状态"""
-        # xtquant 订单状态
-        # 0: 未报
-        # 1: 待报
-        # 2: 已报
-        # 3: 已报待撤
-        # 4: 部成待撤
-        # 5: 部撤
-        # 6: 已撤
-        # 7: 部成
-        # 8: 已成
-        # 9: 废单
+    def _convert_order_side(self, order_type: Any) -> str:
+        try:
+            xtconstant = _get_xtquant("xtconstant")
+            buy_type = int(getattr(xtconstant, "STOCK_BUY", 23))
+        except Exception:
+            buy_type = 23
+        return "buy" if int(order_type) == buy_type else "sell"
+
+    def _status_code_to_text(self, status_code: int) -> str:
         status_map = {
-            0: "unreported",
-            1: "pending",
-            2: "reported",
-            3: "canceling",
-            4: "partial_canceling",
-            5: "partial_cancelled",
-            6: "cancelled",
-            7: "partial",
-            8: "filled",
-            9: "rejected",
+            48: "unreported",
+            49: "pending",
+            50: "reported",
+            51: "canceling",
+            52: "partial_canceling",
+            53: "partial_cancelled",
+            54: "cancelled",
+            55: "partial",
+            56: "filled",
+            57: "rejected",
         }
-        return status_map.get(xt_status, "unknown")
+        return status_map.get(status_code, "unknown")
+
+    def _convert_order_status(self, xt_status: Any) -> str:
+        return self._status_code_to_text(self._convert_order_status_code(xt_status))
+
+    def _convert_order_status_code(self, xt_status: Any) -> int:
+        aliases = {
+            "unreported": 48,
+            "wait_reporting": 49,
+            "pending": 49,
+            "reported": 50,
+            "reported_cancel": 51,
+            "canceling": 51,
+            "partsucc_cancel": 52,
+            "partial_canceling": 52,
+            "part_cancel": 53,
+            "partial_cancelled": 53,
+            "canceled": 54,
+            "cancelled": 54,
+            "part_succ": 55,
+            "partial": 55,
+            "succeeded": 56,
+            "filled": 56,
+            "junk": 57,
+            "rejected": 57,
+            "unknown": 255,
+        }
+        text = str(xt_status).strip().lower()
+        if text in aliases:
+            return aliases[text]
+        try:
+            code = int(text)
+        except (TypeError, ValueError):
+            return 255
+        if 0 <= code <= 9:
+            return 48 + code
+        if code in {48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 255}:
+            return code
+        return 255
+
+    def _persist_order_snapshot(self, order: dict) -> None:
+        qtoid = str(order.get("qtoid", "")).strip()
+        symbol = str(order.get("symbol", "")).strip()
+        if not qtoid or not symbol:
+            return
+        now = datetime.datetime.now()
+        tm = now
+        tm_text = str(order.get("time", "")).strip()
+        if tm_text:
+            try:
+                tm = datetime.datetime.fromisoformat(
+                    f"{now.date().isoformat()} {tm_text}"
+                )
+            except ValueError:
+                tm = now
+        side_text = str(order.get("side", "buy")).strip().lower()
+        side = OrderSide.BUY if side_text == "buy" else OrderSide.SELL
+        status_code = self._convert_order_status_code(
+            order.get("status_code", order.get("status", "unknown"))
+        )
+        db["orders"].upsert(
+            Order(
+                qtoid=qtoid,
+                portfolio_id=DEFAULT_PORTFOLIO_ID,
+                asset=symbol,
+                side=side,
+                shares=float(order.get("shares", 0) or 0),
+                bid_type=BidType.UNKNOWN,
+                tm=tm,
+                price=float(order.get("price", 0) or 0),
+                filled=float(order.get("filled", 0) or 0),
+                foid=qtoid,
+                status=OrderStatus(status_code),
+                status_msg="",
+                cid=str(order.get("cid", "") or ""),
+                strategy="gateway",
+            ).to_dict(),
+            pk=Order.__pk__,
+        )
+
+    def persist_callback_order(self, xt_order: Any) -> None:
+        try:
+            order_time = getattr(xt_order, "order_time", None)
+            if order_time:
+                time_text = datetime.datetime.fromtimestamp(order_time).strftime(
+                    "%H:%M:%S"
+                )
+            else:
+                time_text = datetime.datetime.now().strftime("%H:%M:%S")
+            order = {
+                "symbol": getattr(xt_order, "stock_code", ""),
+                "side": self._convert_order_side(getattr(xt_order, "order_type", 23)),
+                "price": float(getattr(xt_order, "price", 0) or 0),
+                "shares": float(getattr(xt_order, "order_volume", 0) or 0),
+                "filled": float(getattr(xt_order, "traded_volume", 0) or 0),
+                "status_code": self._convert_order_status_code(
+                    getattr(xt_order, "order_status", 255)
+                ),
+                "time": time_text,
+                "qtoid": str(getattr(xt_order, "order_id", "")),
+                "cid": str(getattr(xt_order, "order_sysid", "") or ""),
+            }
+            self._persist_order_snapshot(order)
+        except Exception as e:
+            logger.error(f"回调委托落库失败: {e}")
 
 
 # 全局交易服务实例
