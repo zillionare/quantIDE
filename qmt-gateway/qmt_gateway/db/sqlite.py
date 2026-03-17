@@ -13,6 +13,7 @@ from loguru import logger
 
 from qmt_gateway.db.models import (
     Asset,
+    HistoryMinuteJob,
     Order,
     Portfolio,
     Position,
@@ -109,6 +110,7 @@ class SQLiteDB:
             Trade,
             Position,
             Asset,
+            HistoryMinuteJob,
         ]
 
         for e in entities:
@@ -308,6 +310,19 @@ class SQLiteDB:
     def insert_portfolio(self, portfolio: Portfolio) -> None:
         """插入投资组合"""
         self["portfolios"].insert(portfolio.to_dict(), pk=Portfolio.__pk__, ignore=True)
+
+    def upsert_history_minute_job(self, job: HistoryMinuteJob) -> None:
+        """写入或更新历史分钟线下载任务."""
+        job.updated_at = __import__("datetime").datetime.now()
+        self["history_minute_jobs"].upsert(job.to_dict(), pk=HistoryMinuteJob.__pk__)
+
+    def get_history_minute_job(self, job_id: str) -> HistoryMinuteJob | None:
+        """获取历史分钟线下载任务."""
+        try:
+            row = self["history_minute_jobs"].get(job_id)
+            return HistoryMinuteJob.from_dict(dict(row))
+        except Exception:
+            return None
 
 
 # 全局数据库实例

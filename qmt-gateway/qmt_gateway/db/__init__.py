@@ -5,6 +5,7 @@
 
 from qmt_gateway.db.models import (
     Asset,
+    HistoryMinuteJob,
     Order,
     Portfolio,
     Position,
@@ -28,4 +29,5 @@ __all__ = [
     "Position",
     "Asset",
     "Stock",
+    "HistoryMinuteJob",
 ]

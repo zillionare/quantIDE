@@ -6,7 +6,7 @@
 import datetime
 import types
 import uuid
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import ClassVar, List, Union, get_args, get_origin
 
@@ -496,6 +496,80 @@ class SyncLog(Entity):
             message=data.get("message", ""),
             details=data.get("details", ""),
             created_at=datetime.datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.datetime.now()),
+        )
+
+
+@dataclass
+class HistoryMinuteJob(Entity):
+    """历史分钟线下载任务."""
+
+    __table_name__ = "history_minute_jobs"
+    __pk__ = "job_id"
+    __indexes__ = (["trade_date", "status", "created_at"], False)
+
+    job_id: str
+    trade_date: datetime.date
+    period: str
+    universe: str
+    status: str
+    file_path: str
+    file_name: str
+    total_symbols: int = 0
+    finished_symbols: int = 0
+    rows: int = 0
+    error: str = ""
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+    updated_at: datetime.datetime = field(default_factory=datetime.datetime.now)
+
+    def __post_init__(self):
+        if isinstance(self.trade_date, str):
+            if self.trade_date.find("T") != -1:
+                self.trade_date = datetime.datetime.fromisoformat(
+                    self.trade_date
+                ).date()
+            else:
+                self.trade_date = datetime.datetime.strptime(
+                    self.trade_date,
+                    "%Y-%m-%d",
+                ).date()
+        if isinstance(self.created_at, str):
+            self.created_at = datetime.datetime.fromisoformat(self.created_at)
+        if isinstance(self.updated_at, str):
+            self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
+
+    def to_dict(self) -> dict:
+        return {
+            "job_id": self.job_id,
+            "trade_date": self.trade_date.isoformat(),
+            "period": self.period,
+            "universe": self.universe,
+            "status": self.status,
+            "file_path": self.file_path,
+            "file_name": self.file_name,
+            "total_symbols": self.total_symbols,
+            "finished_symbols": self.finished_symbols,
+            "rows": self.rows,
+            "error": self.error,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HistoryMinuteJob":
+        return cls(
+            job_id=data["job_id"],
+            trade_date=data["trade_date"],
+            period=data["period"],
+            universe=data["universe"],
+            status=data.get("status", "pending"),
+            file_path=data.get("file_path", ""),
+            file_name=data.get("file_name", ""),
+            total_symbols=int(data.get("total_symbols", 0)),
+            finished_symbols=int(data.get("finished_symbols", 0)),
+            rows=int(data.get("rows", 0)),
+            error=data.get("error", ""),
+            created_at=data.get("created_at", datetime.datetime.now()),
+            updated_at=data.get("updated_at", datetime.datetime.now()),
         )
 
 
