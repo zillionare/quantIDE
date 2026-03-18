@@ -5,6 +5,8 @@ from typing import Any, Dict, Type
 from loguru import logger
 
 from pyqmt.core.enums import FrameType
+from pyqmt.core.ports import ClockPort
+from pyqmt.core.runtime.clock_bridge import BacktestClockAdapter
 from pyqmt.core.strategy import BaseStrategy
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.daily_bars import daily_bars
@@ -15,6 +17,14 @@ from pyqmt.service.metrics import metrics
 
 class BacktestRunner:
     """回测运行器，负责管理回测的生命周期和时间循环。"""
+
+    def __init__(self, clock: ClockPort | None = None):
+        """初始化回测运行器.
+
+        Args:
+            clock: 时钟端口实现。
+        """
+        self._clock = clock or BacktestClockAdapter()
 
     def _align_backtest_dates(
         self,
@@ -112,12 +122,14 @@ class BacktestRunner:
             # Close previous day if exists
             if last_trade_day is not None:
                 close_tm = calendar.replace_time(last_trade_day, 15, 30)
+                self._clock.set_now(close_tm)
                 broker.set_clock(close_tm)
                 strategy._current_time = close_tm
                 await strategy.on_day_close(close_tm)
 
             # Open new day
             open_tm = calendar.replace_time(current_date, 9, 30)
+            self._clock.set_now(open_tm)
             broker.set_clock(open_tm)
             strategy._current_time = open_tm
             await strategy.on_day_open(open_tm)
@@ -206,9 +218,9 @@ class BacktestRunner:
         if frame_type in [FrameType.MIN1, FrameType.MIN5]:
             start_tm = calendar.first_min_frame(start_date, frame_type)
             end_tm = calendar.last_min_frame(end_date, frame_type)
-            frames = calendar.get_frames(start_tm, end_tm, frame_type)
+            frames = self._clock.iter_frames(start_tm, end_tm, frame_type)
         else:
-            frames = calendar.get_frames(start_date, end_date, frame_type)
+            frames = self._clock.iter_frames(start_date, end_date, frame_type)
 
         last_trade_day = None
 
@@ -226,6 +238,7 @@ class BacktestRunner:
                 )
 
                 # Bar Logic
+                self._clock.set_now(bar_tm)
                 broker.set_clock(bar_tm)
                 strategy._current_time = bar_tm
                 quote = self._get_bar_quote(broker, current_date, config, frame_type)
@@ -234,6 +247,7 @@ class BacktestRunner:
             # Close the last day
             if last_trade_day is not None:
                 close_tm = calendar.replace_time(last_trade_day, 15, 30)
+                self._clock.set_now(close_tm)
                 broker.set_clock(close_tm)
                 strategy._current_time = close_tm
                 await strategy.on_day_close(close_tm)

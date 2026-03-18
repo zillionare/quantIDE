@@ -470,34 +470,7 @@ def show_create_modal():
 
 @rt("/create", methods=["POST"])
 async def create_portfolio(req):
-    form = await req.form()
-    name = form.get("name", "live")
-    principal = float(form.get("principal", 1_000_000))
-    commission = float(form.get("commission", 0.0001))
-    info = form.get("info", "")
-
-    import uuid
-    portfolio_id = uuid.uuid4().hex
-
-    try:
-        from pyqmt.service.qmt_broker import QMTBroker
-
-        broker = QMTBroker.create(
-            portfolio_id=portfolio_id,
-            principal=principal,
-            commission=commission,
-            portfolio_name=name,
-            info=info,
-        )
-
-        reg = _get_registry(req)
-        if reg:
-            reg.register(BrokerKind.QMT, portfolio_id, broker)
-
-        return Div("", hx_redirect="/trade/live")
-    except Exception as e:
-        logger.exception(e)
-        return Div(f"创建失败: {str(e)}", cls="text-red-500 p-4")
+    return Div("主体工程已移除本地QMT账户创建，请通过 gateway 进行实盘接入。", cls="text-amber-600 p-4")
 
 
 @rt("/{portfolio_id}")

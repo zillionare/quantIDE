@@ -42,27 +42,18 @@ class Config(object):
     class livequote:
         mode: str
 
-        class qmt:
-            path: str
-            markets: list
+    class gateway:
+        base_url: str
+        username: str
+        password: str
+        timeout: int
 
-        class redis:
-            host: str
-            port: int
-            channels: list
+    class runtime:
+        mode: str
+        market_adapter: str
+        broker_adapter: str
 
     brokers: list
-
-    class qmt:
-        account_id: str
-
-        account_type: str
-
-        name: str
-
-        path: str
-
-        principal: int
 
     class notify:
         class dingtalk:

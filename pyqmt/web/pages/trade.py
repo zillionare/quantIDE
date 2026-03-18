@@ -8,7 +8,7 @@ from monsterui.all import *
 from pyqmt.core.enums import BrokerKind
 from pyqmt.data.sqlite import Asset, Position
 from pyqmt.service.registry import BrokerRegistry
-from pyqmt.service.sim_broker import SimulationBroker
+from pyqmt.service.sim_broker import PaperBroker
 from pyqmt.web.layouts.main import MainLayout
 
 from pyqmt.web.theme import AppTheme
@@ -18,6 +18,13 @@ trade_app, rt = fast_app(hdrs=AppTheme.headers())
 
 def _get_registry(req) -> Any:
     return req.scope.get("registry")
+
+
+def _get_market_data(req) -> Any:
+    runtime = getattr(req.app.state, "runtime", None)
+    if runtime is None:
+        return None
+    return getattr(runtime, "market_data", None)
 
 
 def _build_asset_overview(asset: Asset | None) -> dict:
@@ -469,13 +476,15 @@ async def create_portfolio(req):
     portfolio_id = uuid.uuid4().hex
 
     try:
-        broker = SimulationBroker.create(
+        market_data = _get_market_data(req)
+        broker = PaperBroker.create(
             portfolio_id=portfolio_id,
             principal=principal,
             commission=commission,
             portfolio_name=name,
             info=info,
             market_value_update_interval=interval,
+            market_data=market_data,
         )
 
         reg = _get_registry(req)

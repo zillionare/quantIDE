@@ -1,7 +1,4 @@
-"""功能可用性检查中间件
-
-检查用户是否配置了 QMT，如果没有则禁用实盘/仿真交易功能。
-"""
+"""功能可用性检查中间件."""
 
 from functools import wraps
 
@@ -14,46 +11,11 @@ from pyqmt.service.init_wizard import init_wizard
 class FeatureCheckMiddleware(BaseHTTPMiddleware):
     """功能可用性检查中间件
 
-    根据 QMT 配置情况，控制实盘/仿真交易功能的可用性。
-    未配置 QMT 时，这些功能会被禁用（显示提示页面）。
+    当前版本默认放行，功能开关由运行时配置控制。
     """
-
-    # 需要 QMT 配置才能访问的路径
-    QMT_REQUIRED_PATHS = [
-        "/live-trading",  # 实盘交易
-        "/simulation",    # 仿真交易
-        "/paper-trading", # 模拟交易
-        "/realtime",      # 实时行情
-    ]
 
     async def dispatch(self, request, call_next):
         """处理请求"""
-        path = request.url.path
-
-        # 检查是否是受限制的路径
-        requires_qmt = any(path.startswith(p) for p in self.QMT_REQUIRED_PATHS)
-
-        if requires_qmt:
-            # 检查是否配置了 QMT
-            try:
-                if not init_wizard.has_qmt_configured():
-                    # 未配置 QMT，返回提示页面
-                    if request.method == "GET":
-                        return self._render_disabled_page("实盘/仿真交易")
-                    else:
-                        from fasthtml.common import JSONResponse
-                        return JSONResponse(
-                            {
-                                "error": "QMT 未配置",
-                                "message": "请先配置 QMT 账号才能使用此功能",
-                                "redirect": "/settings?qmt=required"
-                            },
-                            status_code=403,
-                        )
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"QMT 配置检查失败: {e}")
-
         response = await call_next(request)
         return response
 
@@ -126,12 +88,6 @@ def require_qmt_configured(func):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        try:
-            if not init_wizard.has_qmt_configured():
-                from fasthtml.common import RedirectResponse
-                return RedirectResponse("/settings?qmt=required", status_code=302)
-        except Exception:
-            pass
         return func(*args, **kwargs)
     return wrapper
 
@@ -157,15 +113,15 @@ def get_feature_status() -> dict[str, dict]:
                 "name": "仿真交易",
                 "available": status["simulation"],
                 "icon": "🎮",
-                "description": "使用 QMT 进行仿真交易",
-                "required": "配置 QMT 账号",
+                "description": "使用 gateway 进行仿真交易",
+                "required": "完成初始化",
             },
             "live_trading": {
                 "name": "实盘交易",
                 "available": status["live_trading"],
                 "icon": "💰",
-                "description": "使用 QMT 进行实盘交易",
-                "required": "配置 QMT 账号",
+                "description": "使用 gateway 进行实盘交易",
+                "required": "完成初始化",
             },
         }
 
@@ -184,14 +140,14 @@ def get_feature_status() -> dict[str, dict]:
                 "name": "仿真交易",
                 "available": False,
                 "icon": "🎮",
-                "description": "使用 QMT 进行仿真交易",
-                "required": "配置 QMT 账号",
+                "description": "使用 gateway 进行仿真交易",
+                "required": "完成初始化",
             },
             "live_trading": {
                 "name": "实盘交易",
                 "available": False,
                 "icon": "💰",
-                "description": "使用 QMT 进行实盘交易",
-                "required": "配置 QMT 账号",
+                "description": "使用 gateway 进行实盘交易",
+                "required": "完成初始化",
             },
         }

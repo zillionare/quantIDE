@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 from pathlib import Path
+from typing import Any
 
 import arrow
 import fasthtml.common as fh
@@ -21,6 +22,7 @@ from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.grid_search import GridSearch
 from pyqmt.service.metrics import metrics
 from pyqmt.service.runner import BacktestRunner
+from pyqmt.service.strategy_runtime import strategy_runtime_manager
 from pyqmt.web.layouts.main import MainLayout
 
 from pyqmt.web.theme import AppTheme
@@ -624,6 +626,135 @@ def _build_backtest_rows(strategies: dict) -> list:
         )
     return rows
 
+
+def _runtime_status_chip(status: str):
+    if status == "running":
+        cls = "px-2 py-0.5 rounded text-xs bg-green-100 text-green-700"
+    elif status == "failed":
+        cls = "px-2 py-0.5 rounded text-xs bg-red-100 text-red-700"
+    else:
+        cls = "px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700"
+    return Span(status, cls=cls)
+
+
+def _build_runtime_rows():
+    rows = []
+    for item in strategy_runtime_manager.list_runtime_rows():
+        actions = Td("-", cls="px-4 py-2 text-xs text-gray-400")
+        if item.get("strategy_id"):
+            if item.get("can_stop"):
+                actions = Td(
+                    Button(
+                        "停止",
+                        cls="btn btn-ghost btn-xs text-red-600",
+                        type="button",
+                        hx_post="/strategy/runtime/stop",
+                        hx_target="#runtime-monitor",
+                        hx_swap="outerHTML",
+                        hx_vals=json.dumps({"runtime_id": item["runtime_id"]}),
+                    ),
+                    cls="px-4 py-2",
+                )
+            elif item.get("can_start"):
+                actions = Td(
+                    Button(
+                        "启动",
+                        cls="btn btn-ghost btn-xs text-green-600",
+                        type="button",
+                        hx_post="/strategy/runtime/start",
+                        hx_target="#runtime-monitor",
+                        hx_swap="outerHTML",
+                        hx_vals=json.dumps({"runtime_id": item["runtime_id"]}),
+                    ),
+                    cls="px-4 py-2",
+                )
+        rows.append(
+            Tr(
+                Td(item["mode"], cls="px-4 py-2"),
+                Td(item["portfolio_id"], cls="px-4 py-2 font-mono text-xs"),
+                Td(item["strategy_name"] or "-", cls="px-4 py-2"),
+                Td(item["strategy_id"] or "-", cls="px-4 py-2 font-mono text-xs"),
+                Td(_runtime_status_chip(item["status"]), cls="px-4 py-2"),
+                Td(f"{item['total']:.2f}", cls="px-4 py-2"),
+                Td(str(item["positions"]), cls="px-4 py-2"),
+                Td(str(item["orders"]), cls="px-4 py-2"),
+                Td(item["updated_at"], cls="px-4 py-2 text-xs text-gray-500"),
+                actions,
+                cls="border-b border-gray-100",
+            )
+        )
+    if rows:
+        return rows
+    return [
+        Tr(
+            Td("暂无运行时实例", colspan="10", cls="px-4 py-6 text-center text-gray-400"),
+        )
+    ]
+
+
+def _runtime_table_card():
+    table = Table(
+        Thead(
+            Tr(
+                Th("模式", cls="px-4 py-2"),
+                Th("账户", cls="px-4 py-2"),
+                Th("策略", cls="px-4 py-2"),
+                Th("策略ID", cls="px-4 py-2"),
+                Th("状态", cls="px-4 py-2"),
+                Th("总资产", cls="px-4 py-2"),
+                Th("持仓数", cls="px-4 py-2"),
+                Th("委托数", cls="px-4 py-2"),
+                Th("更新时间", cls="px-4 py-2"),
+                Th("操作", cls="px-4 py-2"),
+                cls="text-left text-sm text-gray-600 border-b border-gray-200",
+            )
+        ),
+        Tbody(*_build_runtime_rows(), cls="text-sm"),
+        cls="w-full",
+    )
+    return Div(
+        Div(
+            H2("运行时监控", cls="text-lg font-semibold text-gray-900"),
+            Span("live/paper 常驻，backtest 按需创建", cls="text-xs text-gray-500"),
+            cls="p-6 border-b border-gray-200 flex items-center justify-between",
+        ),
+        Div(table, cls="overflow-x-auto"),
+        id="runtime-monitor",
+        hx_get="/strategy/runtime/table",
+        hx_trigger="load, every 5s",
+        hx_swap="outerHTML",
+        cls="bg-white rounded-lg shadow",
+    )
+
+
+@rt("/runtime/table")
+def runtime_table(req):
+    return _runtime_table_card()
+
+
+@rt("/runtime/stop", methods=["POST"])
+async def runtime_stop(req):
+    form = await req.form()
+    runtime_id = str(form.get("runtime_id") or "")
+    if runtime_id:
+        try:
+            strategy_runtime_manager.stop_strategy_runtime(runtime_id)
+        except Exception:
+            pass
+    return _runtime_table_card()
+
+
+@rt("/runtime/start", methods=["POST"])
+async def runtime_start(req):
+    form = await req.form()
+    runtime_id = str(form.get("runtime_id") or "")
+    if runtime_id:
+        try:
+            strategy_runtime_manager.start_strategy_runtime(runtime_id)
+        except Exception:
+            pass
+    return _runtime_table_card()
+
 @rt("/")
 def index(req, session):
     layout = MainLayout(title="策略列表", user=session.get("auth"))
@@ -781,6 +912,7 @@ def index(req, session):
             cls="bg-white rounded-lg shadow",
             id="backtest-list",
         ),
+        _runtime_table_card(),
         Div(id="modal-container"),
         cls="space-y-6",
     )
@@ -975,22 +1107,39 @@ async def run_backtest(req, name: str):
         if not cls: raise Exception("Strategy not found")
 
         portfolio_id = uuid.uuid4().hex
+        strategy_runtime_manager.create_backtest_runtime(
+            portfolio_id=portfolio_id,
+            strategy_name=name,
+            config=config,
+            interval=interval,
+            start_date=str(start_date),
+            end_date=str(end_date),
+            initial_cash=initial_cash,
+        )
         runner = BacktestRunner()
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(
-            None,
-            lambda: asyncio.run(
-                runner.run(
-                    strategy_cls=cls,
-                    config=config,
-                    start_date=start_date,
-                    end_date=end_date,
-                    frame_type=FrameType(interval),
-                    initial_cash=initial_cash,
-                    portfolio_id=portfolio_id,
+
+        def _job():
+            try:
+                asyncio.run(
+                    runner.run(
+                        strategy_cls=cls,
+                        config=config,
+                        start_date=start_date,
+                        end_date=end_date,
+                        frame_type=FrameType(interval),
+                        initial_cash=initial_cash,
+                        portfolio_id=portfolio_id,
+                    )
                 )
-            ),
-        )
+                strategy_runtime_manager.complete_backtest_runtime(portfolio_id)
+            except Exception as e:
+                strategy_runtime_manager.complete_backtest_runtime(
+                    portfolio_id, error=str(e)
+                )
+                raise
+
+        loop.run_in_executor(None, _job)
         return Response(
             "",
             headers={"HX-Redirect": f"/strategy/backtest/{portfolio_id}"},
@@ -1004,6 +1153,78 @@ async def run_backtest(req, name: str):
             Button("关闭", cls="btn btn-secondary", onclick="this.closest('.modal').remove()"),
             cls="p-4 bg-white rounded shadow"
         )
+
+
+def _get_runtime(req):
+    return getattr(req.app.state, "runtime", None)
+
+
+def _get_registry(req):
+    runtime = _get_runtime(req)
+    if runtime is None:
+        return None
+    return runtime.registry
+
+
+def _get_market_data(req):
+    runtime = _get_runtime(req)
+    if runtime is None:
+        return None
+    return runtime.market_data
+
+
+def _get_live_accounts(req) -> list[dict[str, Any]]:
+    runtime = _get_runtime(req)
+    if runtime is None:
+        return []
+    broker = runtime.adapters.get("broker", "gateway:default")
+    if broker is None:
+        return []
+    return [{"id": "gateway:default", "name": "gateway:default"}]
+
+
+@rt("/backtest/{portfolio_id}/deploy/paper", methods=["POST"])
+async def deploy_backtest_to_paper(req, portfolio_id: str):
+    form = await req.form()
+    principal = float(form.get("paper_principal", 1000000))
+    registry = _get_registry(req)
+    if registry is None:
+        return Div("运行时未初始化", cls="text-red-600 text-sm")
+    try:
+        runtime = strategy_runtime_manager.deploy_to_paper(
+            portfolio_id=portfolio_id,
+            principal=principal,
+            registry=registry,
+            market_data=_get_market_data(req),
+        )
+        return Div(
+            f"已转入仿真：{runtime.portfolio_id}，策略ID={runtime.strategy_id}",
+            cls="text-green-600 text-sm",
+        )
+    except Exception as e:
+        return Div(f"转入仿真失败: {e}", cls="text-red-600 text-sm")
+
+
+@rt("/backtest/{portfolio_id}/deploy/live", methods=["POST"])
+async def deploy_backtest_to_live(req, portfolio_id: str):
+    form = await req.form()
+    account_id = str(form.get("live_account_id") or "gateway:default")
+    registry = _get_registry(req)
+    if registry is None:
+        return Div("运行时未初始化", cls="text-red-600 text-sm")
+    try:
+        runtime = strategy_runtime_manager.deploy_to_live(
+            portfolio_id=portfolio_id,
+            account_id=account_id,
+            registry=registry,
+            market_data=_get_market_data(req),
+        )
+        return Div(
+            f"已转入实盘：{runtime.portfolio_id}，策略ID={runtime.strategy_id}",
+            cls="text-green-600 text-sm",
+        )
+    except Exception as e:
+        return Div(f"转入实盘失败: {e}", cls="text-red-600 text-sm")
 
 # --- Grid Search Modal & Runner ---
 
@@ -1217,6 +1438,7 @@ def backtest_result(req, session, portfolio_id: str):
     status = "running" if portfolio is None or portfolio.status else "finished"
     metrics_payload = _build_metrics_payload(portfolio_id)
     is_running = status == "running"
+    live_accounts = _get_live_accounts(req)
 
     date_axis = _build_date_axis(portfolio_id)
     series_payload = _build_series_payload(portfolio_id, date_axis)
@@ -1564,6 +1786,59 @@ def backtest_result(req, session, portfolio_id: str):
         cls="mb-4"
     )
 
+    deploy_panel = Div(
+        H3("策略投放", cls="text-lg font-semibold mb-3"),
+        Div(
+            Form(
+                Div(
+                    Label("仿真本金", cls="text-sm text-gray-500"),
+                    Input(
+                        name="paper_principal",
+                        type="number",
+                        value="1000000",
+                        cls="input input-sm",
+                    ),
+                    Button(
+                        "转入仿真",
+                        cls="btn btn-primary btn-sm",
+                        type="button",
+                        hx_post=f"/strategy/backtest/{portfolio_id}/deploy/paper",
+                        hx_target="#deploy-result",
+                        hx_include="closest form",
+                    ),
+                    cls="flex items-end gap-3",
+                )
+            ),
+            Form(
+                Div(
+                    Label("实盘网关", cls="text-sm text-gray-500"),
+                    Input(
+                        value=(live_accounts[0]["id"] if live_accounts else "gateway:default"),
+                        readonly=True,
+                        cls="input input-sm min-w-60 bg-gray-100",
+                    ),
+                    Input(
+                        type="hidden",
+                        name="live_account_id",
+                        value=(live_accounts[0]["id"] if live_accounts else "gateway:default"),
+                    ),
+                    Button(
+                        "转入实盘",
+                        cls="btn btn-secondary btn-sm",
+                        type="button",
+                        hx_post=f"/strategy/backtest/{portfolio_id}/deploy/live",
+                        hx_target="#deploy-result",
+                        hx_include="closest form",
+                    ),
+                    cls="flex items-end gap-3",
+                )
+            ),
+            cls="grid grid-cols-1 md:grid-cols-2 gap-4",
+        ),
+        Div(id="deploy-result", cls="mt-3 text-sm"),
+        cls="bg-white p-4 rounded-lg border border-gray-100 mt-4",
+    )
+
     trade_rows = _build_trade_rows(portfolio_id, limit=200)
     positions_rows = _build_daily_positions(portfolio_id)
     log_rows = _build_log_rows(portfolio_id, limit=200)
@@ -1628,6 +1903,7 @@ def backtest_result(req, session, portfolio_id: str):
                 A("← 返回策略详情", href="javascript:history.back()", cls="text-gray-500 hover:text-gray-800 mb-4 inline-block"),
                 H1("回测报告", cls="text-3xl font-bold mb-2"),
                 status_badge,
+                deploy_panel,
 
                 Div(
                     H3("收益概述", cls="text-xl font-bold mb-3"),

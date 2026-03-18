@@ -43,15 +43,6 @@ class AppState(Entity):
     tushare_token: str = ""
     """Tushare API Token"""
 
-    qmt_account_id: str = ""
-    """QMT账号ID"""
-
-    qmt_account_type: str = ""
-    """账号类型：simulation(仿真) / live(实盘)"""
-
-    qmt_path: str = ""
-    """QMT安装路径"""
-
     # ========== 任务调度配置 ==========
     daily_fetch_time: str = "16:00"
     """日线数据获取时间，格式 HH:MM"""
@@ -61,9 +52,6 @@ class AppState(Entity):
 
     adj_factor_time: str = "09:20"
     """复权因子获取时间，格式 HH:MM"""
-
-    sector_sync_time: str = "19:00"
-    """板块数据同步时间，格式 HH:MM"""
 
     index_sync_time: str = "19:30"
     """指数数据同步时间，格式 HH:MM"""
@@ -126,21 +114,13 @@ class AppState(Entity):
         """
         return self.init_completed and self.init_step >= 5
 
-    def has_qmt_configured(self) -> bool:
-        """检查是否配置了 QMT 账号
-
-        Returns:
-            bool: True 表示已配置 QMT（账号ID和路径都不为空）
-        """
-        return bool(self.qmt_account_id) and bool(self.qmt_path)
-
     def can_use_live_trading(self) -> bool:
         """检查是否可以使用实盘/仿真交易功能
 
         Returns:
             bool: True 表示可以使用实盘/仿真功能
         """
-        return self.is_fully_initialized and self.has_qmt_configured()
+        return self.is_fully_initialized
 
     def can_use_backtest(self) -> bool:
         """检查是否可以使用回测功能
@@ -149,12 +129,3 @@ class AppState(Entity):
             bool: True 表示可以使用回测功能
         """
         return self.is_fully_initialized and bool(self.tushare_token)
-
-    @property
-    def account_type_display(self) -> str:
-        """获取账号类型的显示名称"""
-        type_map = {
-            "simulation": "仿真交易",
-            "live": "实盘交易",
-        }
-        return type_map.get(self.qmt_account_type, "未配置")

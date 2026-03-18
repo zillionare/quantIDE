@@ -19,6 +19,7 @@ from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 
 from pyqmt.config import cfg, init_config
+from pyqmt.core.runtime import RuntimeBootstrap
 
 
 def _check_single_instance():
@@ -62,14 +63,9 @@ def _check_single_instance():
             pid_file.unlink()
 
     atexit.register(cleanup_pid)
-from pyqmt.core.enums import BrokerKind
 from pyqmt.core.errors import BaseTradeError
-from pyqmt.core.scheduler import scheduler
 from pyqmt.data import init_data
-from pyqmt.service.livequote import live_quote
-from pyqmt.service.registry import BrokerRegistry
-from pyqmt.service.qmt_broker import QMTBroker
-from pyqmt.service.sim_broker import SimulationBroker
+from pyqmt.service.strategy_runtime import strategy_runtime_manager
 from pyqmt.web.apis.broker import app as broker_api_app
 from pyqmt.web.auth.manager import AuthManager
 from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
@@ -89,70 +85,6 @@ from pyqmt.web.pages.login import login_app
 from pyqmt.web.pages.strategy import strategy_app
 from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
-from pyqmt.data import db
-
-
-def _load_accounts_from_db(registry: BrokerRegistry):
-    """从数据库加载所有账户到 BrokerRegistry"""
-    try:
-        # 从数据库加载所有 portfolio
-        portfolios = db.get_all_portfolios()
-    except RuntimeError as e:
-        # 数据库未初始化，跳过账户加载
-        print(f"Database not initialized, skipping account loading: {e}")
-        return
-
-    for pf in portfolios:
-        if pf.kind == BrokerKind.SIMULATION:
-            try:
-                # 加载已存在的模拟账户
-                broker = SimulationBroker.load(pf.portfolio_id)
-                registry.register(BrokerKind.SIMULATION, pf.portfolio_id, broker)
-            except Exception as e:
-                print(f"Failed to load simulation account {pf.portfolio_id}: {e}")
-
-
-def _create_qmt_broker_if_configured(registry: BrokerRegistry):
-    """如果配置了QMT信息，则创建QMT broker实例"""
-    from pyqmt.web.pages.init_wizard import init_wizard
-
-    try:
-        state = init_wizard.get_state()
-    except RuntimeError as e:
-        # 数据库未初始化，跳过QMT broker创建
-        print(f"Database not initialized, skipping QMT broker creation: {e}")
-        return
-
-    # 检查是否配置了QMT账号信息
-    if state.qmt_account_id and state.qmt_path:
-        try:
-            # 创建QMT broker实例
-            # 注意：这里应该确保QMTBroker实现了所有抽象方法
-            broker = QMTBroker(
-                account_id=state.qmt_account_id,
-                portfolio_id=state.qmt_account_id
-            )
-
-            # 注册到BrokerRegistry
-            registry.register(BrokerKind.QMT, state.qmt_account_id, broker)
-
-            print(f"Successfully created and registered QMT broker for account {state.qmt_account_id}")
-        except Exception as e:
-            print(f"Failed to create QMT broker: {e}")
-            print("QMT configuration exists but broker creation failed, user may need to manually configure account")
-
-
-def _check_xtquant():
-    """检查 xtquant 是否可用（当配置为 qmt 模式时）"""
-    if cfg.livequote.mode == "qmt":
-        try:
-            from xtquant import xtdata
-        except ImportError as e:
-            raise RuntimeError(
-                "Configuration requires qmt mode, but xtquant is not installed. "
-                "Please install QMT and ensure xtquant is available in your Python environment. "
-                f"Original error: {e}"
-            ) from e
 
 
 def init():
@@ -161,22 +93,10 @@ def init():
     # 检查是否已有实例在运行
     _check_single_instance()
 
-    # 检查 xtquant 可用性
-    _check_xtquant()
-
     init_data(cfg.home)
-
-    scheduler.start()
-
-    live_quote.start()
-
-    reg = BrokerRegistry()
-
-    # 从数据库加载已有账户
-    _load_accounts_from_db(reg)
-    
-    # 尝试创建QMT broker（如果已配置）
-    _create_qmt_broker_if_configured(reg)
+    runtime = RuntimeBootstrap().bootstrap()
+    reg = runtime.registry
+    strategy_runtime_manager.bootstrap_from_registry(reg, runtime.market_data)
 
     auth = AuthManager(config={"login_path": "/login"})
 
@@ -224,6 +144,8 @@ def init():
     )
 
     auth.initialize(app, prefix="/auth")
+    app.state.runtime = runtime
+    app.state.strategy_runtime_manager = strategy_runtime_manager
 
     # 添加交易页面路由
     @rt("/trade/set-active", methods=["POST"])

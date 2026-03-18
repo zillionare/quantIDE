@@ -13,9 +13,8 @@ from loguru import logger
 from monsterui.all import *
 from starlette.responses import StreamingResponse
 
-from pyqmt.data.services import IndexSyncService, SectorSyncService, StockSyncService
+from pyqmt.data.services import IndexSyncService, StockSyncService
 from pyqmt.data.dal.index_dal import IndexDAL
-from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.models.calendar import Calendar
 from pyqmt.data.models.daily_bars import daily_bars
 from pyqmt.data.models.stocks import stock_list
@@ -118,7 +117,7 @@ def Step1_Welcome():
             cls="text-gray-600 mb-4",
         ),
         Ul(
-            Li("配置数据源（Tushare、QMT）"),
+            Li("配置数据源（Tushare、Gateway）"),
             Li("设置定时任务时间"),
             Li("下载历史行情数据"),
             cls="list-disc pl-6 mb-6 text-gray-600",
@@ -164,42 +163,6 @@ def Step2_DataSource(state: dict | None = None):
             ),
             cls="mb-4",
         ),
-        # QMT 配置（可选，但影响功能）
-        Card(
-            CardHeader(
-                H5("QMT 配置（可选）", cls="text-lg font-semibold"),
-            ),
-            CardBody(
-                Alert(
-                    "⚠️ 重要提示",
-                    "如果不配置 QMT，实盘交易和仿真交易功能将被禁用，仅回测功能可用。",
-                    cls="mb-4"
-                ),
-                P(
-                    "QMT 是实盘/仿真交易执行端。配置后可使用实时行情和交易功能。",
-                    cls="text-sm text-gray-600 mb-4",
-                ),
-                # 隐藏字段：固定为实盘类型
-                Input(
-                    type="hidden",
-                    name="qmt_account_type",
-                    value="live",
-                ),
-                LabelInput(
-                    label="QMT 账号 ID",
-                    name="qmt_account_id",
-                    value=state.get("qmt_account_id", ""),
-                    placeholder="请输入 QMT 账号 ID（不配置则留空）",
-                ),
-                LabelInput(
-                    label="QMT 安装路径",
-                    name="qmt_path",
-                    value=state.get("qmt_path", ""),
-                    placeholder="例如: C:/国金证券QMT交易端（不配置则留空）",
-                ),
-            ),
-            cls="mb-4 border-warning",
-        ),
         cls="max-w-2xl mx-auto",
     )
 
@@ -243,12 +206,6 @@ def Step3_Schedule(state: dict | None = None):
                             type="time",
                             value=state.get("daily_fetch_time", "16:00"),
                             cls="mb-3",
-                        ),
-                        LabelInput(
-                            label="板块数据同步时间",
-                            name="sector_sync_time",
-                            type="time",
-                            value=state.get("sector_sync_time", "19:00"),
                         ),
                     ),
                     # 晚间任务
@@ -318,7 +275,6 @@ def Step4_DownloadData(state: dict | None = None):
                     Li("股票日线行情（开高低收、成交量、复权因子）"),
                     Li("涨跌停价格数据"),
                     Li("ST 股票标记"),
-                    Li("板块数据"),
                     Li("指数数据"),
                     cls="list-disc pl-6 text-sm text-gray-600",
                 ),
@@ -525,9 +481,6 @@ async def handle_step(request: Request, step: int):
         # 保存数据源配置
         init_wizard.save_data_source_config(
             tushare_token=str(form_dict.get("tushare_token", "")),
-            qmt_account_id=str(form_dict.get("qmt_account_id", "")),
-            qmt_account_type=str(form_dict.get("qmt_account_type", "live")),
-            qmt_path=str(form_dict.get("qmt_path", "")),
         )
     
     if step == 2:
@@ -539,7 +492,6 @@ async def handle_step(request: Request, step: int):
             daily_fetch_time=str(form_dict.get("daily_fetch_time", "16:00")),
             limit_refresh_time=str(form_dict.get("limit_refresh_time", "09:00")),
             adj_factor_time=str(form_dict.get("adj_factor_time", "09:20")),
-            sector_sync_time=str(form_dict.get("sector_sync_time", "19:00")),
             index_sync_time=str(form_dict.get("index_sync_time", "19:30")),
         )
     elif step == 4:
@@ -608,13 +560,11 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         from pyqmt.data.models.calendar import calendar as cal
 
         # 初始化 DAL 和服务
-        sector_dal = SectorDAL(db)
         index_dal = IndexDAL(db, ibars)
 
         # 获取日历
         calendar = cal
 
-        sector_sync = SectorSyncService(sector_dal, calendar)
         index_sync = IndexSyncService(index_dal)
 
         # 创建股票同步服务
@@ -634,58 +584,22 @@ async def _run_data_sync(start_date: datetime.date | None = None):
 
         await asyncio.sleep(0.5)
 
-        # 2. 同步板块数据 (20-40%)
-        _update_sync_status(25, "正在同步板块列表...")
-        try:
-            def sector_list_progress(current, total, message):
-                progress = 25 + int((current / total) * 10)
-                _update_sync_status(progress, message)
-
-            sector_count = await asyncio.to_thread(
-                sector_sync.sync_sector_list,
-                progress_callback=sector_list_progress
-            )
-            _update_sync_status(35, f"板块列表同步完成，共 {sector_count} 个")
-        except Exception as e:
-            logger.error(f"同步板块列表失败: {e}")
-            _update_sync_status(35, f"板块列表同步失败: {e}")
-
-        await asyncio.sleep(0.5)
-
-        # 3. 同步板块成分股 (40-50%)
-        _update_sync_status(40, "正在同步板块成分股...")
-        try:
-            def sector_constituent_progress(current, total, message):
-                progress = 40 + int((current / total) * 10)
-                _update_sync_status(progress, message)
-
-            constituent_count = await asyncio.to_thread(
-                sector_sync.sync_sector_constituents,
-                progress_callback=sector_constituent_progress
-            )
-            _update_sync_status(50, f"板块成分股同步完成，共 {constituent_count} 个")
-        except Exception as e:
-            logger.error(f"同步板块成分股失败: {e}")
-            _update_sync_status(50, f"板块成分股同步失败: {e}")
-
-        await asyncio.sleep(0.5)
-
-        # 4. 同步指数列表 (50-60%)
-        _update_sync_status(55, "正在同步指数列表...")
+        # 2. 同步指数列表 (20-35%)
+        _update_sync_status(25, "正在同步指数列表...")
         try:
             index_count = await asyncio.to_thread(index_sync.sync_index_list)
-            _update_sync_status(60, f"指数列表同步完成，共 {index_count} 个")
+            _update_sync_status(35, f"指数列表同步完成，共 {index_count} 个")
         except Exception as e:
             logger.error(f"同步指数列表失败: {e}")
-            _update_sync_status(60, f"指数列表同步失败: {e}")
+            _update_sync_status(35, f"指数列表同步失败: {e}")
 
         await asyncio.sleep(0.5)
 
-        # 5. 同步历史行情数据 (60-95%)
-        _update_sync_status(65, "正在同步历史行情数据...")
+        # 3. 同步历史行情数据 (35-80%)
+        _update_sync_status(40, "正在同步历史行情数据...")
         try:
             def stock_progress_callback(current_date, completed, total):
-                progress = 65 + int((completed / total) * 20)  # 65% ~ 85%
+                progress = 40 + int((completed / total) * 40)
                 msg = f"正在同步个股行情 {current_date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
                 _update_sync_status(progress, msg)
 
@@ -702,18 +616,18 @@ async def _run_data_sync(start_date: datetime.date | None = None):
                     stock_sync.sync_daily_bars,
                     progress_callback=stock_progress_callback
                 )
-            _update_sync_status(85, "历史行情数据同步完成")
+            _update_sync_status(80, "历史行情数据同步完成")
         except Exception as e:
             logger.error(f"同步历史行情数据失败: {e}")
-            _update_sync_status(85, f"历史行情数据同步失败: {e}")
+            _update_sync_status(80, f"历史行情数据同步失败: {e}")
 
         await asyncio.sleep(0.5)
 
-        # 6. 同步指数行情 (85-95%)
-        _update_sync_status(90, "正在同步指数行情...")
+        # 4. 同步指数行情 (80-95%)
+        _update_sync_status(85, "正在同步指数行情...")
         try:
             def index_progress_callback(symbol, current_date, completed, total):
-                progress = 85 + int((completed / total) * 10)  # 85% ~ 95%
+                progress = 85 + int((completed / total) * 10)
                 msg = f"正在同步指数 {symbol} {current_date.strftime('%Y%m%d')}，已更新 {completed}/{total} 日"
                 _update_sync_status(progress, msg)
 

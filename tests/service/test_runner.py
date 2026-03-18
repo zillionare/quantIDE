@@ -42,6 +42,8 @@ async def test_run_daily():
          patch("pyqmt.service.runner.metrics") as mock_metrics:
 
         # Setup calendar mock
+        mock_calendar.ceiling.return_value = start_date
+        mock_calendar.floor.return_value = end_date
         mock_calendar.get_frames.return_value = [start_date, end_date]
         mock_calendar.replace_time.side_effect = lambda d, h, m: datetime.datetime(d.year, d.month, d.day, h, m)
 
@@ -107,6 +109,8 @@ async def test_run_minute():
          patch("pyqmt.service.runner.metrics") as mock_metrics:
 
         # Setup calendar mock
+        mock_calendar.ceiling.return_value = start_date
+        mock_calendar.floor.return_value = end_date
         # Minute frames: 9:31, 9:32 (just 2 frames for test)
         tm1 = datetime.datetime(2024, 1, 1, 9, 31)
         tm2 = datetime.datetime(2024, 1, 1, 9, 32)

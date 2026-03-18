@@ -102,15 +102,6 @@ class InitWizardService:
         state = self.get_state()
         return state.is_fully_initialized
 
-    def has_qmt_configured(self) -> bool:
-        """检查是否配置了 QMT 账号
-
-        Returns:
-            bool: True 表示已配置 QMT
-        """
-        state = self.get_state()
-        return state.has_qmt_configured()
-
     def get_feature_status(self) -> dict[str, bool]:
         """获取各功能的可用状态
 
@@ -155,23 +146,14 @@ class InitWizardService:
     def save_data_source_config(
         self,
         tushare_token: str,
-        qmt_account_id: str,
-        qmt_account_type: str,
-        qmt_path: str,
     ) -> None:
         """保存数据源配置
 
         Args:
             tushare_token: Tushare API Token
-            qmt_account_id: QMT账号ID
-            qmt_account_type: 账号类型（simulation/live）
-            qmt_path: QMT安装路径
         """
         state = self.get_state()
         state.tushare_token = tushare_token
-        state.qmt_account_id = qmt_account_id
-        state.qmt_account_type = qmt_account_type
-        state.qmt_path = qmt_path
         self.save_state(state)
         logger.info("数据源配置已保存")
 
@@ -180,7 +162,6 @@ class InitWizardService:
         daily_fetch_time: str = "16:00",
         limit_refresh_time: str = "09:00",
         adj_factor_time: str = "09:20",
-        sector_sync_time: str = "19:00",
         index_sync_time: str = "19:30",
     ) -> None:
         """保存任务调度配置
@@ -189,14 +170,12 @@ class InitWizardService:
             daily_fetch_time: 日线数据获取时间
             limit_refresh_time: 涨跌停刷新时间
             adj_factor_time: 复权因子获取时间
-            sector_sync_time: 板块数据同步时间
             index_sync_time: 指数数据同步时间
         """
         state = self.get_state()
         state.daily_fetch_time = daily_fetch_time
         state.limit_refresh_time = limit_refresh_time
         state.adj_factor_time = adj_factor_time
-        state.sector_sync_time = sector_sync_time
         state.index_sync_time = index_sync_time
         self.save_state(state)
         logger.info("任务调度配置已保存")

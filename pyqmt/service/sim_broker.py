@@ -1,6 +1,6 @@
-"""仿真交易 Broker 实现。
+"""仿真交易 Broker 实现.
 
-本模块实现了 SimulationBroker，用于仿真交易。它订阅实时行情，维护账户状态，并模拟撮合交易。
+本模块实现了 PaperBroker（兼容别名 SimulationBroker），用于仿真交易。
 """
 
 import asyncio
@@ -20,16 +20,17 @@ from pyqmt.core.errors import (
     TradeError,
 )
 from pyqmt.core.message import msg_hub
+from pyqmt.core.ports import MarketDataPort
 from pyqmt.data.sqlite import Asset, Order, Portfolio, Position, Trade, db
 from pyqmt.service.abstract_broker import AbstractBroker
 from pyqmt.service.base_broker import TradeResult
 from pyqmt.service.livequote import live_quote
 
 
-class SimulationBroker(AbstractBroker):
+class PaperBroker(AbstractBroker):
     """仿真交易 Broker。
 
-    SimulationBroker 模拟真实的交易环境，订阅实时行情，并在本地进行撮合。
+    PaperBroker 模拟真实的交易环境，订阅实时行情，并在本地进行撮合。
     它维护自己的账户状态（现金、持仓），并将交易记录保存到数据库。
     """
     def __init__(
@@ -40,8 +41,9 @@ class SimulationBroker(AbstractBroker):
         portfolio_name: str = "simulation",
         info: str = "",
         market_value_update_interval: float = 10.0,
+        market_data: MarketDataPort | None = None,
     ):
-        """初始化 SimulationBroker。
+        """初始化 PaperBroker。
 
         Args:
             portfolio_id: 账户ID
@@ -50,6 +52,7 @@ class SimulationBroker(AbstractBroker):
             portfolio_name: 账户名称
             info: 账户描述信息
             market_value_update_interval: 持仓市值更新间隔（秒），默认10秒
+            market_data: 行情端口实现
         """
         super().__init__(
             portfolio_id=portfolio_id,
@@ -66,6 +69,8 @@ class SimulationBroker(AbstractBroker):
 
         self._market_value_update_interval = market_value_update_interval
         self._last_mv_update_time = 0.0
+        self._market_data = market_data
+        self._limits: dict[str, dict[str, float]] = {}
 
         # 初始化或加载状态
         self._init_or_sync_state()
@@ -83,8 +88,9 @@ class SimulationBroker(AbstractBroker):
         portfolio_name: str = "simulation",
         info: str = "",
         market_value_update_interval: float = 10.0,
-    ) -> "SimulationBroker":
-        """创建新的 SimulationBroker 实例。
+        market_data: MarketDataPort | None = None,
+    ) -> "PaperBroker":
+        """创建新的 PaperBroker 实例。
 
         如果账户已存在，抛出异常。
 
@@ -95,9 +101,10 @@ class SimulationBroker(AbstractBroker):
             portfolio_name: 账户名称
             info: 账户描述信息
             market_value_update_interval: 持仓市值更新间隔（秒），默认10秒
+            market_data: 行情端口实现
 
         Returns:
-            SimulationBroker 实例
+            PaperBroker 实例
         """
         pf = db.get_portfolio(portfolio_id)
         if pf:
@@ -110,21 +117,27 @@ class SimulationBroker(AbstractBroker):
             portfolio_name=portfolio_name,
             info=info,
             market_value_update_interval=market_value_update_interval,
+            market_data=market_data,
         )
 
         return broker
 
     @classmethod
-    def load(cls, portfolio_id: str) -> "SimulationBroker":
-        """加载已存在的 SimulationBroker 实例。
+    def load(
+        cls,
+        portfolio_id: str,
+        market_data: MarketDataPort | None = None,
+    ) -> "PaperBroker":
+        """加载已存在的 PaperBroker 实例。
 
         如果账户不存在，抛出异常。
 
         Args:
             portfolio_id: 账户ID
+            market_data: 行情端口实现
 
         Returns:
-            SimulationBroker 实例
+            PaperBroker 实例
         """
         pf = db.get_portfolio(portfolio_id)
         if not pf:
@@ -135,6 +148,7 @@ class SimulationBroker(AbstractBroker):
             portfolio_id=portfolio_id,
             portfolio_name=pf.name or portfolio_id,
             info=pf.info or "",
+            market_data=market_data,
         )
 
     def _on_limit_update(self, data: dict):
@@ -143,7 +157,36 @@ class SimulationBroker(AbstractBroker):
         目前 SimBroker 通过 live_quote 单例获取涨跌停数据，该单例会在此回调之前更新。
         此处订阅主要为了保持架构一致性（所有外部数据均来自 MessageHub）。
         """
-        pass
+        for asset, limits in data.items():
+            if isinstance(limits, dict):
+                self._limits[asset] = {
+                    "up": float(limits.get("up", 0) or 0),
+                    "down": float(limits.get("down", 0) or 0),
+                }
+
+    def _get_quote(self, asset: str) -> dict[str, Any] | None:
+        """获取行情快照."""
+        if self._market_data is not None:
+            snap = self._market_data.snapshot([asset]).get(asset)
+            if snap is not None:
+                return {
+                    "lastPrice": snap.price or 0,
+                    "open": snap.open or 0,
+                    "high": snap.high or 0,
+                    "low": snap.low or 0,
+                    "volume": snap.volume or 0,
+                    "amount": snap.amount or 0,
+                }
+        return live_quote.get_quote(asset)
+
+    def _get_price_limits(self, asset: str) -> tuple[float, float]:
+        """获取涨跌停价格."""
+        limits = self._limits.get(asset)
+        if limits is not None:
+            return limits["down"], limits["up"]
+        if self._market_data is not None:
+            return 0.0, 0.0
+        return live_quote.get_price_limits(asset)
 
     def _validate_data_consistency(self):
         """校验数据一致性。
@@ -423,7 +466,7 @@ class SimulationBroker(AbstractBroker):
 
         # 检查涨跌停
         # 使用 live_quote 获取最新的涨跌停数据，而不是依赖 quote 中的字段
-        down_limit, up_limit = live_quote.get_price_limits(order.asset)
+        down_limit, up_limit = self._get_price_limits(order.asset)
 
         # 严格规则：涨停不买，跌停不卖
         # 注意：如果是新股等无涨跌停限制的情况（limit=0），则允许交易
@@ -556,11 +599,11 @@ class SimulationBroker(AbstractBroker):
 
         est_price = price
         if est_price == 0:
-            _, up_limit = live_quote.get_price_limits(asset)
+            _, up_limit = self._get_price_limits(asset)
             est_price = up_limit
             # 如果 up_limit 为 0 (无涨跌停限制，如新股)，则使用 lastPrice 估算
             if est_price <= 0:
-                quote = live_quote.get_quote(asset)
+                quote = self._get_quote(asset)
                 if quote:
                     est_price = quote.get("lastPrice", 0)
 
@@ -668,14 +711,14 @@ class SimulationBroker(AbstractBroker):
             成交结果
         """
         # 计算数量
-        quote = live_quote.get_quote(asset)
+        quote = self._get_quote(asset)
         if not quote:
              return TradeResult("", [])
 
         if price > 0:
             p = price
         else:
-            _, up_limit = live_quote.get_price_limits(asset)
+            _, up_limit = self._get_price_limits(asset)
             p = up_limit or quote.get("lastPrice", 0)
         if p <= 0:
             return TradeResult("", [])
@@ -709,14 +752,14 @@ class SimulationBroker(AbstractBroker):
         Returns:
             成交结果
         """
-        quote = live_quote.get_quote(asset)
+        quote = self._get_quote(asset)
         if not quote and price == 0:
              return TradeResult("", [])
 
         if price > 0:
             p = price
         else:
-            _, up_limit = live_quote.get_price_limits(asset)
+            _, up_limit = self._get_price_limits(asset)
             p = up_limit or quote.get("lastPrice", 0)
         if p <= 0:
              return TradeResult("", [])
@@ -782,14 +825,14 @@ class SimulationBroker(AbstractBroker):
         Returns:
             成交结果
         """
-        quote = live_quote.get_quote(asset)
+        quote = self._get_quote(asset)
         if not quote and price == 0:
              return TradeResult("", [])
 
         if price > 0:
             p = price
         else:
-            down_limit, _ = live_quote.get_price_limits(asset)
+            down_limit, _ = self._get_price_limits(asset)
             p = down_limit or quote.get("lastPrice", 0)
         if p <= 0:
              return TradeResult("", [])
@@ -824,7 +867,7 @@ class SimulationBroker(AbstractBroker):
         Returns:
             成交结果
         """
-        quote = live_quote.get_quote(asset)
+        quote = self._get_quote(asset)
         if not quote and price == 0:
              return TradeResult("", [])
 
@@ -835,7 +878,7 @@ class SimulationBroker(AbstractBroker):
             ref_price = quote.get("lastPrice", 0)
             if ref_price <= 0:
                 # Fallback to limit price if lastPrice is invalid
-                down_limit, up_limit = live_quote.get_price_limits(asset)
+                down_limit, up_limit = self._get_price_limits(asset)
                 # 如果没有 lastPrice，尝试使用涨停价作为参考
                 ref_price = up_limit if up_limit > 0 else 0
 
@@ -972,7 +1015,7 @@ class SimulationBroker(AbstractBroker):
                     price = close_prices[asset]
                 else:
                     # Try live quote or fallback to cost
-                    quote = live_quote.get_quote(asset)
+                    quote = self._get_quote(asset)
                     price = quote.get("lastPrice", 0) if quote else 0
                     if price <= 0:
                         price = pos.price
@@ -1001,3 +1044,6 @@ class SimulationBroker(AbstractBroker):
                 total=total_asset
             )
             db.upsert_asset(asset_record)
+
+
+SimulationBroker = PaperBroker

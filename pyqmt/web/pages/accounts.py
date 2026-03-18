@@ -11,7 +11,7 @@ from starlette.responses import HTMLResponse, RedirectResponse
 from pyqmt.core.enums import BrokerKind
 from pyqmt.data.sqlite import db
 from pyqmt.service.registry import BrokerRegistry
-from pyqmt.service.sim_broker import SimulationBroker
+from pyqmt.service.sim_broker import PaperBroker
 from pyqmt.web.layouts.main import MainLayout
 
 from pyqmt.web.theme import AppTheme
@@ -21,6 +21,13 @@ accounts_app, rt = fast_app(hdrs=AppTheme.headers())
 
 def _get_registry(req) -> BrokerRegistry:
     return req.scope.get("registry")
+
+
+def _get_market_data(req):
+    runtime = getattr(req.app.state, "runtime", None)
+    if runtime is None:
+        return None
+    return getattr(runtime, "market_data", None)
 
 
 def LiveAccountCard(account: dict, is_active: bool = False):
@@ -603,11 +610,13 @@ async def create_sim_account(req):
     account_id = f"sim_{uuid.uuid4().hex[:8]}"
 
     try:
+        market_data = _get_market_data(req)
         # 创建模拟交易账户（使用 create 方法会自动保存到数据库）
-        sim_broker = SimulationBroker.create(
+        sim_broker = PaperBroker.create(
             portfolio_id=account_id,
             portfolio_name=name,
-            principal=principal
+            principal=principal,
+            market_data=market_data,
         )
         reg.register(BrokerKind.SIMULATION, account_id, sim_broker)
 

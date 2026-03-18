@@ -1,7 +1,7 @@
 server:
   key: quantide
   host: "0.0.0.0"
-  port: 8000
+  port: 8130
   prefix: '/zillionare-qmt'
 
 users:
@@ -18,28 +18,21 @@ apikeys:
 
 # 实时行情数据源配置
 # 可选模式:
-#   - qmt: 直接从本地 QMT 获取全推数据（Windows 环境推荐）
-#   - redis: 从 Redis 订阅数据（Linux 环境，从 Pro 版本接收数据）
+#   - gateway: 从远程 qmt-gateway 获取实时推送
 #   - none: 不使用实时行情（仅使用历史数据）
 livequote:
-  mode: qmt
-  # QMT 配置（当 mode 为 qmt 时使用）
-  qmt:
-    # QMT 安装路径，用于加载 xtquant
-    path: "c:\\apps\\qmt\\userdata_mini"
-    # 订阅的市场，可选: SH(上海), SZ(深圳), BJ(北京)
-    markets:
-      - SH
-      - SZ
-      - BJ
-  # Redis 配置（当 mode 为 redis 时使用）
-  redis:
-    host: "localhost"
-    port: 6379
-    # 订阅的频道
-    channels:
-      - quotes_all
-      - stock_limit
+  mode: gateway
+
+gateway:
+  base_url: "http://127.0.0.1:8000"
+  username: "admin"
+  password: "1234"
+  timeout: 10
+
+runtime:
+  mode: live
+  market_adapter: ""
+  broker_adapter: ""
 
 brokers:
   - kind: backtest
@@ -49,12 +42,6 @@ brokers:
     id: sim1
   - kind: simulation
     id: sim2
-qmt:
-  account_id: "8881457417"
-  account_type: STOCK
-  name: 账户1
-  path: "c:\\apps\\qmt\\userdata_mini"
-  principal: 20000
 
 notify:
   dingtalk:
