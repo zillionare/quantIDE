@@ -37,24 +37,65 @@ class AppState(Entity):
     """初始化版本，用于未来升级"""
 
     init_step: int = 0
-    """当前初始化步骤（0-5），用于意外中断后恢复"""
+    """当前初始化步骤（0-7），用于意外中断后恢复"""
 
-    # ========== 数据源配置 ==========
+    # ========== 运行环境 ==========
+    app_home: str = ""
+    """应用 home 目录"""
+
+    app_host: str = "0.0.0.0"
+    """应用监听地址"""
+
+    app_port: int = 8130
+    """应用监听端口"""
+
+    app_prefix: str = "/zillionare-qmt"
+    """应用 API 前缀"""
+
+    # ========== 网关配置 ==========
+    gateway_server: str = ""
+    """网关服务地址"""
+
+    gateway_port: int = 8000
+    """网关服务端口"""
+
+    gateway_base_url: str = ""
+    """网关 HTTP 地址"""
+
+    gateway_api_key: str = ""
+    """网关 API Key"""
+
+    gateway_enabled: bool = False
+    """是否启用 gateway（未启用则禁用仿真与实盘）"""
+
+    # ========== 通知配置 ==========
+    notify_dingtalk_access_token: str = ""
+    """钉钉 access_token"""
+
+    notify_dingtalk_secret: str = ""
+    """钉钉 secret"""
+
+    notify_dingtalk_keyword: str = ""
+    """钉钉 keyword"""
+
+    notify_mail_to: str = ""
+    """邮件收件人"""
+
+    notify_mail_from: str = ""
+    """邮件发件人"""
+
+    notify_mail_server: str = ""
+    """邮件服务器"""
+
+    # ========== 数据初始化 ==========
+    epoch: datetime.date = field(default_factory=lambda: datetime.date(2005, 1, 1))
+    """数据起始日期"""
+
     tushare_token: str = ""
     """Tushare API Token"""
 
-    # ========== 任务调度配置 ==========
-    daily_fetch_time: str = "16:00"
-    """日线数据获取时间，格式 HH:MM"""
-
-    limit_refresh_time: str = "09:00"
-    """涨跌停刷新时间，格式 HH:MM"""
-
-    adj_factor_time: str = "09:20"
-    """复权因子获取时间，格式 HH:MM"""
-
-    index_sync_time: str = "19:30"
-    """指数数据同步时间，格式 HH:MM"""
+    history_years: int = 3
+    """首次历史数据下载年数"""
 
     # ========== 历史数据下载配置 ==========
     history_start_date: datetime.date | None = None
@@ -80,10 +121,36 @@ class AppState(Entity):
             self.history_start_date = datetime.datetime.strptime(
                 self.history_start_date, "%Y-%m-%d"
             ).date()
+        if isinstance(self.epoch, str):
+            self.epoch = datetime.datetime.strptime(
+                self.epoch, "%Y-%m-%d"
+            ).date()
         if isinstance(self.created_at, str):
             self.created_at = datetime.datetime.fromisoformat(self.created_at)
         if isinstance(self.updated_at, str):
             self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
+        if not isinstance(self.gateway_enabled, bool):
+            self.gateway_enabled = str(self.gateway_enabled).lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+        if not isinstance(self.app_port, int):
+            try:
+                self.app_port = int(self.app_port)
+            except Exception:
+                self.app_port = 8130
+        if not isinstance(self.gateway_port, int):
+            try:
+                self.gateway_port = int(self.gateway_port)
+            except Exception:
+                self.gateway_port = 8000
+        if not isinstance(self.history_years, int):
+            try:
+                self.history_years = max(1, int(self.history_years))
+            except Exception:
+                self.history_years = 3
 
     def to_dict(self) -> dict:
         """转换为字典，用于数据库存储"""
@@ -112,7 +179,7 @@ class AppState(Entity):
         Returns:
             bool: True 表示已完成初始化
         """
-        return self.init_completed and self.init_step >= 5
+        return self.init_completed and self.init_step >= 7
 
     def can_use_live_trading(self) -> bool:
         """检查是否可以使用实盘/仿真交易功能
@@ -120,7 +187,7 @@ class AppState(Entity):
         Returns:
             bool: True 表示可以使用实盘/仿真功能
         """
-        return self.is_fully_initialized
+        return self.is_fully_initialized and self.gateway_enabled
 
     def can_use_backtest(self) -> bool:
         """检查是否可以使用回测功能

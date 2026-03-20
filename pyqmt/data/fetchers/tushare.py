@@ -5,7 +5,7 @@
 
 import datetime
 import itertools
-from typing import Iterable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional
 
 import pandas as pd
 import tushare as ts
@@ -360,21 +360,21 @@ def fetch_st_info(
     for date in dates:
         str_date = date.strftime("%Y%m%d")
         try:
-            df = pro.stk_st(
+            df = pro.stock_st(
                 trade_date=str_date,
-                fields="trade_date,ts_code",
+                fields="trade_date,ts_code,name,type,type_name",
             )
         except Exception as e:
-            logger.error("调用 stk_st 时出错, {}", e)
-            errors.append(["stk_st", date, f"调用stk_st时出现异常"])
+            logger.error("调用 stock_st 时出错, {}", e)
+            errors.append(["stock_st", date, f"调用stock_st时出现异常: {e}"])
             all_data.append(pd.DataFrame())
             continue
 
         if df is None:
             all_data.append(pd.DataFrame())
-            error_msg = f"stk_st获取{date}日数据失败"
+            error_msg = f"stock_st获取{date}日数据失败"
             logger.warning(error_msg)
-            errors.append(["stk_st", date, error_msg])
+            errors.append(["stock_st", date, error_msg])
         else:
             all_data.append(df)
 
@@ -385,16 +385,25 @@ def fetch_st_info(
     df = df.rename(columns={"ts_code": "asset", "trade_date": "date"})
 
     if len(df) == 0:
+        if "asset" not in df.columns:
+            df["asset"] = pd.Series(dtype="object")
+        if "date" not in df.columns:
+            df["date"] = pd.Series(dtype="datetime64[ms]")
         df["st"] = pd.Series(dtype="boolean")
     else:
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d").astype(
+            "datetime64[ms]"
+        )
+        df = df.sort_values(by=["date", "asset"]).reset_index(drop=True)
         # 接口仅返回当天为 ST 的资产，将这些行标记为 True
-        df["st"] = True
+        df["st"] = pd.Series([True] * len(df), dtype="boolean")
 
     return df, errors
 
 
 def fetch_bars_ext(
     dates: Iterable[datetime.date] | datetime.date,
+    phase_callback: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, list[list]]:
     """获取日线行情、ST 和涨跌停价
 
@@ -406,23 +415,35 @@ def fetch_bars_ext(
     Returns:
         tuple[pd.DataFrame, list[list]]: 行情数据和错误信息
     """
+    if phase_callback:
+        phase_callback("bars")
     msg_hub.publish("fetch_data_progress", {"msg": "正在获取日线数据..."})
     bars, errors1 = fetch_bars(dates)
 
+    if phase_callback:
+        phase_callback("adjust")
     msg_hub.publish("fetch_data_progress", {"msg": "正在获取复权因子..."})
     adjust, errors2 = fetch_adjust_factor(dates)
 
-    msg_hub.publish(
-        "fetch_data_progress", {"msg": "正在获取 ST（特别处理） 信息..."}
-    )
-    st, errors3 = fetch_st_info(dates)
-
+    if phase_callback:
+        phase_callback("limit")
     msg_hub.publish(
         "fetch_data_progress", {"msg": "正在获取每日涨跌停限价信息..."}
     )
-    limit, errors4 = fetch_limit_price(dates)
+    limit, errors3 = fetch_limit_price(dates)
+
+    if phase_callback:
+        phase_callback("st")
+    msg_hub.publish(
+        "fetch_data_progress", {"msg": "正在获取 ST（特别处理） 信息..."}
+    )
+    st, errors4 = fetch_st_info(dates)
 
     errors = []
+    errors.extend(errors1)
+    errors.extend(errors2)
+    errors.extend(errors3)
+    errors.extend(errors4)
 
     if len(bars) == 0:
         if isinstance(dates, Iterable):

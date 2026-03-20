@@ -5,6 +5,7 @@
 
 import datetime
 import glob
+import inspect
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Iterable, Literal
@@ -255,15 +256,16 @@ class ParquetStorage:
                 .unique(subset=self._id_cols, keep="last")
                 .sort(self._id_cols)
             )
-
-            # TODO: 根据文档，这个 API 还没有稳定，未来可能改变
-            combined.sink_parquet(
-                pl.PartitionByKey(
-                    self._store_path, by=self._partition_by, include_key=False
-                ),
-                mkdir=True,
-                compression=self._compression,
+            partition_value = (
+                partition.as_py() if hasattr(partition, "as_py") else partition
             )
+            partition_dir = self._store_path / f"{self._partition_by}={partition_value}"
+            partition_dir.mkdir(parents=True, exist_ok=True)
+            output_file = partition_dir / "part-0.parquet"
+            write_df = combined.collect()
+            if self._partition_by in write_df.columns:
+                write_df = write_df.drop(self._partition_by)
+            write_df.write_parquet(output_file, compression=self._compression)
 
     def _save_single(self, lf: pl.LazyFrame | pd.DataFrame) -> None:
         """保存非分区数据"""
@@ -403,9 +405,51 @@ class ParquetStorage:
 
         for i, date in enumerate(missing_dates, start=1):
             try:
+                def _phase_callback(phase: str):
+                    payload = {
+                        "phase": phase,
+                        "current_date": date.strftime("%Y-%m-%d"),
+                        "completed": i,
+                        "total": total,
+                    }
+                    try:
+                        msg_hub.publish(
+                            topic="fetch_data_progress",
+                            msg_content=payload,
+                        )
+                    except Exception:
+                        pass
+                    if progress_callback:
+                        try:
+                            progress_callback(date, i, total, phase)
+                        except TypeError:
+                            progress_callback(date, i, total)
+
                 # 获取单日数据
-                df, errors = self._fetch_data_func([date])
+                fetch_kwargs = {}
+                if "phase_callback" in inspect.signature(
+                    self._fetch_data_func
+                ).parameters:
+                    fetch_kwargs["phase_callback"] = _phase_callback
+                df, errors = self._fetch_data_func([date], **fetch_kwargs)
                 self._error_handler(errors)
+                if errors:
+                    msg = "; ".join([str(err[-1]) for err in errors if len(err) > 0])
+                    logger.error(msg or f"{date} 数据抓取出现错误")
+                    try:
+                        msg_hub.publish(
+                            topic="fetch_data_progress",
+                            msg_content={
+                                "phase": "error",
+                                "current_date": date.strftime("%Y-%m-%d"),
+                                "completed": i,
+                                "total": total,
+                                "error": msg or f"{date} 数据抓取出现错误",
+                            },
+                        )
+                    except Exception:
+                        pass
+                    continue
 
                 if df is not None and len(df) > 0:
                     self.append_data(df)
@@ -418,7 +462,10 @@ class ParquetStorage:
                 logger.info(msg)
 
                 if progress_callback:
-                    progress_callback(date, completed, total)
+                    try:
+                        progress_callback(date, completed, total, "done")
+                    except TypeError:
+                        progress_callback(date, completed, total)
 
                 try:
                     msg_hub.publish(
@@ -435,6 +482,19 @@ class ParquetStorage:
 
             except Exception as e:
                 logger.error(f"同步 {date} 数据失败: {e}")
+                try:
+                    msg_hub.publish(
+                        topic="fetch_data_progress",
+                        msg_content={
+                            "phase": "error",
+                            "current_date": date.strftime("%Y-%m-%d"),
+                            "completed": i,
+                            "total": total,
+                            "error": f"同步 {date} 数据失败: {e}",
+                        },
+                    )
+                except Exception:
+                    pass
 
         try:
             msg_hub.publish(topic="fetch_data_progress", msg_content=None)

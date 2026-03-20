@@ -89,6 +89,15 @@ class Calendar:
         dates = self._data.column("date")
         return dates[-1].as_py()
 
+    def last_trade_date(self) -> datetime.date:
+        """获取最近一个交易日.
+
+        Returns:
+            最近一个交易日日期。
+        """
+        now = datetime.datetime.now(tz=cfg.TIMEZONE)
+        return self.floor(now, FrameType.DAY)
+
     @property
     def path(self) -> Path:
         """获取日历数据文件路径

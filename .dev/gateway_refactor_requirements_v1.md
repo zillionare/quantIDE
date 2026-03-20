@@ -179,8 +179,34 @@
 
 ## 15. 主体去QMT化（2026-03-18）
 
+### 15.1 已完成收敛
+
 1. 主体运行时装配移除本地 `QMTBroker` 自动创建逻辑，启动阶段不再依赖 `xtquant`。
 2. 主体配置移除 `livequote.qmt`、`livequote.redis`、`qmt.*` 字段，实时行情默认走 `livequote.mode=gateway`。
-3. 初始化向导移除 QMT 账号采集与板块同步步骤，仅保留股票、指数与历史行情同步。
-4. `livequote.py` 改写为 gateway WebSocket 消费模式，统一接收 `/ws/quotes` 并广播到消息总线。
-5. 实盘投放默认绑定 `gateway:default`，不再要求配置本地 QMT 账户。
+3. `livequote.py` 改写为 gateway WebSocket 消费模式，统一接收 `/ws/quotes` 并广播到消息总线。
+4. 实盘投放默认绑定 `gateway:default`，不再要求配置本地 QMT 账户。
+
+### 15.2 初始化向导重构需求（待实施）
+
+目标：在保留现有 init-wizard 视觉风格与技术栈（FastHTML + MonsterUI）的前提下，按去QMT化后的能力边界重构初始化流程与配置项。
+
+1. 配置加载约束（R15-0）
+   - `pyqmt/config/__init__.py` 仅从同级目录加载 `defaults.yml`（dev 模式）。
+   - 初始化向导读取初始值优先级：数据库中的 app_state > `defaults.yml`。
+2. 强制重新初始化（R15-1）
+   - 支持通过 `/init-wizard?force=true` 强制进入向导。
+   - `force=true` 时允许已初始化系统重新配置，不因 `init_completed` 自动跳过。
+3. 选项说明与降级告知（R15-2）
+   - 向导每个配置项都必须展示用途说明。
+   - 向导每个可选项都必须明确标注“不配置将导致哪些功能不可用”。
+4. 向导步骤重设计（R15-3）
+   - a. 运行环境：配置 `home`、`host`（仅本机访问/开放访问）、`port`、`prefix`。
+   - b. 实时行情与交易网关：配置 `server`、`port`、`base_url`、`api_key`，并执行连通性测试；若跳过此步，系统不提供仿真与实盘功能。
+   - c. 通知告警：配置 `dingtalk.*`、`mail.*`（可选）。
+   - d. 数据初始化：配置 `epoch`、`tushare token`、首次下载数据长度（按年）。
+   - e. 数据下载：提供进度条，下载品种包含证券日历、全A证券列表、历史日线行情（含复权因子与涨跌停价格）、ST 数据；品种定义以 `pyqmt/data/fetchers/tushare.py` 为准。
+   - f. 完成分流：若已配置 gateway，完成后进入“实盘”菜单；未配置 gateway，进入“策略研究”菜单。
+5. 验收口径（R15-4）
+   - 已初始化系统可通过 `force=true` 重新进入向导并保存新配置。
+   - 跳过网关配置后，UI 与后端能力判定一致地禁用仿真/实盘入口。
+   - 完成页跳转路径与 gateway 是否可用保持一致。

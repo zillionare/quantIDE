@@ -26,11 +26,11 @@ class FeatureCheckMiddleware(BaseHTTPMiddleware):
         content = Div(
             H3(f"🔒 {feature_name}功能已禁用", cls="text-center mb-4"),
             P(
-                f"您当前未配置 QMT 账号，因此无法使用{feature_name}功能。",
+                f"您当前未配置 gateway，因此无法使用{feature_name}功能。",
                 cls="text-center text-gray-600 mb-4"
             ),
             P(
-                "如需使用此功能，请前往设置页面配置 QMT 账号信息。",
+                "如需使用此功能，请前往初始化向导配置 gateway。",
                 cls="text-center text-gray-600 mb-6"
             ),
             A(
@@ -62,8 +62,8 @@ class FeatureCheckMiddleware(BaseHTTPMiddleware):
         <body>
             <div class="container">
                 <h3>🔒 {feature_name}功能已禁用</h3>
-                <p>您当前未配置 QMT 账号，因此无法使用{feature_name}功能。</p>
-                <p>如需使用此功能，请前往设置页面配置 QMT 账号信息。</p>
+                <p>您当前未配置 gateway，因此无法使用{feature_name}功能。</p>
+                <p>如需使用此功能，请前往初始化向导配置 gateway。</p>
                 <br>
                 <a href="/settings" class="btn">前往设置</a>
                 <a href="/" class="btn" style="background: #666; margin-left: 10px;">返回首页</a>
@@ -76,15 +76,15 @@ class FeatureCheckMiddleware(BaseHTTPMiddleware):
 
 
 def require_qmt_configured(func):
-    """装饰器：要求必须配置 QMT 才能访问
+    """装饰器：要求必须配置 gateway 才能访问
 
-    用于在路由处理函数中手动检查 QMT 配置。
+    用于在路由处理函数中手动检查 gateway 配置。
 
     Args:
         func: 被装饰的函数
 
     Returns:
-        如果未配置 QMT，返回提示页面；否则执行原函数
+        如果未配置 gateway，返回提示页面；否则执行原函数
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -114,14 +114,14 @@ def get_feature_status() -> dict[str, dict]:
                 "available": status["simulation"],
                 "icon": "🎮",
                 "description": "使用 gateway 进行仿真交易",
-                "required": "完成初始化",
+                "required": "完成初始化并启用 gateway",
             },
             "live_trading": {
                 "name": "实盘交易",
                 "available": status["live_trading"],
                 "icon": "💰",
                 "description": "使用 gateway 进行实盘交易",
-                "required": "完成初始化",
+                "required": "完成初始化并启用 gateway",
             },
         }
 

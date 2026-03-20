@@ -320,6 +320,27 @@ class TestTushareFetcher:
         assert "[ms]" in str(df_empty["date"].dtype)
         assert str(df_empty["st"].dtype) == "boolean"
 
+    def test_fetch_st_info_uses_stock_st(self):
+        date = datetime.date(2024, 1, 5)
+        pro = MagicMock()
+        pro.stock_st.return_value = pd.DataFrame(
+            {
+                "ts_code": ["000001.SZ", "000002.SZ"],
+                "trade_date": ["20240105", "20240105"],
+                "name": ["ST平安", "平安银行"],
+                "type": ["S", "S"],
+                "type_name": ["特别处理", "特别处理"],
+            }
+        )
+        with patch("pyqmt.data.fetchers.tushare.ts.pro_api", return_value=pro):
+            df, errors = fetch_st_info(date)
+
+        assert len(errors) == 0
+        assert len(df) == 2
+        assert str(df["date"].dtype) == "datetime64[ms]"
+        assert df.iloc[0]["asset"] == "000001.SZ"
+        assert df.iloc[0]["st"] is True
+
     def test_fetch_bars_ext(self, bars, st, adjust_factor, limit_price):
         # 将 DatetimeIndex 转为 Python date 列表，避免对 DatetimeIndex 使用 .date 属性
         dates = pd.bdate_range("2024-01-02", "2024-01-04").to_series().dt.date.tolist()
@@ -401,4 +422,4 @@ class TestTushareFetcher:
             return_value=(df, [["daily", datetime.date(2024, 1, 2), "msg"]]),
         ):
             actual, errors = fetch_bars_ext(dates)
-            assert errors[0][0] == "fetch_bars_ext"
+            assert errors[0][0] == "daily"

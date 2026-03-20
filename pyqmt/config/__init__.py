@@ -7,7 +7,6 @@ Contributors:
 
 """
 import datetime
-import os
 from importlib.metadata import version
 from pathlib import Path
 
@@ -19,15 +18,7 @@ from .schema import Config
 
 
 def get_config_dir() -> str:
-    server_role = os.environ.get(cfg4py.envar)
-
-    if server_role == "DEV":
-        _dir = Path(__file__).parent
-    elif server_role == "TEST":
-        _dir = Path.home() / ".zillionare" / "pyqmt_test" / "config"
-    else:
-        _dir = Path.home() / ".zillionare" / "pyqmt" / "config"
-
+    _dir = Path(__file__).parent
     logger.info(f"config dir: {_dir}")
     return str(_dir)
 
