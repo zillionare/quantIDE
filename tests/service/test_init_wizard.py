@@ -118,4 +118,4 @@ def test_save_gateway_config_uses_slash_default_and_redirect_by_server(db):
 
     state = service.get_state(force_refresh=True)
     assert state.gateway_base_url == "/"
-    assert service.get_completion_redirect() == "/trade"
+    assert service.get_completion_redirect() == "/login"

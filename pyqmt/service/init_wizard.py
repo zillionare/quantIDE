@@ -391,17 +391,7 @@ class InitWizardService:
         Returns:
             str: 目标路径。
         """
-        state = self.get_state()
-        base_url = ""
-        if state.gateway_server:
-            base_url = self._compose_gateway_url(
-                state.gateway_server,
-                state.gateway_port,
-                state.gateway_base_url,
-            )
-        if state.gateway_enabled and base_url:
-            return "/trade"
-        return "/strategy"
+        return "/login"
 
     def get_progress(self) -> dict[str, Any]:
         """获取初始化进度信息
