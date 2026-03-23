@@ -1,8 +1,9 @@
 """qmt-gateway 交易端口适配器."""
 
 import datetime
+from typing import Any, Dict
 
-from pyqmt.core.enums import OrderSide
+from pyqmt.core.enums import BrokerKind, OrderSide
 from pyqmt.core.ports import (
     AssetView,
     BrokerPort,
@@ -14,6 +15,91 @@ from pyqmt.core.ports import (
     TradeView,
 )
 from pyqmt.core.runtime.gateway_client import GatewayClient
+from pyqmt.data.sqlite import Asset, Position, Trade
+from pyqmt.service.base_broker import Broker
+
+
+class GatewayBrokerWrapper(Broker):
+    """将 GatewayBrokerAdapter 包装为旧版的 Broker 接口，以便 UI 使用。"""
+
+    def __init__(self, adapter: "GatewayBrokerAdapter", portfolio_id: str = "gateway"):
+        self._adapter = adapter
+        self._portfolio_id = portfolio_id
+        self._portfolio_name = "实盘网关"
+        self._kind = BrokerKind.QMT
+
+    @property
+    def portfolio_id(self) -> str:
+        return self._portfolio_id
+
+    @property
+    def portfolio_name(self) -> str:
+        return self._portfolio_name
+
+    @property
+    def kind(self) -> BrokerKind:
+        return self._kind
+
+    @property
+    def status(self) -> bool:
+        return True
+
+    @property
+    def is_connected(self) -> bool:
+        return True
+
+    @property
+    def asset(self) -> Asset:
+        view = self._adapter.query_assets()
+        if not view:
+            return Asset(
+                portfolio_id=self._portfolio_id,
+                dt=datetime.date.today(),
+                principal=0,
+                cash=0,
+                frozen_cash=0,
+                market_value=0,
+                total=0,
+            )
+        return Asset(
+            portfolio_id=self._portfolio_id,
+            dt=view.dt or datetime.date.today(),
+            principal=view.principal,
+            cash=view.cash,
+            frozen_cash=view.frozen_cash,
+            market_value=view.market_value,
+            total=view.total,
+        )
+
+    @property
+    def cash(self) -> float:
+        return self.asset.cash
+
+    @property
+    def positions(self) -> Dict[str, Position]:
+        views = self._adapter.query_positions()
+        res = {}
+        for v in views:
+            res[v.asset] = Position(
+                portfolio_id=self._portfolio_id,
+                dt=datetime.date.today(),
+                asset=v.asset,
+                shares=v.shares,
+                can_sell=v.avail,
+                price=v.price,
+                market_value=v.market_value,
+                cost=v.cost,
+            )
+        return res
+
+    async def buy(self, *args, **kwargs):
+        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
+
+    async def sell(self, *args, **kwargs):
+        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
+
+    async def cancel_order(self, *args, **kwargs):
+        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
 
 
 class GatewayBrokerAdapter(BrokerPort):

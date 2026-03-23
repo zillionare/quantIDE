@@ -48,6 +48,7 @@ class RuntimeBootstrap:
         adapters = AdapterRegistry()
         market_data = self._build_market_data(adapters)
         registry = BrokerRegistry()
+        self._registry_ref = registry
         self._load_accounts_from_db(registry, market_data=market_data)
         self._register_broker_adapters(registry, adapters)
         self._register_gateway_broker_adapter(adapters)
@@ -137,4 +138,11 @@ class RuntimeBootstrap:
         if not use_gateway:
             return
         client = GatewayClient.from_config()
-        adapters.register("broker", "gateway:default", GatewayBrokerAdapter(client))
+        adapter = GatewayBrokerAdapter(client)
+        adapters.register("broker", "gateway:default", adapter)
+
+        # 为兼容 UI (trade_main.py)，将 GatewayBrokerAdapter 包装为旧版 Broker 并注册到 BrokerRegistry
+        from pyqmt.core.runtime.gateway_broker import GatewayBrokerWrapper
+        registry = getattr(self, "_registry_ref", None)
+        if registry:
+            registry.register(BrokerKind.QMT, "gateway", GatewayBrokerWrapper(adapter))
