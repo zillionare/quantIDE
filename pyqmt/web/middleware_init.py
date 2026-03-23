@@ -39,7 +39,7 @@ class InitCheckMiddleware(BaseHTTPMiddleware):
 
             logging.getLogger(__name__).warning(f"初始化状态检查失败: {e}, 允许继续访问")
 
-        if initialized and path.startswith("/init-wizard") and not force:
+        if initialized and path.startswith("/init-wizard") and not force and path != "/init-wizard/complete":
             if request.method == "GET":
                 return RedirectResponse("/", status_code=302)
             from fasthtml.common import JSONResponse
