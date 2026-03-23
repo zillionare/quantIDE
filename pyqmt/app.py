@@ -85,6 +85,10 @@ from pyqmt.web.pages.login import login_app
 from pyqmt.web.pages.strategy import strategy_app
 from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
+from pyqmt.web.pages.data_calendar import data_calendar_app
+from pyqmt.web.pages.data_market import data_market_app
+from pyqmt.web.pages.data_stocks import data_stocks_app
+from pyqmt.web.pages.data_db import data_db_app
 
 
 def init():
@@ -139,6 +143,10 @@ def init():
             Mount("/api/v1/indices", index_router),
             Mount("/api/v1/kline", kline_router),
             Mount("/api/v1/search", search_router),
+            Mount("/data/calendar", data_calendar_app),
+            Mount("/data/market", data_market_app),
+            Mount("/data/stocks", data_stocks_app),
+            Mount("/data/db", data_db_app),
             Mount("/", home_app),
         ],
     )
