@@ -7,11 +7,13 @@ from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
 from pyqmt.core.runtime.gateway_client import GatewayClient
 from pyqmt.core.runtime.gateway_market import GatewayMarketDataAdapter
 from pyqmt.core.runtime.market_bridge import LiveQuoteMarketDataAdapter
+from pyqmt.core.runtime.port_broker import PortBackedBroker
 
 __all__ = [
     "AdapterSpec",
     "AdapterRegistry",
     "LegacyBrokerPortAdapter",
+    "PortBackedBroker",
     "SystemClockAdapter",
     "BacktestClockAdapter",
     "GatewayClient",

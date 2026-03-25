@@ -8,6 +8,7 @@ from pyqmt.core.ports import (
     AssetView,
     BrokerPort,
     CancelAck,
+    ExecutionResult,
     OrderAck,
     OrderRequest,
     OrderView,
@@ -31,6 +32,16 @@ class LegacyBrokerPortAdapter(BrokerPort):
         self._broker = broker
         self._portfolio_id = portfolio_id or getattr(broker, "portfolio_id", "default")
 
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """记录策略运行数据."""
+        self._broker.record(key, value, dt=dt, extra=extra)
+
     async def submit(self, request: OrderRequest) -> OrderAck:
         """提交订单."""
         try:
@@ -43,6 +54,146 @@ class LegacyBrokerPortAdapter(BrokerPort):
             return OrderAck(order_id=result.qt_oid, status="submitted", trades=trades)
         except Exception as exc:
             return OrderAck(order_id=None, status="rejected", message=str(exc))
+
+    async def buy(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按股数买入."""
+        result = await self._broker.buy(
+            asset=asset,
+            shares=shares,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def buy_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按比例买入."""
+        result = await self._broker.buy_percent(
+            asset=asset,
+            percent=percent,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def buy_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按金额买入."""
+        result = await self._broker.buy_amount(
+            asset=asset,
+            amount=amount,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def sell(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按股数卖出."""
+        result = await self._broker.sell(
+            asset=asset,
+            shares=shares,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def sell_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按比例卖出."""
+        result = await self._broker.sell_percent(
+            asset=asset,
+            percent=percent,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def sell_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按金额卖出."""
+        result = await self._broker.sell_amount(
+            asset=asset,
+            amount=amount,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
+
+    async def trade_target_pct(
+        self,
+        asset: str,
+        target_pct: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """调整目标仓位占比."""
+        result = await self._broker.trade_target_pct(
+            asset=asset,
+            target_pct=target_pct,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            **kwargs,
+        )
+        return self._to_execution_result(result)
 
     async def cancel(self, order_id: str) -> CancelAck:
         """撤销订单."""
@@ -230,6 +381,20 @@ class LegacyBrokerPortAdapter(BrokerPort):
             price=float(trade.get("price") or 0),
             amount=float(trade.get("amount") or 0),
             tm=self._to_datetime(trade.get("tm")),
+        )
+
+    def _to_execution_result(self, result: Any) -> ExecutionResult:
+        """将旧 TradeResult 转换为正式返回类型."""
+        trades = [
+            self._to_trade_view(item)
+            for item in (getattr(result, "trades", None) or [])
+            if item is not None
+        ]
+        return ExecutionResult(
+            order_id=getattr(result, "qt_oid", None),
+            trades=trades,
+            status="submitted",
+            message="",
         )
 
     def _to_datetime(self, value: Any) -> datetime.datetime:

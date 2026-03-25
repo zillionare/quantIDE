@@ -8,7 +8,6 @@ from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import TradeError, TradeErrors
 from pyqmt.data import init_data
 from pyqmt.data.sqlite import Asset, db
-from pyqmt.service.base_broker import Broker
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.grid_search import GridSearch
 from pyqmt.service.runner import BacktestRunner
@@ -49,6 +48,32 @@ def build_asset_overview(asset: Asset) -> dict:
     }
 
 
+def _get_broker(req):
+    reg = req.scope.get("registry")
+    if reg is None:
+        return None
+    kind = req.query_params.get("kind")
+    broker_id = req.query_params.get("id")
+    if kind and broker_id:
+        return reg.get(kind, broker_id)
+    session = req.scope.get("session", {})
+    active_kind = session.get("active_account_kind")
+    active_id = session.get("active_account_id")
+    if active_kind and active_id:
+        return reg.get(active_kind, active_id)
+    default = reg.get_default()
+    if default is None:
+        return None
+    return reg.get(default[0], default[1])
+
+
+def _require_broker(req):
+    broker = _get_broker(req)
+    if broker is None:
+        raise RuntimeError("broker not found")
+    return broker
+
+
 @rt("/status")
 async def status(request):
     """获取当前服务状态"""
@@ -81,7 +106,7 @@ async def start_backtest(req):
         - principal, float
 
     """
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     params = req.json or {}
     return broker.start_backtest(params)
 
@@ -95,14 +120,14 @@ async def stop_backtest(req):
     # todo: 增加持久化操作
 
     """
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     return await broker.stop_backtest()
 
 
 @rt("/accounts", methods=["GET"])
 async def list_accounts(req):
     """只在回测模式下有效？"""
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     return broker.list_accounts()
 
 
@@ -115,7 +140,7 @@ async def buy(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = _get_broker(req)
+    broker = _require_broker(req)
 
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
@@ -137,7 +162,7 @@ async def buy_percent(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -156,7 +181,7 @@ async def buy_amount(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -172,7 +197,7 @@ async def sell(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -193,7 +218,7 @@ async def sell_percent(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _require_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -212,7 +237,7 @@ async def sell_amount(
     bid_time: datetime.datetime | None = None,
     timeout: float = 0.5,
 ):
-    broker = req.scope.get("broker")
+    broker = _require_broker(req)
     if bid_time is None and cfg.broker == "backtest":
         return Response("bid_time must be provided", status_code=400)
 
@@ -221,7 +246,7 @@ async def sell_amount(
 
 @rt("/positions", methods=["GET"])
 async def positions(req, asset: str, date: datetime.date | None = None):
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     return broker.get_position(asset, date)
 
 
@@ -251,7 +276,7 @@ async def account_info(req, asset: str, date: datetime.date | None = None):
         - positions: 当前持仓，dtype为[backtest.trade.datatypes.position_dtype][]的numpy structured array
     """
 
-    broker = _get_broker(req)
+    broker = _require_broker(req)
     return broker.get_account_info(asset, date)
 
 
@@ -313,13 +338,13 @@ async def delete_accounts(request):
     accounts = request.app.ctx.accounts
 
     if account_to_delete is None:
-        broker = _get_broker(request)
+        broker = _require_broker(request)
         if broker.account_name == "admin":
             accounts.delete_accounts()
         else:
             return PlainTextResponse("admin account required", status_code=403)
 
-    broker = _get_broker(request)
+    broker = _require_broker(request)
     if account_to_delete == broker.account_name:
         accounts.delete_accounts(account_to_delete)
 
@@ -341,7 +366,7 @@ async def get_assets(request):
         Response: 从`start`到`end`期间的账户资产信息，结果以binary方式返回,参考[backtest.trade.datatypes.rich_assets_dtype][]
 
     """
-    broker = _get_broker(request)
+    broker = _require_broker(request)
 
     start = request.args.get("start")
     if start:
@@ -365,7 +390,7 @@ async def get_assets(request):
 
 @rt("/asset_overview", methods=["GET"])
 async def asset_overview(request):
-    broker = _get_broker(request)
+    broker = _require_broker(request)
     return build_asset_overview(broker.asset)
 
 
@@ -492,6 +517,8 @@ async def run_grid_search_job(req):
     strategy_cls = strategies[strategy_name]
 
     try:
+        if not start_date or not end_date:
+            return Response("start_date and end_date are required", status_code=400)
         start = arrow.get(start_date).date()
         end = arrow.get(end_date).date()
     except Exception as e:
@@ -544,6 +571,8 @@ async def run_backtest_job(req):
     strategy_cls = strategies[strategy_name]
 
     try:
+        if not start_date or not end_date:
+            return Response("start_date and end_date are required", status_code=400)
         start = arrow.get(start_date).date()
         end = arrow.get(end_date).date()
     except Exception as e:

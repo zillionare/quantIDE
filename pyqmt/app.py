@@ -100,7 +100,7 @@ def init():
     init_data(cfg.home)
     runtime = RuntimeBootstrap().bootstrap()
     reg = runtime.registry
-    strategy_runtime_manager.bootstrap_from_registry(reg, runtime.market_data)
+    strategy_runtime_manager.bootstrap_from_registry(reg, runtime.market_data, runtime.adapters)
 
     auth = AuthManager(config={"login_path": "/login"})
 

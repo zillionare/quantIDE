@@ -8,6 +8,7 @@ from pyqmt.core.ports import (
     AssetView,
     BrokerPort,
     CancelAck,
+    ExecutionResult,
     OrderAck,
     OrderRequest,
     OrderView,
@@ -16,7 +17,7 @@ from pyqmt.core.ports import (
 )
 from pyqmt.core.runtime.gateway_client import GatewayClient
 from pyqmt.data.sqlite import Asset, Position, Trade
-from pyqmt.service.base_broker import Broker
+from pyqmt.service.base_broker import Broker, TradeResult
 
 
 class GatewayBrokerWrapper(Broker):
@@ -77,6 +78,7 @@ class GatewayBrokerWrapper(Broker):
 
     @property
     def positions(self) -> Dict[str, Position]:
+        """返回当前持仓."""
         views = self._adapter.query_positions()
         res = {}
         for v in views:
@@ -85,21 +87,231 @@ class GatewayBrokerWrapper(Broker):
                 dt=datetime.date.today(),
                 asset=v.asset,
                 shares=v.shares,
-                can_sell=v.avail,
+                avail=v.avail,
                 price=v.price,
-                market_value=v.market_value,
-                cost=v.cost,
+                profit=0,
+                mv=v.mv,
             )
         return res
 
-    async def buy(self, *args, **kwargs):
-        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """记录策略运行数据.
 
-    async def sell(self, *args, **kwargs):
-        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
+        Gateway 兼容层当前仅用于 UI 交易与查询，不持久化策略指标。
+        """
 
-    async def cancel_order(self, *args, **kwargs):
-        raise NotImplementedError("GatewayBrokerWrapper is read-only for now via legacy interface")
+    async def buy(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按股数买入."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=shares,
+            style="shares",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def buy_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按资金比例买入."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=percent,
+            style="percent",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def buy_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: int | float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按金额买入."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=amount,
+            style="amount",
+            price=float(price),
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按股数卖出."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=shares,
+            style="shares",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按持仓比例卖出."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=percent,
+            style="percent",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> TradeResult:
+        """按金额卖出."""
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=amount,
+            style="amount",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def cancel_order(self, qt_oid: str):
+        """撤销指定订单."""
+        await self._adapter.cancel(qt_oid)
+
+    async def cancel_all_orders(self, side: OrderSide | None = None):
+        """撤销全部未完成订单."""
+        await self._adapter.cancel_all(side=side)
+
+    async def trade_target_pct(
+        self,
+        asset: str,
+        target_pct: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+    ) -> TradeResult:
+        """将仓位调整到目标占比."""
+        current_mv = 0.0
+        for position in self.positions.values():
+            if position.asset == asset:
+                current_mv = float(position.mv)
+                break
+        total_asset = float(self.asset.total)
+        if total_asset <= 0:
+            return TradeResult.empty()
+        target_mv = total_asset * target_pct
+        side = OrderSide.BUY if target_mv >= current_mv else OrderSide.SELL
+        return await self._submit_legacy_order(
+            asset=asset,
+            side=side,
+            value=target_pct,
+            style="target_pct",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra={},
+        )
+
+    async def _submit_legacy_order(
+        self,
+        asset: str,
+        side: OrderSide,
+        value: int | float,
+        style: str,
+        price: float,
+        order_time: datetime.datetime | None,
+        timeout: float,
+        extra: dict[str, Any],
+    ) -> TradeResult:
+        """将旧版 Broker 调用委托到统一交易端口."""
+        request = OrderRequest(
+            asset=asset,
+            side=side,
+            value=float(value),
+            style=style,
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=extra,
+        )
+        ack = await self._adapter.submit(request)
+        if ack.order_id is None:
+            return TradeResult.empty()
+        trades = [
+            Trade(
+                self._portfolio_id,
+                str(item.trade_id),
+                str(item.order_id),
+                "",
+                str(item.asset),
+                float(item.shares),
+                float(item.price),
+                float(item.amount),
+                item.tm,
+                OrderSide.BUY if side == OrderSide.BUY else OrderSide.SELL,
+                "",
+            )
+            for item in (ack.trades or [])
+        ]
+        return TradeResult(str(ack.order_id), trades)
 
 
 class GatewayBrokerAdapter(BrokerPort):
@@ -112,6 +324,175 @@ class GatewayBrokerAdapter(BrokerPort):
             client: gateway 客户端。
         """
         self._client = client
+
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """记录策略运行数据.
+
+        gateway 当前仅提供交易与查询能力，不在此端口持久化指标。
+        """
+
+    async def buy(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按股数买入."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=shares,
+            style="shares",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def buy_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按比例买入."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=percent,
+            style="percent",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def buy_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按金额买入."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.BUY,
+            value=amount,
+            style="amount",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按股数卖出."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=shares,
+            style="shares",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按比例卖出."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=percent,
+            style="percent",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def sell_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """按金额卖出."""
+        return await self._submit_execution(
+            asset=asset,
+            side=OrderSide.SELL,
+            value=amount,
+            style="amount",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
+
+    async def trade_target_pct(
+        self,
+        asset: str,
+        target_pct: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs,
+    ) -> ExecutionResult:
+        """调整目标仓位占比."""
+        asset_view = self.query_assets()
+        if asset_view is None or asset_view.total <= 0:
+            return ExecutionResult.empty()
+        current_mv = 0.0
+        for position in self.query_positions():
+            if position.asset == asset:
+                current_mv = float(position.mv)
+                break
+        target_mv = float(asset_view.total) * target_pct
+        side = OrderSide.BUY if target_mv >= current_mv else OrderSide.SELL
+        return await self._submit_execution(
+            asset=asset,
+            side=side,
+            value=target_pct,
+            style="target_pct",
+            price=price,
+            order_time=order_time,
+            timeout=timeout,
+            extra=kwargs,
+        )
 
     async def submit(self, request: OrderRequest) -> OrderAck:
         """提交订单."""
@@ -152,6 +533,37 @@ class GatewayBrokerAdapter(BrokerPort):
         return CancelAck(
             success=bool(result.get("success", False)),
             message=str(result.get("error") or ""),
+        )
+
+    async def _submit_execution(
+        self,
+        asset: str,
+        side: OrderSide,
+        value: int | float,
+        style: str,
+        price: float,
+        order_time: datetime.datetime | None,
+        timeout: float,
+        extra: dict[str, Any],
+    ) -> ExecutionResult:
+        """提交高阶交易请求并返回正式结果对象."""
+        ack = await self.submit(
+            OrderRequest(
+                asset=asset,
+                side=side,
+                value=float(value),
+                style=style,
+                price=price,
+                order_time=order_time,
+                timeout=timeout,
+                extra=extra,
+            )
+        )
+        return ExecutionResult(
+            order_id=ack.order_id,
+            trades=list(ack.trades or []),
+            status=ack.status,
+            message=ack.message,
         )
 
     async def cancel_all(self, side: OrderSide | None = None) -> int:

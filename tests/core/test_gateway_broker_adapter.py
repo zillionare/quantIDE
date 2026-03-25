@@ -2,7 +2,7 @@ import pytest
 
 from pyqmt.core.enums import OrderSide
 from pyqmt.core.ports import OrderRequest
-from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
+from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter, GatewayBrokerWrapper
 
 
 class DummyGatewayClient:
@@ -28,6 +28,8 @@ class DummyGatewayClient:
             }
         if path == "/api/trade/positions":
             return [{"symbol": "000001.SZ", "shares": 200, "avail": 200, "cost": 10, "market_value": 2100}]
+        if path == "/api/trade/orders":
+            return [{"qtoid": "1001", "symbol": "000001.SZ", "side": "buy", "shares": 200, "price": 10, "status": "submitted"}]
         return []
 
 
@@ -54,6 +56,16 @@ async def test_gateway_broker_submit_amount_style():
     assert ack.status == "submitted"
 
 
+@pytest.mark.asyncio
+async def test_gateway_broker_buy_amount_returns_execution_result():
+    adapter = GatewayBrokerAdapter(DummyGatewayClient())
+
+    result = await adapter.buy_amount("000001.SZ", 5000, price=10, strategy_id="s1")
+
+    assert result.order_id == "1001"
+    assert result.status == "submitted"
+
+
 def test_gateway_broker_query_assets():
     adapter = GatewayBrokerAdapter(DummyGatewayClient())
     assets = adapter.query_assets()
@@ -73,3 +85,45 @@ async def test_gateway_broker_submit_target_pct_style():
     )
     ack = await adapter.submit(req)
     assert ack.status == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_gateway_broker_trade_target_pct_submits_sell_when_overweight():
+    client = DummyGatewayClient()
+    adapter = GatewayBrokerAdapter(client)
+
+    result = await adapter.trade_target_pct("000001.SZ", 0, price=10)
+
+    path, payload = client.post_calls[-1]
+    assert result.order_id is not None
+    assert path == "/api/trade/sell"
+    assert payload["symbol"] == "000001.SZ"
+
+
+@pytest.mark.asyncio
+async def test_gateway_broker_wrapper_submit_amount_and_cancel_all():
+    client = DummyGatewayClient()
+    adapter = GatewayBrokerAdapter(client)
+    wrapper = GatewayBrokerWrapper(adapter)
+
+    result = await wrapper.buy_amount("000001.SZ", 5000, price=10)
+
+    assert result.qt_oid == "1001"
+
+    await wrapper.cancel_all_orders(side=OrderSide.BUY)
+
+    assert client.get_calls[-1] == ("/api/trade/orders", None)
+    assert client.post_calls[-1][0] == "/api/trade/cancel"
+
+
+@pytest.mark.asyncio
+async def test_gateway_broker_wrapper_trade_target_pct_submits_sell_when_overweight():
+    client = DummyGatewayClient()
+    adapter = GatewayBrokerAdapter(client)
+    wrapper = GatewayBrokerWrapper(adapter)
+
+    await wrapper.trade_target_pct("000001.SZ", 0, price=10)
+
+    path, payload = client.post_calls[-1]
+    assert path == "/api/trade/sell"
+    assert payload["symbol"] == "000001.SZ"

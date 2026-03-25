@@ -12,6 +12,7 @@ from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
 from pyqmt.core.runtime.gateway_client import GatewayClient
 from pyqmt.core.runtime.gateway_market import GatewayMarketDataAdapter
 from pyqmt.core.runtime.market_bridge import LiveQuoteMarketDataAdapter
+from pyqmt.core.runtime.port_broker import PortBackedBroker
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import db
 from pyqmt.service.livequote import live_quote
@@ -101,10 +102,24 @@ class RuntimeBootstrap:
             if broker is None:
                 continue
             name = f"{kind}:{portfolio_id}"
+            adapter = LegacyBrokerPortAdapter(broker, portfolio_id=portfolio_id)
             adapters.register(
                 "broker",
                 name,
-                LegacyBrokerPortAdapter(broker, portfolio_id=portfolio_id),
+                adapter,
+            )
+            registry.register(
+                kind,
+                portfolio_id,
+                PortBackedBroker(
+                    port=adapter,
+                    portfolio_id=portfolio_id,
+                    kind=kind,
+                    portfolio_name=str(getattr(broker, "portfolio_name", portfolio_id) or portfolio_id),
+                    status=bool(getattr(broker, "status", True)),
+                    is_connected=bool(getattr(broker, "is_connected", getattr(broker, "status", True))),
+                    legacy=broker,
+                ),
             )
 
     def _load_accounts_from_db(
@@ -140,9 +155,18 @@ class RuntimeBootstrap:
         client = GatewayClient.from_config()
         adapter = GatewayBrokerAdapter(client)
         adapters.register("broker", "gateway:default", adapter)
-
-        # 为兼容 UI (trade_main.py)，将 GatewayBrokerAdapter 包装为旧版 Broker 并注册到 BrokerRegistry
-        from pyqmt.core.runtime.gateway_broker import GatewayBrokerWrapper
         registry = getattr(self, "_registry_ref", None)
         if registry:
-            registry.register(BrokerKind.QMT, "gateway", GatewayBrokerWrapper(adapter))
+            registry.register(
+                BrokerKind.QMT,
+                "gateway",
+                PortBackedBroker(
+                    port=adapter,
+                    portfolio_id="gateway",
+                    kind=BrokerKind.QMT,
+                    portfolio_name="实盘网关",
+                    status=True,
+                    is_connected=True,
+                    legacy=None,
+                ),
+            )

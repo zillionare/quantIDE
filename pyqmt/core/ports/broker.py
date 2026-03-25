@@ -88,6 +88,26 @@ class OrderAck:
 
 
 @dataclass
+class ExecutionResult:
+    """高阶交易语义的统一返回值."""
+
+    order_id: str | None
+    trades: list[TradeView] = field(default_factory=list)
+    status: str = "submitted"
+    message: str = ""
+
+    @property
+    def qt_oid(self) -> str | None:
+        """兼容旧返回值字段名."""
+        return self.order_id
+
+    @classmethod
+    def empty(cls) -> "ExecutionResult":
+        """返回空交易结果."""
+        return cls(order_id=None, trades=[])
+
+
+@dataclass
 class CancelAck:
     """撤单响应."""
 
@@ -98,8 +118,102 @@ class CancelAck:
 class BrokerPort(Protocol):
     """交易端口."""
 
+    def record(
+        self,
+        key: str,
+        value: float,
+        dt: datetime.datetime | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """记录策略运行数据."""
+        ...
+
     async def submit(self, request: OrderRequest) -> OrderAck:
         """提交订单."""
+        ...
+
+    async def buy(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按股数买入."""
+        ...
+
+    async def buy_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按比例买入."""
+        ...
+
+    async def buy_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按金额买入."""
+        ...
+
+    async def sell(
+        self,
+        asset: str,
+        shares: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按股数卖出."""
+        ...
+
+    async def sell_percent(
+        self,
+        asset: str,
+        percent: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按比例卖出."""
+        ...
+
+    async def sell_amount(
+        self,
+        asset: str,
+        amount: int | float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """按金额卖出."""
+        ...
+
+    async def trade_target_pct(
+        self,
+        asset: str,
+        target_pct: float,
+        price: float = 0,
+        order_time: datetime.datetime | None = None,
+        timeout: float = 0.5,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        """调整目标仓位占比."""
         ...
 
     async def cancel(self, order_id: str) -> CancelAck:

@@ -1,17 +1,15 @@
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from pyqmt.core.enums import BrokerKind
 from pyqmt.core.singleton import singleton
-from pyqmt.service.base_broker import Broker
-
 
 @singleton
 class BrokerRegistry:
     def __init__(self):
-        self._brokers: Dict[str, Broker] = {}
+        self._brokers: Dict[str, Any] = {}
         self._default: Tuple[str, str] | None = None
 
-    def register(self, kind: BrokerKind | str, portfolio_id: str, broker: Broker):
+    def register(self, kind: BrokerKind | str, portfolio_id: str, broker: Any):
         if isinstance(kind, BrokerKind):
             kind = kind.value
             
@@ -35,7 +33,7 @@ class BrokerRegistry:
             else:
                 self._default = None
 
-    def get(self, kind: BrokerKind | str, portfolio_id: str) -> Broker | None:
+    def get(self, kind: BrokerKind | str, portfolio_id: str) -> Any | None:
         if isinstance(kind, BrokerKind):
             kind = kind.value
         key = f"{kind}:{portfolio_id}"

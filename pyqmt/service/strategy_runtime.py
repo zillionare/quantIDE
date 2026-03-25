@@ -11,10 +11,11 @@ from loguru import logger
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BrokerKind, FrameType, OrderSide
-from pyqmt.core.ports import OrderRequest
+from pyqmt.core.runtime.broker_bridge import LegacyBrokerPortAdapter
 from pyqmt.data.sqlite import db
 from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
 from pyqmt.core.runtime.gateway_client import GatewayClient
+from pyqmt.core.runtime.port_broker import PortBackedBroker
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import PaperBroker
@@ -65,141 +66,63 @@ class StrategyBrokerProxy:
         return getattr(self._broker, item)
 
     async def buy(self, asset, shares, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.BUY,
-                    value=shares,
-                    style="shares",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.buy(
             asset=asset,
             shares=shares,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
     async def sell(self, asset, shares, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.SELL,
-                    value=shares,
-                    style="shares",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.sell(
             asset=asset,
             shares=shares,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
     async def buy_percent(self, asset, percent, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.BUY,
-                    value=percent,
-                    style="percent",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.buy_percent(
             asset=asset,
             percent=percent,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
     async def sell_percent(self, asset, percent, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.SELL,
-                    value=percent,
-                    style="percent",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.sell_percent(
             asset=asset,
             percent=percent,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
     async def buy_amount(self, asset, amount, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.BUY,
-                    value=amount,
-                    style="amount",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.buy_amount(
             asset=asset,
             amount=amount,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
     async def sell_amount(self, asset, amount, price=0, order_time=None, timeout=0.5):
-        if hasattr(self._broker, "submit"):
-            return await self._broker.submit(
-                OrderRequest(
-                    asset=asset,
-                    side=OrderSide.SELL,
-                    value=amount,
-                    style="amount",
-                    price=price,
-                    order_time=order_time,
-                    timeout=timeout,
-                    extra={"strategy_id": self._strategy_id},
-                )
-            )
         return await self._broker.sell_amount(
             asset=asset,
             amount=amount,
             price=price,
             order_time=order_time,
             timeout=timeout,
-            strategy=self._strategy_id,
+            strategy_id=self._strategy_id,
         )
 
 
@@ -212,11 +135,13 @@ class StrategyRuntimeManager:
         self._backtest_history: dict[str, BacktestRun] = {}
         self._runtime_specs: dict[str, dict[str, Any]] = {}
         self._registry: BrokerRegistry | None = None
+        self._adapters: Any = None
         self._market_data: Any = None
         self._gateway_broker: GatewayBrokerAdapter | None = None
 
-    def bootstrap_from_registry(self, registry: BrokerRegistry, market_data: Any = None) -> None:
+    def bootstrap_from_registry(self, registry: BrokerRegistry, market_data: Any = None, adapters: Any = None) -> None:
         self._registry = registry
+        self._adapters = adapters
         self._market_data = market_data
         self._gateway_broker = GatewayBrokerAdapter(GatewayClient.from_config())
         with self._lock:
@@ -294,12 +219,24 @@ class StrategyRuntimeManager:
             principal=principal,
             market_data=market_data,
         )
-        registry.register(BrokerKind.SIMULATION, account_id, broker)
+        adapter = LegacyBrokerPortAdapter(broker, portfolio_id=account_id)
+        if self._adapters is not None:
+            self._adapters.register("broker", f"{BrokerKind.SIMULATION.value}:{account_id}", adapter)
+        handle = PortBackedBroker(
+            port=adapter,
+            portfolio_id=account_id,
+            kind=BrokerKind.SIMULATION,
+            portfolio_name=f"{run.strategy_name}-paper",
+            status=True,
+            is_connected=True,
+            legacy=broker,
+        )
+        registry.register(BrokerKind.SIMULATION, account_id, handle)
         return self._start_strategy_runtime(
             mode="paper",
             strategy_name=run.strategy_name,
             config=run.config,
-            broker=broker,
+            broker=handle,
             portfolio_id=account_id,
             account_kind=BrokerKind.SIMULATION.value,
             interval=run.interval,
@@ -317,7 +254,7 @@ class StrategyRuntimeManager:
         run = self._resolve_backtest_run(portfolio_id)
         broker = self._gateway_broker
         account_kind = "gateway"
-        account_id = "gateway:default"
+        account_id = "gateway"
         if broker is None:
             raise RuntimeError("gateway broker 未初始化")
         return self._start_strategy_runtime(
