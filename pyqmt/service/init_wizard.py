@@ -11,6 +11,7 @@ from typing import Any
 from loguru import logger
 
 from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_config
 from pyqmt.data.models.app_state import AppState
 from pyqmt.data.sqlite import db
 
@@ -56,9 +57,26 @@ class InitWizardService:
         base_url = str(getattr(gateway, "base_url", "") or "").strip()
         parsed = urllib.parse.urlparse(base_url)
         state.gateway_base_url = parsed.path or "/"
+        state.gateway_scheme = parsed.scheme or "http"
         state.gateway_server = parsed.hostname or ""
         state.gateway_port = parsed.port or (443 if parsed.scheme == "https" else 80)
         state.gateway_enabled = bool(parsed.hostname)
+        state.gateway_username = str(getattr(gateway, "username", "") or "")
+        state.gateway_password = str(getattr(gateway, "password", "") or "")
+        state.gateway_timeout = int(getattr(gateway, "timeout", 10) or 10)
+
+        livequote = getattr(cfg, "livequote", None)
+        state.livequote_mode = str(getattr(livequote, "mode", "gateway") or "gateway")
+
+        runtime = getattr(cfg, "runtime", None)
+        state.runtime_mode = str(getattr(runtime, "mode", "live") or "live")
+        state.runtime_market_adapter = str(
+            getattr(runtime, "market_adapter", "") or ""
+        )
+        state.runtime_broker_adapter = str(
+            getattr(runtime, "broker_adapter", "") or ""
+        )
+
         apikeys = getattr(cfg, "apikeys", None)
         clients = getattr(apikeys, "clients", []) or []
         if clients and isinstance(clients, list):
@@ -257,8 +275,17 @@ class InitWizardService:
             api_key: 网关 key。
         """
         state = self.get_state()
+        normalized_server = str(server or "").strip()
+        parsed = urllib.parse.urlparse(normalized_server)
+        if parsed.scheme and parsed.hostname:
+            state.gateway_scheme = parsed.scheme
+            state.gateway_server = parsed.hostname
+            if parsed.port is not None:
+                port = parsed.port
+        else:
+            state.gateway_scheme = "http"
+            state.gateway_server = normalized_server
         state.gateway_enabled = bool(enabled)
-        state.gateway_server = server.strip()
         state.gateway_port = int(port)
         state.gateway_base_url = prefix.strip() or "/"
         state.gateway_api_key = api_key.strip()
@@ -391,6 +418,14 @@ class InitWizardService:
         Returns:
             str: 目标路径。
         """
+        runtime = get_runtime_config()
+        state = self.get_state()
+        if state.can_use_backtest() and state.can_use_live_trading():
+            return "/trade"
+        if state.can_use_backtest():
+            return "/strategy"
+        if runtime.gateway_enabled and runtime.gateway_base_url:
+            return "/login"
         return "/login"
 
     def get_progress(self) -> dict[str, Any]:

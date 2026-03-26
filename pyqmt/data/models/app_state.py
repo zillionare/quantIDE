@@ -62,11 +62,35 @@ class AppState(Entity):
     gateway_base_url: str = ""
     """网关 HTTP 地址"""
 
+    gateway_scheme: str = "http"
+    """网关协议"""
+
     gateway_api_key: str = ""
     """网关 API Key"""
 
+    gateway_username: str = ""
+    """网关登录用户名"""
+
+    gateway_password: str = ""
+    """网关登录密码"""
+
+    gateway_timeout: int = 10
+    """网关请求超时秒数"""
+
     gateway_enabled: bool = False
     """是否启用 gateway（未启用则禁用仿真与实盘）"""
+
+    livequote_mode: str = "gateway"
+    """实时行情模式"""
+
+    runtime_mode: str = "live"
+    """运行模式"""
+
+    runtime_market_adapter: str = ""
+    """运行时行情适配器"""
+
+    runtime_broker_adapter: str = ""
+    """运行时交易适配器"""
 
     # ========== 通知配置 ==========
     notify_dingtalk_access_token: str = ""
@@ -146,6 +170,11 @@ class AppState(Entity):
                 self.gateway_port = int(self.gateway_port)
             except Exception:
                 self.gateway_port = 8000
+        if not isinstance(self.gateway_timeout, int):
+            try:
+                self.gateway_timeout = max(1, int(self.gateway_timeout))
+            except Exception:
+                self.gateway_timeout = 10
         if not isinstance(self.history_years, int):
             try:
                 self.history_years = max(1, int(self.history_years))

@@ -14,6 +14,7 @@ import cfg4py
 import pytz
 from loguru import logger
 
+from .runtime import get_runtime_config
 from .schema import Config
 
 
@@ -24,10 +25,8 @@ def get_config_dir() -> str:
 
 
 def endpoint():
-    cfg = cfg4py.get_instance()
-
     major, minor, *_ = version("zillionare-pyqmt").split(".")
-    prefix = cfg.server.prefix.rstrip("/")
+    prefix = get_runtime_config().app_prefix.rstrip("/")
     return f"{prefix}/v{major}.{minor}"
 
 

@@ -10,7 +10,7 @@ import polars as pl
 import websockets
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_config
 from pyqmt.core.enums import Topics
 from pyqmt.core.message import msg_hub
 from pyqmt.core.scheduler import scheduler
@@ -73,7 +73,7 @@ class LiveQuote:
                 await asyncio.sleep(2)
 
     def _build_ws_url(self) -> str:
-        base_url = str(cfg.gateway.base_url).rstrip("/")
+        base_url = get_runtime_config().gateway_base_url.rstrip("/")
         if base_url.startswith("https://"):
             return "wss://" + base_url[len("https://") :] + "/ws/quotes"
         if base_url.startswith("http://"):
@@ -94,8 +94,10 @@ class LiveQuote:
             return {}
         ts = data.get("timestamp")
         ts_ms = int(float(ts or time.time()) * 1000)
-        m1 = data.get("1m") if isinstance(data.get("1m"), dict) else {}
-        d1 = data.get("1d") if isinstance(data.get("1d"), dict) else {}
+        m1_raw = data.get("1m")
+        d1_raw = data.get("1d")
+        m1: dict[str, Any] = m1_raw if isinstance(m1_raw, dict) else {}
+        d1: dict[str, Any] = d1_raw if isinstance(d1_raw, dict) else {}
         close_value = self._to_float(m1.get("close"), self._to_float(d1.get("close"), 0.0))
         quote = {
             "price": close_value,

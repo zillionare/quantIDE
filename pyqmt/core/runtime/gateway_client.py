@@ -6,7 +6,7 @@ import urllib.request
 from http.cookiejar import CookieJar
 from typing import Any
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_config
 
 
 class GatewayClient:
@@ -40,12 +40,12 @@ class GatewayClient:
     @classmethod
     def from_config(cls) -> "GatewayClient":
         """从配置创建客户端."""
-        gateway = cfg.gateway
+        runtime = get_runtime_config()
         return cls(
-            base_url=gateway.base_url,
-            username=gateway.username,
-            password=gateway.password,
-            timeout=float(gateway.timeout),
+            base_url=runtime.gateway_base_url,
+            username=runtime.gateway_username,
+            password=runtime.gateway_password,
+            timeout=float(runtime.gateway_timeout),
         )
 
     def ensure_login(self) -> None:

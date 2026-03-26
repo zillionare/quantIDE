@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_config
 from pyqmt.core.enums import BrokerKind
 from pyqmt.core.ports import MarketDataPort
 from pyqmt.core.runtime.adapter_registry import AdapterRegistry
@@ -113,22 +113,22 @@ class RuntimeBootstrap:
 
     def _resolve_mode(self) -> RuntimeMode:
         """解析运行模式."""
-        runtime = getattr(cfg, "runtime", None)
-        raw = str(getattr(runtime, "mode", "") or "").strip().lower()
-        if not raw:
-            raw = str(getattr(cfg, "runtime_mode", "") or "").strip().lower()
+        runtime = get_runtime_config()
+        raw = runtime.runtime_mode
         if raw in {"live", "paper", "backtest"}:
             return raw  # type: ignore
-        if cfg.livequote.mode == "none":
+        if runtime.livequote_mode == "none" or not runtime.gateway_enabled:
             return "backtest"
         return "live"
 
     def _build_market_data(self, adapters: AdapterRegistry) -> MarketDataPort:
         """构建行情适配器."""
-        runtime = getattr(cfg, "runtime", None)
-        adapter_name = str(getattr(runtime, "market_adapter", "") or "").strip().lower()
-        mode_name = str(cfg.livequote.mode).strip().lower()
-        use_gateway = adapter_name == "gateway" or mode_name == "gateway"
+        runtime = get_runtime_config()
+        adapter_name = runtime.runtime_market_adapter
+        mode_name = runtime.livequote_mode
+        use_gateway = runtime.gateway_enabled and (
+            adapter_name == "gateway" or mode_name == "gateway"
+        )
         if use_gateway:
             client = GatewayClient.from_config()
             market_data = GatewayMarketDataAdapter(client)
@@ -186,10 +186,12 @@ class RuntimeBootstrap:
 
     def _register_gateway_broker_adapter(self, adapters: AdapterRegistry) -> None:
         """注册 gateway 交易适配器."""
-        runtime = getattr(cfg, "runtime", None)
-        broker_name = str(getattr(runtime, "broker_adapter", "") or "").strip().lower()
-        mode_name = str(cfg.livequote.mode).strip().lower()
-        use_gateway = broker_name == "gateway" or mode_name == "gateway"
+        runtime = get_runtime_config()
+        broker_name = runtime.runtime_broker_adapter
+        mode_name = runtime.livequote_mode
+        use_gateway = runtime.gateway_enabled and (
+            broker_name == "gateway" or mode_name == "gateway"
+        )
         if not use_gateway:
             return
         client = GatewayClient.from_config()

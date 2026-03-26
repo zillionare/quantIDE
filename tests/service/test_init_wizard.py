@@ -49,6 +49,11 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
     assert state.gateway_base_url == "/"
     assert state.gateway_enabled is True
     assert state.gateway_api_key == "demo-key"
+    assert state.gateway_username == ""
+    assert state.gateway_password == ""
+    assert state.gateway_timeout == 10
+    assert state.livequote_mode == "gateway"
+    assert state.runtime_mode == "live"
     assert state.epoch == datetime.date(2015, 1, 1)
     assert state.history_start_date >= datetime.date(2015, 1, 1)
 
