@@ -1,6 +1,7 @@
-"""QMT 行情订阅模块
+"""Legacy local QMT quote subscription helpers.
 
-用于从 QMT 订阅实时行情数据。
+This module is retained only for compatibility and offline troubleshooting.
+Published pyqmt live quote flows should use qmt-gateway instead of local xtdata.
 """
 
 import datetime
@@ -18,11 +19,20 @@ from coretypes import FrameType
 
 from pyqmt.core.constants import key_price
 from pyqmt.core.context import g
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.core.xtwrapper import get_stock_list
 
 cfg = cfg4py.get_instance()
 
 import itertools
+
+
+def _ensure_legacy_subscription_enabled() -> None:
+    """Require explicit opt-in for retired local xtdata subscription paths."""
+    ensure_legacy_local_qmt_enabled(
+        "pyqmt.subscribe 本地 xtdata 订阅",
+        "qmt-gateway 行情通道",
+    )
 
 
 def batch(iterable, size):
@@ -100,6 +110,7 @@ def on_subscribe_callback(data):
 
 def subscribe_live():
     """订阅实时行情"""
+    _ensure_legacy_subscription_enabled()
     # 延迟导入 xtquant
     from xtquant import xtdata as xtd
 
@@ -110,6 +121,7 @@ def subscribe_live():
 
 def sync_1m_bars(codes: List[str]):
     """同步1分钟K线数据"""
+    _ensure_legacy_subscription_enabled()
     # 延迟导入 xtquant
     from xtquant import xtdata as xtd
 
@@ -128,6 +140,7 @@ def sync_1m_bars(codes: List[str]):
 
 def _run_qmt_loop():
     """运行 QMT 数据循环"""
+    _ensure_legacy_subscription_enabled()
     from xtquant.xtdata import run
     run()
 

@@ -1,6 +1,7 @@
-"""板块行情存储类
+"""板块行情存储类.
 
-使用 Parquet 文件存储板块行情数据，按年分区。
+读取本地已落盘数据属于正常能力；基于 xtdata 的抓取入口仅保留为
+兼容/离线工具路径。
 """
 
 import datetime
@@ -8,7 +9,9 @@ from pathlib import Path
 from typing import Callable, Literal
 
 import polars as pl
+from loguru import logger
 
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.data.fetchers.xtdata_sectors import fetch_sector_bars
 from pyqmt.data.models.calendar import Calendar
 from pyqmt.data.stores.base import ParquetStorage
@@ -94,6 +97,10 @@ class SectorBarsStore(ParquetStorage):
         Returns:
             获取的记录数
         """
+        ensure_legacy_local_qmt_enabled(
+            "板块 xtdata 抓取",
+            "qmt-gateway 或非 xtquant 数据源",
+        )
         try:
             df = fetch_sector_bars(sector_id, start, end)
             if len(df) == 0:
