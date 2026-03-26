@@ -1,7 +1,7 @@
 """Removed local index sync service.
 
-Index synchronization from the local QMT client has been dropped from the
-pyqmt subject application.
+This module exists only to report that subject-side index synchronization has
+been removed.
 """
 
 

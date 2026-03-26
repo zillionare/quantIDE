@@ -1,7 +1,7 @@
 """Removed local sector sync service.
 
-Sector synchronization from the local QMT client has been dropped from the
-pyqmt subject application.
+This module exists only to report that subject-side sector synchronization has
+been removed.
 """
 
 

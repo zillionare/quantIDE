@@ -1,6 +1,7 @@
 """Removed local sector/index sync scheduler.
 
-The subject application no longer schedules local sector or index data sync.
+This module exists only to report that subject-side sector/index sync
+scheduling has been removed.
 """
 
 

@@ -14,7 +14,7 @@ class Sector(Entity):
         id: 板块代码（如 'SW1电力设备'）
         name: 板块名称
         sector_type: 类型：'concept'(概念) / 'etf' / 'convertible'(转债) / 'sw1' / 'sw2' / 'index'(指数)
-        source: 来源：'qmt'
+        source: 来源：如 'user'、'imported'、'manual'
         trade_date: 数据日期，用于PIT（Point In Time）查询
         description: 描述
         created_at: 创建时间
@@ -27,7 +27,7 @@ class Sector(Entity):
     id: str
     name: str
     sector_type: str  # 'concept', 'etf', 'convertible', 'sw1', 'sw2', 'index'
-    source: str = "qmt"
+    source: str = "manual"
     trade_date: datetime.date = field(default_factory=datetime.date.today)
     description: str = ""
     created_at: datetime.datetime = field(default_factory=datetime.datetime.now)

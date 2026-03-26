@@ -1,8 +1,7 @@
 """Removed local sector/index data helpers.
 
-The pyqmt subject application no longer supplements sector data from the local
-QMT client. Sector-related metadata and bar synchronization are no longer
-supported in the subject app.
+This module exists only to report that subject-side sector/index补充数据能力
+已经移除。
 """
 
 
