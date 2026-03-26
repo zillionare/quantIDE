@@ -1,6 +1,8 @@
 """数据同步定时任务配置
 
 使用 APScheduler 实现每日数据同步。
+
+本模块仅保留为本地 xtdata 兼容工具，不属于发布态正式路径。
 """
 
 import datetime
@@ -11,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
 from pyqmt.config import cfg
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.data.dal.index_dal import IndexDAL
 from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.services.index_sync import IndexSyncService
@@ -120,6 +123,11 @@ class DataSyncScheduler:
         if self._jobs_started:
             return
 
+        ensure_legacy_local_qmt_enabled(
+            "本地 xtdata 数据同步调度",
+            "远程数据服务或非 xtquant 数据源",
+        )
+
         self.init_db()
         self._create_services()
         self.setup_jobs()
@@ -140,6 +148,10 @@ class DataSyncScheduler:
         Args:
             full_history: 是否执行全量历史同步
         """
+        ensure_legacy_local_qmt_enabled(
+            "本地 xtdata 数据同步调度",
+            "远程数据服务或非 xtquant 数据源",
+        )
         self.init_db()
         self._create_services()
 
@@ -185,6 +197,10 @@ def init_and_sync(db_path: str | None = None, full_history: bool = False):
         db_path: 数据库路径
         full_history: 是否执行全量历史同步
     """
+    ensure_legacy_local_qmt_enabled(
+        "本地 xtdata 数据同步调度",
+        "远程数据服务或非 xtquant 数据源",
+    )
     scheduler = DataSyncScheduler()
     scheduler.init_db(db_path)
     scheduler._create_services()

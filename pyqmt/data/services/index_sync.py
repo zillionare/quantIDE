@@ -12,6 +12,7 @@ import polars as pl
 from loguru import logger
 
 from pyqmt.config import cfg
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.data.dal.index_dal import IndexDAL
 from pyqmt.data.fetchers.xtdata_sectors import fetch_sector_bars, get_index_list
 from pyqmt.data.models.calendar import calendar
@@ -22,6 +23,10 @@ class IndexSyncService:
     """指数数据同步服务"""
 
     def __init__(self, dal: IndexDAL):
+        ensure_legacy_local_qmt_enabled(
+            "指数 xtdata 同步服务",
+            "qmt-gateway 或非 xtquant 数据源",
+        )
         self.dal = dal
         self._epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
 

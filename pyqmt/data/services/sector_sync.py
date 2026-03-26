@@ -13,6 +13,7 @@ import polars as pl
 from loguru import logger
 
 from pyqmt.config import cfg
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.fetchers.xtdata_sectors import (
     fetch_sector_bars,
@@ -42,6 +43,10 @@ class SectorSyncService:
             calendar: 日历对象
             bars_store_path: 板块行情存储路径，默认使用配置中的路径
         """
+        ensure_legacy_local_qmt_enabled(
+            "板块 xtdata 同步服务",
+            "qmt-gateway 或非 xtquant 数据源",
+        )
         self.dal = dal
         self.calendar = calendar
 

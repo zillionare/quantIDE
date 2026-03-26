@@ -1,7 +1,9 @@
-"""数据同步服务"""
+"""Published data sync services.
 
-from .index_sync import IndexSyncService
-from .sector_sync import SectorSyncService
+Only stock sync remains part of the published subject-app surface.
+Legacy local xtdata services stay available via their dedicated modules.
+"""
+
 from .stock_sync import StockSyncService
 
-__all__ = ["SectorSyncService", "IndexSyncService", "StockSyncService"]
+__all__ = ["StockSyncService"]

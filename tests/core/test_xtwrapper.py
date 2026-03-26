@@ -9,6 +9,7 @@ from pytest import approx
 
 xtdata = pytest.importorskip("xtquant.xtdata")
 
+from pyqmt.core.legacy_qmt import LEGACY_LOCAL_QMT_ENV
 from pyqmt.core.xtwrapper import (
     cache_bars,
     get_calendar,
@@ -17,6 +18,11 @@ from pyqmt.core.xtwrapper import (
     subcribe_live,
 )
 from tests.config import setup
+
+
+@pytest.fixture(autouse=True)
+def enable_legacy_local_qmt(monkeypatch):
+    monkeypatch.setenv(LEGACY_LOCAL_QMT_ENV, "1")
 
 
 def test_get_ashare_list():

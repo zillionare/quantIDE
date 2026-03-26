@@ -1,3 +1,9 @@
+"""Legacy local xtdata wrapper.
+
+This module remains only for compatibility and offline migration tooling.
+Published pyqmt flows should use qmt-gateway or non-xtquant data sources.
+"""
+
 import datetime
 import logging
 from functools import cache
@@ -12,6 +18,7 @@ from numpy.typing import NDArray
 
 from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import XtQuantError
+from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
 from pyqmt.core.utils import date2str, time2minute
 
 Frame = datetime.datetime | datetime.date
@@ -25,7 +32,11 @@ _xt = None
 
 
 def _require_xt() -> Any:
-    """获取 xtquant.xtdata 模块，延迟导入"""
+    """获取 xtquant.xtdata 模块，延迟导入。"""
+    ensure_legacy_local_qmt_enabled(
+        "pyqmt.core.xtwrapper 本地 xtdata 访问",
+        "qmt-gateway 或非 xtquant 数据源",
+    )
     global _xt
     if _xt is None:
         from xtquant import xtdata as xt
