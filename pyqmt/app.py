@@ -72,7 +72,7 @@ from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
 from pyqmt.web.middleware_init import InitCheckMiddleware
 from pyqmt.web.middleware_feature import FeatureCheckMiddleware
 from pyqmt.web.pages.init_wizard import init_wizard_app
-from pyqmt.web.apis.analysis import index_router, kline_router, search_router, sector_router
+from pyqmt.web.apis.analysis import kline_router, search_router
 from pyqmt.web.pages.init_wizard import init_wizard
 from pyqmt.web.pages.accounts import accounts_app, accounts_list
 from pyqmt.web.pages.analysis import analysis_handler
@@ -138,9 +138,7 @@ def init():
             Mount("/strategy", strategy_app),
             Route("/analysis", analysis_handler, methods=["GET"]),
             Mount("/broker", broker_api_app),
-            # 分析导航 API
-            Mount("/api/v1/sectors", sector_router),
-            Mount("/api/v1/indices", index_router),
+            # 分析 API（板块/指数入口已下线）
             Mount("/api/v1/kline", kline_router),
             Mount("/api/v1/search", search_router),
             Mount("/data/calendar", data_calendar_app),
