@@ -1,155 +1,28 @@
-"""Legacy local QMT quote subscription helpers.
+"""Removed local quote subscription helpers.
 
-This module is retained only for compatibility and offline troubleshooting.
-Published pyqmt live quote flows should use qmt-gateway instead of local xtdata.
+The pyqmt subject application no longer opens a local quote subscription loop.
+Use qmt-gateway for live quote delivery.
 """
 
-import datetime
-import json
-import os
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
-from multiprocessing import Queue
-from threading import Thread
-from typing import List
 
-import cfg4py
-import numpy as np
-import pandas as pd
-from coretypes import FrameType
-
-from pyqmt.core.constants import key_price
-from pyqmt.core.context import g
-from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
-from pyqmt.core.xtwrapper import get_stock_list
-
-cfg = cfg4py.get_instance()
-
-import itertools
-
-
-def _ensure_legacy_subscription_enabled() -> None:
-    """Require explicit opt-in for retired local xtdata subscription paths."""
-    ensure_legacy_local_qmt_enabled(
-        "pyqmt.subscribe 本地 xtdata 订阅",
-        "qmt-gateway 行情通道",
-    )
+_REMOVED_MESSAGE = "本地行情订阅功能已从 pyqmt 主体移除，请改用 qmt-gateway。"
 
 
 def batch(iterable, size):
-    it = iter(iterable)
-    while item := list(itertools.islice(it, size)):
-        yield item
+    raise RuntimeError(_REMOVED_MESSAGE)
 
 
 def on_subscribe_callback(data):
-    """从订阅数据中提取lastPrice，存入缓存中
-
-    Args:
-        data: 具有如下结果的json:
-
-    ```json
-    {
-        '000001.SZ':
-        {
-            'time': 1710127194000,
-            'lastPrice': 10.42,
-            'open': 10.38,
-            'high': 10.47,
-            'low': 10.34,
-            'lastClose': 10.38,
-            'amount': 710422600.0,
-            'volume': 683450,
-            'pvolume': 68345011,
-            'stockStatus': 0,
-            'openInt': 13,
-            'transactionNum': 0,
-            'lastSettlementPrice': 0.0,
-            'settlementPrice': 0.0,
-            'pe': 0.0,
-            'askPrice': [10.42, 10.43, 10.44, 0.0, 0.0],
-            'bidPrice': [10.41, 10.4, 10.39, 0.0, 0.0],
-            'askVol': [9349, 7557, 6217, 0, 0],
-            'bidVol': [3119, 6685, 4865, 0, 0],
-            'volRatio': 0.0,
-            'speed1Min': 0.0,
-            'speed5Min': 0.0
-        }
-    }
-    ```
-    """
-    global cfg, f
-    last_prices = {code: item["lastPrice"] for code, item in data.items()}
-    g.cache.security.hset(key_price, mapping=last_prices)
-
-    bars = [
-        (
-            code,
-            item["time"],
-            item["open"],
-            item["high"],
-            item["low"],
-            item["lastClose"],
-            item["volume"],
-            item["amount"],
-        )
-        for code, item in data.items()
-    ]
-    df = pd.DataFrame(
-        bars,
-        columns=["symbol", "frame", "open", "high", "low", "close", "volume", "money"],
-    )
-
-    df.frame = np.array(df.frame, dtype="datetime64[ms]").astype(datetime.datetime)
-    df.frame = df["frame"].dt.tz_localize("UTC").dt.tz_convert("Asia/Shanghai")
-
-    print(f"timestamp: {pd.unique(df.frame)}")
-    # haystore.save_bars(FrameType.MIN1, df)
-    f.write(json.dumps(data))
-    f.flush()
+    raise RuntimeError(_REMOVED_MESSAGE)
 
 
 def subscribe_live():
-    """订阅实时行情"""
-    _ensure_legacy_subscription_enabled()
-    # 延迟导入 xtquant
-    from xtquant import xtdata as xtd
-
-    os.environ[cfg4py.envar] = "DEV"
-    g.init_dal()
-    xtd.subscribe_whole_quote(["SH", "SZ"], on_subscribe_callback)
+    raise RuntimeError(_REMOVED_MESSAGE)
 
 
-def sync_1m_bars(codes: List[str]):
-    """同步1分钟K线数据"""
-    _ensure_legacy_subscription_enabled()
-    # 延迟导入 xtquant
-    from xtquant import xtdata as xtd
-
-    start_ = "20240312"
-    xtd.download_history_data2(
-        codes, period="1m", start_time=start_, end_time="", callback=lambda x: x
-    )
-
-    print(f"{os.getpid()} get result...")
-    barss = xtd.get_market_data_ex(
-        [], codes, "1m", start_time="", count=241, dividend_type="front", fill_data=True
-    )
-    # print(barss)
-    print(f"{os.getpid()} records: {len(barss)}, {codes[0]}")
+def sync_1m_bars(codes):
+    raise RuntimeError(_REMOVED_MESSAGE)
 
 
 def _run_qmt_loop():
-    """运行 QMT 数据循环"""
-    _ensure_legacy_subscription_enabled()
-    from xtquant.xtdata import run
-    run()
-
-
-if __name__ == "__main__":
-    # t = Thread(target = subscribe_live)
-    # t.start()
-    # t.join()
-    global f
-    f = open("live.json", "w", encoding="utf-8")
-    subscribe_live()
-    _run_qmt_loop()
+    raise RuntimeError(_REMOVED_MESSAGE)

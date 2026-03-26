@@ -1,10 +1,8 @@
 import pytest
 
-from pyqmt.service.qmt_broker import LEGACY_LOCAL_QMT_ENV, QMTBroker
+from pyqmt.service.qmt_broker import QMTBroker
 
 
-def test_qmt_broker_requires_explicit_legacy_opt_in(monkeypatch):
-    monkeypatch.delenv(LEGACY_LOCAL_QMT_ENV, raising=False)
-
-    with pytest.raises(RuntimeError, match="QMTBroker 已退役为兼容路径"):
+def test_qmt_broker_is_removed_from_subject_app():
+    with pytest.raises(RuntimeError, match="主体移除|qmt-gateway|QMTBroker"):
         QMTBroker("demo-account")

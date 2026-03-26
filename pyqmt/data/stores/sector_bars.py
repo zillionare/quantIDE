@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Callable, Literal
 
 import polars as pl
-from loguru import logger
 
-from pyqmt.core.legacy_qmt import ensure_legacy_local_qmt_enabled
-from pyqmt.data.fetchers.xtdata_sectors import fetch_sector_bars
 from pyqmt.data.models.calendar import Calendar
 from pyqmt.data.stores.base import ParquetStorage
+
+
+_REMOVED_MESSAGE = "板块抓取功能已从 pyqmt 主体移除。"
 
 
 class SectorBarsStore(ParquetStorage):
@@ -38,7 +38,7 @@ class SectorBarsStore(ParquetStorage):
             "SectorBars",
             path,
             calendar,
-            fetch_sector_bars,
+            None,
             error_handler=None,
             partition_by=partition_by,
         )
@@ -97,28 +97,7 @@ class SectorBarsStore(ParquetStorage):
         Returns:
             获取的记录数
         """
-        ensure_legacy_local_qmt_enabled(
-            "板块 xtdata 抓取",
-            "qmt-gateway 或非 xtquant 数据源",
-        )
-        try:
-            df = fetch_sector_bars(sector_id, start, end)
-            if len(df) == 0:
-                return 0
-
-            # 重命名列以匹配存储格式
-            df = df.rename({"dt": "date"})
-
-            self.append_data(df)
-
-            if progress_callback:
-                progress_callback(1, 1, f"已获取 {sector_id} {len(df)} 条数据")
-
-            return len(df)
-
-        except Exception as e:
-            logger.error(f"获取板块 {sector_id} 行情失败: {e}")
-            return 0
+        raise RuntimeError(_REMOVED_MESSAGE)
 
     def fetch_multiple(
         self,

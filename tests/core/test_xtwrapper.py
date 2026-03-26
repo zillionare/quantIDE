@@ -1,73 +1,24 @@
-import datetime
-import time
-from unittest.mock import patch
-
-import cfg4py
-import numpy as np
 import pytest
-from pytest import approx
 
-xtdata = pytest.importorskip("xtquant.xtdata")
+from pyqmt.core import xtwrapper
 
-from pyqmt.core.legacy_qmt import LEGACY_LOCAL_QMT_ENV
-from pyqmt.core.xtwrapper import (
-    cache_bars,
-    get_calendar,
-    get_factor_ratio,
-    get_stock_list,
-    subcribe_live,
+
+@pytest.mark.parametrize(
+    ("func_name", "args"),
+    [
+        ("require_xt", ()),
+        ("subcribe_live", ()),
+        ("cache_bars", (None,)),
+        ("get_bars", ([], None, None, None)),
+        ("get_stock_list", ()),
+        ("get_sectors", ()),
+        ("get_calendar", ()),
+        ("get_security_info", ("000001.SZ",)),
+        ("get_factor_ratio", ("000001.SZ", None, None)),
+    ],
 )
-from tests.config import setup
+def test_xtwrapper_functions_are_removed(func_name, args):
+    func = getattr(xtwrapper, func_name)
 
-
-@pytest.fixture(autouse=True)
-def enable_legacy_local_qmt(monkeypatch):
-    monkeypatch.setenv(LEGACY_LOCAL_QMT_ENV, "1")
-
-
-def test_get_ashare_list():
-    """测试get_ashare_list的cache机制"""
-    ashares = get_stock_list()
-    with patch(
-        "pyqmt.core.xtwrapper.xt.get_stock_list_in_sector", return_value=["hello"]
-    ):
-        cached = get_stock_list()
-        assert np.array_equal(cached, ashares)
-
-        get_stock_list.cache_clear()
-        result = get_stock_list()
-        assert np.array_equal(result, ["hello"])
-
-
-def test_get_calendar():
-    calendar = get_calendar()
-
-    assert calendar[0] == datetime.date(2005, 1, 4)
-    assert len(calendar) > 4659
-
-
-def test_get_factor(setup):
-    start = datetime.date(2022, 7, 8)
-    end = datetime.date(2024, 3, 8)
-    symbol = "002594.SZ"
-    factors = get_factor_ratio(symbol, start, end)
-    assert factors.index[0] == 20220708
-    assert factors.index[-1] == 20240308
-    assert 1.020403 == approx(factors.loc[20220708])
-    assert approx(factors.loc[20230728]) == 1.025215
-    assert approx(factors.loc[20240308]) == 1.025215
-
-    # 测试在2005年以前上市并有分红的股票的因子是否正确
-    symbol = "000002.SZ"
-    factors = get_factor_ratio(symbol, start, end)
-    assert approx(factors.loc[20220708]) == 5.685115
-    assert approx(factors.loc[20220825]) == 6.037479
-
-
-def test_subscribe_live():
-    subcribe_live()
-
-    for i in range(100):
-        import time
-
-        time.sleep(1)
+    with pytest.raises(RuntimeError, match="主体移除"):
+        func(*args)

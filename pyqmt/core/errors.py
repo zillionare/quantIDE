@@ -66,27 +66,6 @@ class TradeError(BaseTradeError):
     ...
 
 
-class XtQuantTradeError(BaseTradeError):
-    """XtQuantTradeError"""
-
-    ...
-
-
-class XtQuantError(Exception):
-    """XtQuant 通用错误"""
-
-    @staticmethod
-    def parse_msg(msg: str) -> "XtQuantError":
-        """解析错误消息"""
-        return XtQuantError(msg)
-
-
-class XtTradeConnectError(BaseTradeError):
-    """XtTradeConnectError"""
-
-    ...
-
-
 class NoDataForMatch(TradeError):
     """回测撮合时缺少数据"""
 
