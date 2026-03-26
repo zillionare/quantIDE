@@ -11,11 +11,8 @@ from loguru import logger
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BrokerKind, FrameType, OrderSide
-from pyqmt.core.runtime.broker_bridge import LegacyBrokerPortAdapter
+from pyqmt.core.runtime import RuntimeContext
 from pyqmt.data.sqlite import db
-from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
-from pyqmt.core.runtime.gateway_client import GatewayClient
-from pyqmt.core.runtime.port_broker import PortBackedBroker
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import PaperBroker
@@ -134,16 +131,20 @@ class StrategyRuntimeManager:
         self._backtest_runtimes: dict[str, BacktestRun] = {}
         self._backtest_history: dict[str, BacktestRun] = {}
         self._runtime_specs: dict[str, dict[str, Any]] = {}
+        self._runtime: RuntimeContext | None = None
         self._registry: BrokerRegistry | None = None
         self._adapters: Any = None
         self._market_data: Any = None
-        self._gateway_broker: GatewayBrokerAdapter | None = None
+        self._gateway_broker: Any = None
 
-    def bootstrap_from_registry(self, registry: BrokerRegistry, market_data: Any = None, adapters: Any = None) -> None:
-        self._registry = registry
-        self._adapters = adapters
-        self._market_data = market_data
-        self._gateway_broker = GatewayBrokerAdapter(GatewayClient.from_config())
+    def bootstrap_from_runtime(self, runtime: RuntimeContext) -> None:
+        """使用正式 RuntimeContext 初始化运行时管理器。"""
+        self._runtime = runtime
+        self._registry = runtime.registry
+        self._adapters = runtime.adapters
+        self._market_data = runtime.market_data
+        self._gateway_broker = runtime.registry.get(BrokerKind.QMT, "gateway")
+        registry = runtime.registry
         with self._lock:
             self._account_runtimes = {}
             for item in registry.list():
@@ -219,19 +220,17 @@ class StrategyRuntimeManager:
             principal=principal,
             market_data=market_data,
         )
-        adapter = LegacyBrokerPortAdapter(broker, portfolio_id=account_id)
-        if self._adapters is not None:
-            self._adapters.register("broker", f"{BrokerKind.SIMULATION.value}:{account_id}", adapter)
-        handle = PortBackedBroker(
-            port=adapter,
+        runtime = self._runtime
+        if runtime is None:
+            raise RuntimeError("runtime 未初始化")
+        handle = runtime.register_legacy_broker(
+            broker=broker,
             portfolio_id=account_id,
             kind=BrokerKind.SIMULATION,
             portfolio_name=f"{run.strategy_name}-paper",
             status=True,
             is_connected=True,
-            legacy=broker,
         )
-        registry.register(BrokerKind.SIMULATION, account_id, handle)
         return self._start_strategy_runtime(
             mode="paper",
             strategy_name=run.strategy_name,

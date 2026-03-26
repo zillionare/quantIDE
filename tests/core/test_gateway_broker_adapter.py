@@ -13,7 +13,9 @@ class DummyGatewayClient:
     def post_form(self, path, data):
         self.post_calls.append((path, data))
         if path == "/api/trade/buy":
-            return {"success": True, "order_id": "1001"}
+            return {"success": True, "qtoid": data.get("qtoid", "q1"), "order_id": "1001"}
+        if path == "/api/trade/sell":
+            return {"success": True, "qtoid": data.get("qtoid", "q2"), "order_id": "1002"}
         return {"success": True}
 
     def get_json(self, path, params=None):
@@ -35,11 +37,12 @@ class DummyGatewayClient:
 
 @pytest.mark.asyncio
 async def test_gateway_broker_submit_shares():
-    adapter = GatewayBrokerAdapter(DummyGatewayClient())
+    client = DummyGatewayClient()
+    adapter = GatewayBrokerAdapter(client)
     req = OrderRequest(asset="000001.SZ", side=OrderSide.BUY, value=200, price=10.2)
     ack = await adapter.submit(req)
     assert ack.status == "submitted"
-    assert ack.order_id == "1001"
+    assert ack.order_id == client.post_calls[-1][1]["qtoid"]
 
 
 @pytest.mark.asyncio
@@ -58,12 +61,14 @@ async def test_gateway_broker_submit_amount_style():
 
 @pytest.mark.asyncio
 async def test_gateway_broker_buy_amount_returns_execution_result():
-    adapter = GatewayBrokerAdapter(DummyGatewayClient())
+    client = DummyGatewayClient()
+    adapter = GatewayBrokerAdapter(client)
 
     result = await adapter.buy_amount("000001.SZ", 5000, price=10, strategy_id="s1")
 
-    assert result.order_id == "1001"
+    assert result.order_id == client.post_calls[-1][1]["qtoid"]
     assert result.status == "submitted"
+    assert client.post_calls[-1][1]["strategy_id"] == "s1"
 
 
 def test_gateway_broker_query_assets():
@@ -98,6 +103,7 @@ async def test_gateway_broker_trade_target_pct_submits_sell_when_overweight():
     assert result.order_id is not None
     assert path == "/api/trade/sell"
     assert payload["symbol"] == "000001.SZ"
+    assert payload["qtoid"] == result.order_id
 
 
 @pytest.mark.asyncio
@@ -108,12 +114,13 @@ async def test_gateway_broker_wrapper_submit_amount_and_cancel_all():
 
     result = await wrapper.buy_amount("000001.SZ", 5000, price=10)
 
-    assert result.qt_oid == "1001"
+    assert result.qt_oid == client.post_calls[-1][1]["qtoid"]
 
     await wrapper.cancel_all_orders(side=OrderSide.BUY)
 
     assert client.get_calls[-1] == ("/api/trade/orders", None)
     assert client.post_calls[-1][0] == "/api/trade/cancel"
+    assert "qtoid" in client.post_calls[-1][1]
 
 
 @pytest.mark.asyncio

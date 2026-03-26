@@ -1,6 +1,7 @@
 """qmt-gateway 交易端口适配器."""
 
 import datetime
+from uuid import uuid4
 from typing import Any, Dict
 
 from pyqmt.core.enums import BrokerKind, OrderSide
@@ -497,6 +498,8 @@ class GatewayBrokerAdapter(BrokerPort):
     async def submit(self, request: OrderRequest) -> OrderAck:
         """提交订单."""
         shares = self._resolve_shares(request)
+        qtoid = str(request.extra.get("qtoid") or uuid4())
+        strategy_id = str(request.extra.get("strategy_id") or "")
         if shares <= 0:
             return OrderAck(order_id=None, status="rejected", message="invalid shares")
         if request.side == OrderSide.BUY:
@@ -504,7 +507,8 @@ class GatewayBrokerAdapter(BrokerPort):
                 "symbol": request.asset,
                 "price": request.price,
                 "shares": int(shares),
-                "strategy_id": str(request.extra.get("strategy_id") or ""),
+                "strategy_id": strategy_id,
+                "qtoid": qtoid,
             }
             result = self._client.post_form("/api/trade/buy", payload) or {}
         else:
@@ -512,12 +516,13 @@ class GatewayBrokerAdapter(BrokerPort):
                 "symbol": request.asset,
                 "price": request.price,
                 "shares": int(shares),
-                "strategy_id": str(request.extra.get("strategy_id") or ""),
+                "strategy_id": strategy_id,
+                "qtoid": qtoid,
             }
             result = self._client.post_form("/api/trade/sell", payload) or {}
         if result.get("success"):
             return OrderAck(
-                order_id=str(result.get("order_id") or ""),
+                order_id=str(result.get("qtoid") or qtoid),
                 status="submitted",
                 message="ok",
             )
@@ -529,7 +534,7 @@ class GatewayBrokerAdapter(BrokerPort):
 
     async def cancel(self, order_id: str) -> CancelAck:
         """撤销订单."""
-        result = self._client.post_form("/api/trade/cancel", {"order_id": order_id}) or {}
+        result = self._client.post_form("/api/trade/cancel", {"qtoid": order_id}) or {}
         return CancelAck(
             success=bool(result.get("success", False)),
             message=str(result.get("error") or ""),
@@ -642,7 +647,7 @@ class GatewayBrokerAdapter(BrokerPort):
             result.append(
                 TradeView(
                     trade_id=trade_id,
-                    order_id=str(order_id or ""),
+                    order_id=str(row.get("qtoid") or order_id or ""),
                     asset=str(row.get("symbol") or ""),
                     side=str(row.get("side") or ""),
                     shares=float(row.get("shares") or 0),

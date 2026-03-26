@@ -45,5 +45,5 @@ async def test_port_backed_broker_delegates_high_level_order_submission():
 
     result = await handle.buy_amount("000001.SZ", 5000, price=10, strategy_id="s1")
 
-    assert result.order_id == "1001"
+    assert result.order_id == client.post_calls[-1][1]["qtoid"]
     assert client.post_calls[-1][0] == "/api/trade/buy"

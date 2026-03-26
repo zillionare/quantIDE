@@ -1,7 +1,7 @@
 """运行时模式装配."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from pyqmt.config import cfg
 from pyqmt.core.enums import BrokerKind
@@ -12,7 +12,10 @@ from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
 from pyqmt.core.runtime.gateway_client import GatewayClient
 from pyqmt.core.runtime.gateway_market import GatewayMarketDataAdapter
 from pyqmt.core.runtime.market_bridge import LiveQuoteMarketDataAdapter
-from pyqmt.core.runtime.port_broker import PortBackedBroker
+from pyqmt.core.runtime.registration import (
+    register_legacy_broker,
+    register_port_backed_broker,
+)
 from pyqmt.core.scheduler import scheduler
 from pyqmt.data import db
 from pyqmt.service.livequote import live_quote
@@ -30,6 +33,54 @@ class RuntimeContext:
     registry: BrokerRegistry
     adapters: AdapterRegistry
     market_data: MarketDataPort
+
+    def register_legacy_broker(
+        self,
+        broker: Any,
+        portfolio_id: str,
+        kind: BrokerKind | str,
+        *,
+        portfolio_name: str = "",
+        status: bool | None = None,
+        is_connected: bool | None = None,
+    ):
+        """将 legacy broker 注册到正式运行时。"""
+        return register_legacy_broker(
+            registry=self.registry,
+            adapters=self.adapters,
+            broker=broker,
+            portfolio_id=portfolio_id,
+            kind=kind,
+            portfolio_name=portfolio_name,
+            status=status,
+            is_connected=is_connected,
+        )
+
+    def register_port_broker(
+        self,
+        port: Any,
+        portfolio_id: str,
+        kind: BrokerKind | str,
+        *,
+        adapter_name: str | None = None,
+        portfolio_name: str = "",
+        status: bool = True,
+        is_connected: bool | None = None,
+        legacy: Any | None = None,
+    ):
+        """将正式 broker port 注册到运行时。"""
+        return register_port_backed_broker(
+            registry=self.registry,
+            adapters=self.adapters,
+            port=port,
+            portfolio_id=portfolio_id,
+            kind=kind,
+            adapter_name=adapter_name,
+            portfolio_name=portfolio_name,
+            status=status,
+            is_connected=is_connected,
+            legacy=legacy,
+        )
 
 
 class RuntimeBootstrap:
@@ -102,24 +153,13 @@ class RuntimeBootstrap:
             if broker is None:
                 continue
             name = f"{kind}:{portfolio_id}"
-            adapter = LegacyBrokerPortAdapter(broker, portfolio_id=portfolio_id)
-            adapters.register(
-                "broker",
-                name,
-                adapter,
-            )
-            registry.register(
-                kind,
-                portfolio_id,
-                PortBackedBroker(
-                    port=adapter,
-                    portfolio_id=portfolio_id,
-                    kind=kind,
-                    portfolio_name=str(getattr(broker, "portfolio_name", portfolio_id) or portfolio_id),
-                    status=bool(getattr(broker, "status", True)),
-                    is_connected=bool(getattr(broker, "is_connected", getattr(broker, "status", True))),
-                    legacy=broker,
-                ),
+            register_legacy_broker(
+                registry=registry,
+                adapters=adapters,
+                broker=broker,
+                portfolio_id=portfolio_id,
+                kind=kind,
+                adapter_name=name,
             )
 
     def _load_accounts_from_db(
@@ -154,19 +194,16 @@ class RuntimeBootstrap:
             return
         client = GatewayClient.from_config()
         adapter = GatewayBrokerAdapter(client)
-        adapters.register("broker", "gateway:default", adapter)
         registry = getattr(self, "_registry_ref", None)
         if registry:
-            registry.register(
-                BrokerKind.QMT,
-                "gateway",
-                PortBackedBroker(
-                    port=adapter,
-                    portfolio_id="gateway",
-                    kind=BrokerKind.QMT,
-                    portfolio_name="实盘网关",
-                    status=True,
-                    is_connected=True,
-                    legacy=None,
-                ),
+            register_port_backed_broker(
+                registry=registry,
+                adapters=adapters,
+                port=adapter,
+                portfolio_id="gateway",
+                kind=BrokerKind.QMT,
+                adapter_name="gateway:default",
+                portfolio_name="实盘网关",
+                status=True,
+                is_connected=True,
             )

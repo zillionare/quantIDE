@@ -9,8 +9,6 @@ from monsterui.all import *
 from starlette.responses import HTMLResponse, RedirectResponse
 
 from pyqmt.core.enums import BrokerKind
-from pyqmt.core.runtime.broker_bridge import LegacyBrokerPortAdapter
-from pyqmt.core.runtime.port_broker import PortBackedBroker
 from pyqmt.data.sqlite import db
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import PaperBroker
@@ -621,22 +619,17 @@ async def create_sim_account(req):
             market_data=market_data,
         )
         runtime = getattr(req.app.state, "runtime", None)
-        adapter = LegacyBrokerPortAdapter(sim_broker, portfolio_id=account_id)
         if runtime is not None:
-            runtime.adapters.register("broker", f"{BrokerKind.SIMULATION.value}:{account_id}", adapter)
-        reg.register(
-            BrokerKind.SIMULATION,
-            account_id,
-            PortBackedBroker(
-                port=adapter,
+            runtime.register_legacy_broker(
+                broker=sim_broker,
                 portfolio_id=account_id,
                 kind=BrokerKind.SIMULATION,
                 portfolio_name=name,
                 status=True,
                 is_connected=True,
-                legacy=sim_broker,
-            ),
-        )
+            )
+        else:
+            reg.register(BrokerKind.SIMULATION, account_id, sim_broker)
 
         # 设置为活动账户
         session = req.scope.get("session", {})

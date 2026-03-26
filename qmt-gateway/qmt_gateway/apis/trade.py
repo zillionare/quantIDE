@@ -392,6 +392,8 @@ def register_routes(app):
         trades = trade_service.get_trades()
         return [
             {
+                "tid": _get_value(t, "tid", ""),
+                "qtoid": _get_value(t, "qtoid", ""),
                 "time": _get_value(t, "time", ""),
                 "symbol": _get_value(t, "symbol", ""),
                 "name": _get_value(t, "name", ""),
@@ -404,24 +406,24 @@ def register_routes(app):
         ]
 
     @app.post("/api/trade/buy")
-    def buy_stock(request, symbol: str, price: float, shares: int):
+    def buy_stock(request, symbol: str, price: float, shares: int, qtoid: str = "", strategy_id: str = ""):
         """买入股票"""
         login_required(request)
-        result = trade_service.buy(symbol, price, shares)
+        result = trade_service.buy(symbol, price, shares, qtoid=qtoid, strategy_id=strategy_id)
         return result
 
     @app.post("/api/trade/sell")
-    def sell_stock(request, symbol: str, price: float, shares: int):
+    def sell_stock(request, symbol: str, price: float, shares: int, qtoid: str = "", strategy_id: str = ""):
         """卖出股票"""
         login_required(request)
-        result = trade_service.sell(symbol, price, shares)
+        result = trade_service.sell(symbol, price, shares, qtoid=qtoid, strategy_id=strategy_id)
         return result
 
     @app.post("/api/trade/cancel")
-    def cancel_order(request, order_id: str, view: str = "json"):
+    def cancel_order(request, qtoid: str = "", order_id: str = "", view: str = "json"):
         """撤单"""
         login_required(request)
-        result = trade_service.cancel_order(order_id)
+        result = trade_service.cancel_order(qtoid or order_id)
         if view == "table":
             from qmt_gateway.web.pages.trading import OrdersTable
             return OrdersTable(get_latest_orders_data())

@@ -4,6 +4,7 @@
 """
 
 import datetime
+from uuid import uuid4
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,7 +12,7 @@ from loguru import logger
 
 from qmt_gateway.config import config
 from qmt_gateway.core.enums import BidType, OrderSide, OrderStatus
-from qmt_gateway.db.models import Order
+from qmt_gateway.db.models import Order, Trade
 from qmt_gateway.db.sqlite import db
 
 
@@ -71,6 +72,7 @@ class TradeCallback:
     def on_stock_trade(self, trade):
         """成交回报推送"""
         logger.info(f"成交回报: {trade}")
+        self._service.persist_callback_trade(trade)
 
     def on_order_error(self, order_error):
         """委托失败推送"""
@@ -164,7 +166,7 @@ class TradeService:
                 self._trader = None
                 self._connected = False
 
-    def buy(self, symbol: str, price: float, shares: int) -> dict:
+    def buy(self, symbol: str, price: float, shares: int, qtoid: str = "", strategy_id: str = "") -> dict:
         """买入股票
 
         Args:
@@ -180,6 +182,7 @@ class TradeService:
 
         try:
             xtconstant = _get_xtquant("xtconstant")
+            resolved_qtoid = qtoid or str(uuid4())
 
             # 确定价格类型
             if price <= 0:
@@ -201,20 +204,29 @@ class TradeService:
                 order_volume=shares,
                 price_type=price_type,
                 price=price,
-                strategy_name="gateway",
-                order_remark="",
+                strategy_name=strategy_id or "gateway",
+                order_remark=resolved_qtoid,
             )
 
             if order_id == -1:
                 return {"success": False, "error": "下单失败"}
 
-            return {"success": True, "order_id": str(order_id)}
+            self._persist_submitted_order(
+                symbol=symbol,
+                side=OrderSide.BUY,
+                price=price,
+                shares=shares,
+                qtoid=resolved_qtoid,
+                foid=str(order_id),
+                strategy_id=strategy_id,
+            )
+            return {"success": True, "qtoid": resolved_qtoid, "order_id": str(order_id)}
 
         except Exception as e:
             logger.error(f"买入失败: {e}")
             return {"success": False, "error": str(e)}
 
-    def sell(self, symbol: str, price: float, shares: int) -> dict:
+    def sell(self, symbol: str, price: float, shares: int, qtoid: str = "", strategy_id: str = "") -> dict:
         """卖出股票
 
         Args:
@@ -230,6 +242,7 @@ class TradeService:
 
         try:
             xtconstant = _get_xtquant("xtconstant")
+            resolved_qtoid = qtoid or str(uuid4())
 
             # 确定价格类型
             if price <= 0:
@@ -251,14 +264,23 @@ class TradeService:
                 order_volume=shares,
                 price_type=price_type,
                 price=price,
-                strategy_name="gateway",
-                order_remark="",
+                strategy_name=strategy_id or "gateway",
+                order_remark=resolved_qtoid,
             )
 
             if order_id == -1:
                 return {"success": False, "error": "下单失败"}
 
-            return {"success": True, "order_id": str(order_id)}
+            self._persist_submitted_order(
+                symbol=symbol,
+                side=OrderSide.SELL,
+                price=price,
+                shares=shares,
+                qtoid=resolved_qtoid,
+                foid=str(order_id),
+                strategy_id=strategy_id,
+            )
+            return {"success": True, "qtoid": resolved_qtoid, "order_id": str(order_id)}
 
         except Exception as e:
             logger.error(f"卖出失败: {e}")
@@ -277,9 +299,13 @@ class TradeService:
             return {"success": False, "error": "交易接口未连接"}
 
         try:
-            result = self._trader.cancel_order_stock(self._account, int(order_id))
+            db_order = db.get_order(order_id) or db.get_order_by_foid(order_id)
+            foid = str(db_order.foid if db_order and db_order.foid else order_id)
+            result = self._trader.cancel_order_stock(self._account, int(foid))
             if result == 0:
-                return {"success": True}
+                if db_order is not None:
+                    db.update_order(db_order.qtoid, status=OrderStatus.CANCELED)
+                return {"success": True, "qtoid": db_order.qtoid if db_order else order_id}
             else:
                 return {"success": False, "error": f"撤单失败，错误码: {result}"}
 
@@ -363,6 +389,12 @@ class TradeService:
             orders = []
             for o in xt_orders:
                 status_code = self._convert_order_status_code(o.order_status)
+                qtoid = str(getattr(o, "order_remark", "") or "")
+                db_order = db.get_order_by_foid(str(o.order_id))
+                if db_order is not None:
+                    qtoid = db_order.qtoid
+                if not qtoid:
+                    qtoid = str(o.order_id)
                 order = {
                     "symbol": o.stock_code,
                     "name": "",
@@ -373,7 +405,9 @@ class TradeService:
                     "status": self._status_code_to_text(status_code),
                     "status_code": status_code,
                     "time": datetime.datetime.fromtimestamp(o.order_time).strftime("%H:%M:%S"),
-                    "qtoid": str(o.order_id),
+                    "qtoid": qtoid,
+                    "foid": str(o.order_id),
+                    "cid": str(getattr(o, "order_sysid", "") or ""),
                 }
                 orders.append(order)
                 self._persist_order_snapshot(order)
@@ -400,7 +434,13 @@ class TradeService:
 
             trades = []
             for t in xt_trades:
+                qtoid = str(getattr(t, "order_remark", "") or "")
+                db_order = db.get_order_by_foid(str(getattr(t, "order_id", "") or ""))
+                if db_order is not None:
+                    qtoid = db_order.qtoid
                 trade = {
+                    "tid": str(getattr(t, "traded_id", "") or ""),
+                    "qtoid": qtoid,
                     "symbol": t.stock_code,
                     "name": "",
                     "side": "buy" if t.order_type == 23 else "sell",
@@ -410,6 +450,11 @@ class TradeService:
                     "time": datetime.datetime.fromtimestamp(t.traded_time).strftime("%H:%M:%S"),
                 }
                 trades.append(trade)
+                self._persist_trade_snapshot(
+                    trade,
+                    foid=str(getattr(t, "order_id", "") or ""),
+                    cid=str(getattr(t, "order_sysid", "") or ""),
+                )
 
             return trades
 
@@ -498,6 +543,7 @@ class TradeService:
         status_code = self._convert_order_status_code(
             order.get("status_code", order.get("status", "unknown"))
         )
+        foid = str(order.get("foid", "") or qtoid)
         db["orders"].upsert(
             Order(
                 qtoid=qtoid,
@@ -509,14 +555,105 @@ class TradeService:
                 tm=tm,
                 price=float(order.get("price", 0) or 0),
                 filled=float(order.get("filled", 0) or 0),
-                foid=qtoid,
+                foid=foid,
                 status=OrderStatus(status_code),
                 status_msg="",
                 cid=str(order.get("cid", "") or ""),
-                strategy="gateway",
+                strategy=str(order.get("strategy_id", "") or "gateway"),
             ).to_dict(),
             pk=Order.__pk__,
         )
+
+    def _persist_submitted_order(
+        self,
+        *,
+        symbol: str,
+        side: OrderSide,
+        price: float,
+        shares: int,
+        qtoid: str,
+        foid: str,
+        strategy_id: str,
+    ) -> None:
+        """在 gateway 提交成功后立即建立 qtoid 映射。"""
+        db["orders"].upsert(
+            Order(
+                qtoid=qtoid,
+                portfolio_id=DEFAULT_PORTFOLIO_ID,
+                asset=symbol,
+                side=side,
+                shares=float(shares),
+                bid_type=BidType.UNKNOWN,
+                tm=datetime.datetime.now(),
+                price=float(price),
+                filled=0.0,
+                foid=foid,
+                status=OrderStatus.REPORTED,
+                status_msg="",
+                strategy=strategy_id or "gateway",
+            ).to_dict(),
+            pk=Order.__pk__,
+        )
+
+    def _persist_trade_snapshot(self, trade: dict, *, foid: str, cid: str) -> None:
+        """落地成交快照并维持 qtoid 关联。"""
+        qtoid = str(trade.get("qtoid", "") or "").strip()
+        if not qtoid and foid:
+            db_order = db.get_order_by_foid(foid)
+            if db_order is not None:
+                qtoid = db_order.qtoid
+        if not qtoid:
+            return
+        time_text = str(trade.get("time", "") or "").strip()
+        now = datetime.datetime.now()
+        tm = now
+        if time_text:
+            try:
+                tm = datetime.datetime.fromisoformat(
+                    f"{now.date().isoformat()} {time_text}"
+                )
+            except ValueError:
+                tm = now
+        side_text = str(trade.get("side", "buy")).strip().lower()
+        db.insert_trade(
+            Trade(
+                tid=str(trade.get("tid", "") or str(uuid4())),
+                portfolio_id=DEFAULT_PORTFOLIO_ID,
+                qtoid=qtoid,
+                foid=foid,
+                asset=str(trade.get("symbol", "") or ""),
+                shares=float(trade.get("shares", 0) or 0),
+                price=float(trade.get("price", 0) or 0),
+                amount=float(trade.get("amount", 0) or 0),
+                tm=tm,
+                side=OrderSide.BUY if side_text == "buy" else OrderSide.SELL,
+                cid=cid,
+            )
+        )
+
+    def persist_callback_trade(self, xt_trade: Any) -> None:
+        """处理成交回调并将其映射回 qtoid。"""
+        try:
+            trade = {
+                "tid": str(getattr(xt_trade, "traded_id", "") or ""),
+                "qtoid": str(getattr(xt_trade, "order_remark", "") or ""),
+                "symbol": getattr(xt_trade, "stock_code", ""),
+                "side": self._convert_order_side(getattr(xt_trade, "order_type", 23)),
+                "price": float(getattr(xt_trade, "traded_price", 0) or 0),
+                "shares": float(getattr(xt_trade, "traded_volume", 0) or 0),
+                "amount": float(getattr(xt_trade, "traded_amount", 0) or 0),
+                "time": datetime.datetime.fromtimestamp(
+                    getattr(xt_trade, "traded_time", 0) or 0
+                ).strftime("%H:%M:%S"),
+            }
+            foid = str(getattr(xt_trade, "order_id", "") or "")
+            cid = str(getattr(xt_trade, "order_sysid", "") or "")
+            self._persist_trade_snapshot(trade, foid=foid, cid=cid)
+            db_order = db.get_order_by_foid(foid)
+            if db_order is not None:
+                db.update_order(db_order.qtoid, status=OrderStatus.SUCCEEDED)
+        except Exception as e:
+            logger.error(f"回调成交落库失败: {e}")
 
     def persist_callback_order(self, xt_order: Any) -> None:
         try:
@@ -527,6 +664,10 @@ class TradeService:
                 )
             else:
                 time_text = datetime.datetime.now().strftime("%H:%M:%S")
+            qtoid = str(getattr(xt_order, "order_remark", "") or "")
+            db_order = db.get_order_by_foid(str(getattr(xt_order, "order_id", "") or ""))
+            if db_order is not None:
+                qtoid = db_order.qtoid
             order = {
                 "symbol": getattr(xt_order, "stock_code", ""),
                 "side": self._convert_order_side(getattr(xt_order, "order_type", 23)),
@@ -537,8 +678,10 @@ class TradeService:
                     getattr(xt_order, "order_status", 255)
                 ),
                 "time": time_text,
-                "qtoid": str(getattr(xt_order, "order_id", "")),
+                "qtoid": qtoid,
+                "foid": str(getattr(xt_order, "order_id", "")),
                 "cid": str(getattr(xt_order, "order_sysid", "") or ""),
+                "strategy_id": str(getattr(xt_order, "strategy_name", "") or "gateway"),
             }
             self._persist_order_snapshot(order)
         except Exception as e:

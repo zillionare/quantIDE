@@ -6,8 +6,6 @@ from loguru import logger
 from monsterui.all import *
 
 from pyqmt.core.enums import BrokerKind
-from pyqmt.core.runtime.broker_bridge import LegacyBrokerPortAdapter
-from pyqmt.core.runtime.port_broker import PortBackedBroker
 from pyqmt.data.sqlite import Asset, Position
 from pyqmt.service.registry import BrokerRegistry
 from pyqmt.service.sim_broker import PaperBroker
@@ -492,22 +490,17 @@ async def create_portfolio(req):
         reg = _get_registry(req)
         if reg:
             runtime = getattr(req.app.state, "runtime", None)
-            adapter = LegacyBrokerPortAdapter(broker, portfolio_id=portfolio_id)
             if runtime is not None:
-                runtime.adapters.register("broker", f"{BrokerKind.SIMULATION.value}:{portfolio_id}", adapter)
-            reg.register(
-                BrokerKind.SIMULATION,
-                portfolio_id,
-                PortBackedBroker(
-                    port=adapter,
+                runtime.register_legacy_broker(
+                    broker=broker,
                     portfolio_id=portfolio_id,
                     kind=BrokerKind.SIMULATION,
                     portfolio_name=name,
                     status=True,
                     is_connected=True,
-                    legacy=broker,
-                ),
-            )
+                )
+            else:
+                reg.register(BrokerKind.SIMULATION, portfolio_id, broker)
 
         return Div("", hx_redirect="/trade/simulation")
     except Exception as e:
