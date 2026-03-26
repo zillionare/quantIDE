@@ -1,6 +1,6 @@
-"""数据访问层 (DAL)"""
+"""Data access layer package.
 
-from .index_dal import IndexDAL
-from .sector_dal import SectorDAL
+Subject-side sector/index metadata DALs have been removed in Phase 3.
+"""
 
-__all__ = ["SectorDAL", "IndexDAL"]
+__all__: list[str] = []

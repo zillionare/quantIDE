@@ -19,16 +19,22 @@ def get_stock_list() -> StockList:
 async def search_stocks(
     request: Request,
     q: str = "",
-    type: str = "stock",  # stock 或 index
+    type: str = "stock",
     limit: int = 10,
 ):
-    """搜索个股或指数
+    """搜索个股。
 
     Args:
         q: 搜索关键词（代码或名称）
-        type: 搜索类型：stock-个股, index-指数
+        type: 搜索类型，主体当前仅支持 stock
         limit: 返回结果数量限制
     """
+    if type != "stock":
+        return JSONResponse(
+            {"code": 410, "message": "index search has been retired from the subject app"},
+            status_code=410,
+        )
+
     if not q or len(q) < 1:
         return JSONResponse({
             "code": 0,

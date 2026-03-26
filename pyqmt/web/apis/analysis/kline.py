@@ -7,13 +7,17 @@ from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from pyqmt.data.models.index_bars import index_bars
 from pyqmt.data.models.daily_bars import daily_bars
-from pyqmt.data.dal.index_dal import IndexDAL
-from pyqmt.data.dal.sector_dal import SectorDAL
 from pyqmt.data.sqlite import db
 from pyqmt.data.utils.resampler import Resampler
 
 app, rt = fast_app()
+
+
+def _feature_removed(message: str) -> JSONResponse:
+    """返回已下线功能响应。"""
+    return JSONResponse({"code": 410, "message": message}, status_code=410)
 
 
 def bars_to_list(df) -> list[dict]:
@@ -94,6 +98,40 @@ def _get_stock_bars(
     df = df.rename({"date": "frame", "asset": "asset"})
 
     # 重采样
+    if freq != "day":
+        df = Resampler.resample(df, freq)
+
+    return df
+
+
+def _get_index_bars(
+    symbol: str,
+    start: datetime.date,
+    end: datetime.date,
+    freq: str = "day",
+) -> pl.DataFrame:
+    """从 IndexBars 获取指数行情数据。"""
+    df = index_bars.get_bars_in_range(
+        start=start,
+        end=end,
+        symbols=[symbol],
+        eager_mode=True,
+    )
+
+    if df.is_empty():
+        return pl.DataFrame(schema={
+            "frame": pl.Date,
+            "asset": pl.Utf8,
+            "open": pl.Float64,
+            "high": pl.Float64,
+            "low": pl.Float64,
+            "close": pl.Float64,
+            "volume": pl.Int64,
+            "amount": pl.Float64,
+        })
+
+    df = df.rename({"date": "frame", "asset": "asset"})
+
     if freq != "day":
         df = Resampler.resample(df, freq)
 
@@ -202,75 +240,8 @@ async def get_sector_kline(
     ma: str | None = None,
 ):
     """获取板块K线数据"""
-    # 解析日期
-    try:
-        if start:
-            start_date = datetime.date.fromisoformat(start)
-        else:
-            start_date = datetime.date.today() - datetime.timedelta(days=365)
-
-        if end:
-            end_date = datetime.date.fromisoformat(end)
-        else:
-            end_date = datetime.date.today()
-    except ValueError:
-        return JSONResponse(
-            {"code": 400, "message": "Invalid date format, use YYYY-MM-DD"},
-            status_code=400,
-        )
-
-    # 解析均线周期
-    ma_periods = []
-    if ma:
-        try:
-            ma_periods = [int(x.strip()) for x in ma.split(",") if x.strip()]
-        except ValueError:
-            return JSONResponse(
-                {"code": 400, "message": "Invalid ma format"},
-                status_code=400,
-            )
-
-    # 验证 freq
-    if freq not in ("day", "week", "month"):
-        return JSONResponse(
-            {"code": 400, "message": "Invalid freq, use day/week/month"},
-            status_code=400,
-        )
-
-    try:
-        sector_dal = SectorDAL(db)
-
-        if ma_periods:
-            df = sector_dal.get_sector_bars(sector_id, start_date, end_date)
-            if freq != "day":
-                df = Resampler.resample(df, freq)
-            # 计算均线
-            for period in ma_periods:
-                df = df.with_columns(
-                    pl.col("close").rolling_mean(window_size=period).alias(f"ma{period}")
-                )
-            data = add_ma_to_list(df, ma_periods)
-        else:
-            df = sector_dal.get_sector_bars(sector_id, start_date, end_date)
-            if freq != "day":
-                df = Resampler.resample(df, freq)
-            data = bars_to_list(df)
-
-        return JSONResponse({
-            "code": 0,
-            "message": "success",
-            "data": {
-                "sector_id": sector_id,
-                "freq": freq,
-                "items": data,
-            },
-        })
-
-    except Exception as e:
-        return JSONResponse(
-            {"code": 500, "message": f"Failed to get kline: {e}"},
-            status_code=500,
-        )
+    _ = (request, sector_id, start, end, freq, ma)
+    return _feature_removed("sector kline has been retired from the subject app")
 
 
 @rt("/index/{symbol}")
@@ -319,12 +290,8 @@ async def get_index_kline(
         )
 
     try:
-        index_dal = IndexDAL(db)
-
         if ma_periods:
-            df = index_dal.get_index_bars(symbol, start_date, end_date)
-            if freq != "day":
-                df = Resampler.resample(df, freq)
+            df = _get_index_bars(symbol, start_date, end_date, freq)
             # 计算均线
             for period in ma_periods:
                 df = df.with_columns(
@@ -332,9 +299,7 @@ async def get_index_kline(
                 )
             data = add_ma_to_list(df, ma_periods)
         else:
-            df = index_dal.get_index_bars(symbol, start_date, end_date)
-            if freq != "day":
-                df = Resampler.resample(df, freq)
+            df = _get_index_bars(symbol, start_date, end_date, freq)
             data = bars_to_list(df)
 
         return JSONResponse({

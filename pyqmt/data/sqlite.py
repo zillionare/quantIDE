@@ -63,8 +63,6 @@ from loguru import logger
 from pyqmt.core.enums import BidType, BrokerKind, OrderSide, OrderStatus
 from pyqmt.core.singleton import singleton
 from pyqmt.data.models.base import Entity, new_uuid_id
-from pyqmt.data.models.index import Index, IndexBar
-from pyqmt.data.models.sector import Sector, SectorBar, SectorConstituent
 from pyqmt.data.models.app_state import AppState
 from pyqmt.data.models.strategy_config import StrategyConfig, StrategyInfo
 
@@ -294,7 +292,9 @@ class SQLiteDB:
 
         在 sqlite_utils 中，创建表结构并非必须；但会导致sqlite-utils 无法准确判断类型。
         """
-        for e in [Order, Trade, Asset, Position, Portfolio, StrategyLog, Sector, SectorConstituent, SectorBar, Index, IndexBar, StrategyConfig, StrategyInfo, AppState]:
+        self._drop_obsolete_market_tables(db)
+
+        for e in [Order, Trade, Asset, Position, Portfolio, StrategyLog, StrategyConfig, StrategyInfo, AppState]:
             table = e.__table_name__
             pk = e.__pk__
 
@@ -318,6 +318,17 @@ class SQLiteDB:
                     if len(fk) == 3:  # (from_column, to_table, to_column)
                         from_col, to_table, to_col = fk
                         t.add_foreign_key(from_col, to_table, to_col, ignore=True)
+
+    def _drop_obsolete_market_tables(self, db: su.Database) -> None:
+        """删除不再允许保存在 SQLite 中的行情和板块/指数元数据表。"""
+        for table_name in (
+            "sector_bars",
+            "index_bars",
+            "sectors",
+            "sector_constituents",
+            "indices",
+        ):
+            db.execute(f"DROP TABLE IF EXISTS {table_name}")
 
     def __getitem__(self, table_name) -> su.db.Table:
         """代理获取表对象"""
