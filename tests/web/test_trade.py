@@ -175,7 +175,7 @@ class TestLiveTrade:
         """测试创建实盘账户对话框"""
         response = test_client.get("/trade/live/create")
         assert response.status_code == 200
-        assert "创建实盘账户" in response.text or "QMT" in response.text
+        assert "Gateway" in response.text or "qmt-gateway" in response.text
 
 
 class TestBrokerRegistry:

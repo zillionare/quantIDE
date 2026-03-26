@@ -42,7 +42,7 @@ def _build_asset_overview(asset: Asset | None) -> dict:
     }
 
 
-def QMTConnectionStatus(connected: bool = False):
+def GatewayConnectionStatus(connected: bool = False):
     status_cls = "text-green-600" if connected else "text-red-600"
     status_text = "已连接" if connected else "未连接"
     icon = "check-circle" if connected else "x-circle"
@@ -50,7 +50,7 @@ def QMTConnectionStatus(connected: bool = False):
     return Div(
         Div(
             UkIcon(icon, size=20, cls=status_cls),
-            Span(f" QMT {status_text}", cls=f"font-medium {status_cls}"),
+            Span(f" Gateway {status_text}", cls=f"font-medium {status_cls}"),
             cls="flex items-center gap-2",
         ),
         cls="bg-white p-3 rounded-lg shadow-sm border border-gray-100 mb-4",
@@ -262,7 +262,7 @@ def TradePanel(portfolio_id: str):
     )
 
 
-def PortfolioList(portfolios: list[dict], qmt_connected: bool = False):
+def PortfolioList(portfolios: list[dict], gateway_connected: bool = False):
     headers = ["账户ID", "账户名称", "初始资金", "总资产", "收益率", "状态", "操作"]
 
     rows = []
@@ -312,7 +312,7 @@ def PortfolioList(portfolios: list[dict], qmt_connected: bool = False):
             H3("实盘账户列表", cls="text-lg font-bold mb-0"),
             Button(
                 UkIcon("plus", size=16),
-                " 创建账户",
+                " 接入说明",
                 cls="uk-button-primary uk-button-small flex items-center gap-1",
                 hx_get="/trade/live/create",
                 hx_target="#create-modal",
@@ -320,7 +320,7 @@ def PortfolioList(portfolios: list[dict], qmt_connected: bool = False):
             ),
             cls="flex justify-between items-center mb-4",
         ),
-        QMTConnectionStatus(qmt_connected),
+        GatewayConnectionStatus(gateway_connected),
         Table(
             Thead(Tr(*[Th(h, cls="text-xs font-bold") for h in headers])),
             Tbody(*rows),
@@ -333,73 +333,26 @@ def PortfolioList(portfolios: list[dict], qmt_connected: bool = False):
 def CreatePortfolioModal():
     return Div(
         Div(
-            H3("创建实盘账户", cls="text-lg font-bold mb-4"),
+            H3("Gateway 接入说明", cls="text-lg font-bold mb-4"),
             Div(
                 Div(
                     UkIcon("alert-triangle", cls="text-yellow-600 mr-2"),
-                    P("实盘交易需要连接 QMT 交易终端。请确保 QMT 已启动并登录。", cls="text-sm text-gray-600"),
+                    P("主体工程的实盘路径已收敛到 qmt-gateway。这里不再创建本地 QMT 账户。", cls="text-sm text-gray-600"),
                     cls="flex items-start mb-4 p-3 bg-yellow-50 rounded-lg",
                 ),
             ),
-            Form(
-                Div(
-                    Label("账户名称", cls="block text-sm font-medium mb-1"),
-                    Input(
-                        name="name",
-                        placeholder="例如: 实盘A",
-                        cls="uk-input uk-form-small rounded-md",
-                        required=True,
-                    ),
-                    cls="mb-4",
-                ),
-                Div(
-                    Label("初始资金", cls="block text-sm font-medium mb-1"),
-                    Input(
-                        name="principal",
-                        type="number",
-                        value="1000000",
-                        cls="uk-input uk-form-small rounded-md",
-                    ),
-                    cls="mb-4",
-                ),
-                Div(
-                    Label("佣金费率", cls="block text-sm font-medium mb-1"),
-                    Input(
-                        name="commission",
-                        type="number",
-                        step="0.0001",
-                        value="0.0001",
-                        cls="uk-input uk-form-small rounded-md",
-                    ),
-                    cls="mb-4",
-                ),
-                Div(
-                    Label("描述信息", cls="block text-sm font-medium mb-1"),
-                    Textarea(
-                        name="info",
-                        placeholder="账户描述（可选）",
-                        cls="uk-textarea uk-form-small rounded-md",
-                        rows=3,
-                    ),
-                    cls="mb-4",
-                ),
+            Div(
+                P("发布态实盘能力只通过 gateway 提供。请在 Windows + QMT 机器上启动 qmt-gateway，并完成登录与连接配置。", cls="text-sm text-gray-700 mb-3"),
+                P("当 gateway 可用后，主体会自动在实盘列表中显示 gateway 账户。", cls="text-sm text-gray-700 mb-4"),
                 Div(
                     Button(
-                        "取消",
+                        "关闭",
                         type="button",
-                        cls="uk-button uk-button-default",
+                        cls="uk-button uk-button-primary",
                         onclick="document.getElementById('create-modal').innerHTML = ''",
                     ),
-                    Button(
-                        "创建",
-                        type="submit",
-                        cls="uk-button uk-button-primary ml-2",
-                    ),
-                    cls="flex justify-end gap-2",
+                    cls="flex justify-end",
                 ),
-                hx_post="/trade/live/create",
-                hx_target="#portfolio-list",
-                hx_swap="outerHTML",
             ),
             cls="bg-white p-6 rounded-xl shadow-xl max-w-md",
         ),
@@ -423,7 +376,7 @@ def live_list(req, session):
 
     reg = _get_registry(req)
     portfolios = []
-    qmt_connected = False
+    gateway_connected = False
 
     if reg:
         brokers = reg.list_by_kind(BrokerKind.QMT)
@@ -450,11 +403,11 @@ def live_list(req, session):
                 })
 
                 if hasattr(broker, "is_connected"):
-                    qmt_connected = broker.is_connected
+                    gateway_connected = broker.is_connected
 
     def main_block():
         return Div(
-            PortfolioList(portfolios, qmt_connected),
+            PortfolioList(portfolios, gateway_connected),
             Div(id="create-modal"),
             cls="p-4",
         )
@@ -491,7 +444,7 @@ def portfolio_detail(req, session, portfolio_id: str):
 
     asset_overview = None
     positions = []
-    qmt_connected = False
+    gateway_connected = False
 
     if broker:
         if hasattr(broker, "asset"):
@@ -499,7 +452,7 @@ def portfolio_detail(req, session, portfolio_id: str):
         if hasattr(broker, "positions"):
             positions = list(broker.positions.values()) if isinstance(broker.positions, dict) else broker.positions
         if hasattr(broker, "is_connected"):
-            qmt_connected = broker.is_connected
+            gateway_connected = broker.is_connected
 
     def main_block():
         return Div(
@@ -512,7 +465,7 @@ def portfolio_detail(req, session, portfolio_id: str):
                 ),
                 cls="mb-4",
             ),
-            QMTConnectionStatus(qmt_connected),
+            GatewayConnectionStatus(gateway_connected),
             AssetSummary(asset_overview),
             Div(
                 Div(PositionInfo(positions, portfolio_id), cls="w-3/4 pr-4"),
