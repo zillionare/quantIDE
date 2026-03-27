@@ -447,6 +447,65 @@ def calc_ma_slope_and_r2(closes: list[float], ma_period: int = 10, slope_days: i
     return last_slope, r_squared
 
 
+def calc_ma_slopes_with_r2(closes: list[float], ma_periods: list[int] = [5, 10, 20], fit_days: int = 7, r2_threshold: float = 0.9) -> dict[int, float]:
+    """计算多周期均线斜率（带R²过滤，归一化处理）
+
+    对于每个均线周期，使用最近fit_days个MA值进行线性拟合，
+    如果决定系数R² < r2_threshold，则斜率记为nan
+
+    斜率计算基于归一化MA（MA/MA[0]），使得不同价格的股票可以比较
+
+    Args:
+        closes: 收盘价列表（按时间顺序）
+        ma_periods: 均线周期列表，默认[5, 10, 20]
+        fit_days: 拟合天数，默认7
+        r2_threshold: R²阈值，小于此值时斜率记为nan，默认0.99
+
+    Returns:
+        字典，key为均线周期，value为归一化斜率（或nan）
+    """
+    result = {}
+
+    for ma_period in ma_periods:
+        # 需要至少 ma_period + fit_days - 1 个收盘价才能计算fit_days个MA值
+        if len(closes) < ma_period + fit_days - 1:
+            result[ma_period] = float('nan')
+            continue
+
+        # 计算MA序列
+        ma_values = []
+        for i in range(ma_period - 1, len(closes)):
+            ma = sum(closes[i - ma_period + 1:i + 1]) / ma_period
+            ma_values.append(ma)
+
+        # 取最后fit_days个MA值
+        ma_for_fit = ma_values[-fit_days:]
+
+        # 归一化：MA / MA[0]，使得第一个值为1
+        ma_normalized = np.array(ma_for_fit) / ma_for_fit[0]
+
+        x = np.arange(len(ma_normalized))
+        y = ma_normalized
+
+        # 线性拟合
+        coeffs = np.polyfit(x, y, 1)
+
+        # 计算R²
+        y_pred = np.polyval(coeffs, x)
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+
+        # 如果R² < threshold，斜率记为nan
+        if r_squared < r2_threshold:
+            result[ma_period] = float('nan')
+        else:
+            # 斜率就是线性拟合的一次项系数（基于归一化MA）
+            result[ma_period] = coeffs[0]
+
+    return result
+
+
 class Screener:
     """股票筛选器"""
 
@@ -532,11 +591,11 @@ class Screener:
             logger.error("未能获取历史数据")
             return
 
-        # 获取最近10天的数据用于筛选
-        recent_dates = self.history_df['trade_date'].unique().sort()[-10:]
+        # 获取最近30天的数据用于筛选
+        recent_dates = self.history_df['trade_date'].unique().sort()[-30:]
         recent_df = self.history_df.filter(pl.col("trade_date").is_in(pl.lit(recent_dates).implode()))
 
-        logger.info(f"使用最近10天数据进行筛选: {recent_dates[0]} ~ {recent_dates[-1]}")
+        logger.info(f"使用最近30天数据进行筛选: {recent_dates[0]} ~ {recent_dates[-1]}")
 
         # 如果指定了dig，转换为大写并检查是否存在
         dig_symbol = dig.upper() if dig else ""
@@ -570,9 +629,9 @@ class Screener:
 
             if not has_spike or t0_date is None:
                 if is_dig_target:
-                    dig_info.append("❌ 被淘汰: 没有成交量放大（10天内没有成交量是之前5倍以上）")
+                    dig_info.append("❌ 被淘汰: 没有成交量放大（30天内没有成交量是之前5倍以上）")
                     # 输出最近几天的成交量数据用于调试
-                    dig_info.append("\n最近10天成交量数据:")
+                    dig_info.append("\n最近30天成交量数据:")
                     for row in symbol_df.sort("trade_date").iter_rows(named=True):
                         dig_info.append(f"  {row['trade_date']}: volume={row['volume']:.2f}")
                 continue
@@ -644,7 +703,20 @@ class Screener:
             all_dates = self.history_df['trade_date'].unique().sort()
             trading_days_count = len([d for d in all_dates if d >= t0_date])
 
+            # 计算5日、10日、20日均线斜率（MA5用5天拟合，MA10/MA20用7天拟合）
+            symbol_full_df = self.history_df.filter(pl.col("symbol") == symbol).sort("trade_date")
+            closes = symbol_full_df["close"].to_list()
+
+            # MA5用5天拟合
+            ma5_slopes = calc_ma_slopes_with_r2(closes, ma_periods=[5], fit_days=5, r2_threshold=0.99)
+            # MA10/MA20用7天拟合
+            ma10_20_slopes = calc_ma_slopes_with_r2(closes, ma_periods=[10, 20], fit_days=7, r2_threshold=0.99)
+
+            # 合并结果
+            ma_slopes = {**ma5_slopes, **ma10_20_slopes}
+
             if is_dig_target:
+                dig_info.append(f"均线斜率: MA5={ma_slopes[5]:.4f}, MA10={ma_slopes[10]:.4f}, MA20={ma_slopes[20]:.4f}")
                 dig_info.append(f"✅ 最终入选: 距今{trading_days_count}个交易日")
                 dig_info.append(f"{'='*80}\n")
 
@@ -657,9 +729,42 @@ class Screener:
                 "up_days": up_days_count,
                 "turnover": f"{turnover:.1f}%",
                 "rsi_6": rsi,
+                "ma5_slope": ma_slopes[5],
+                "ma10_slope": ma_slopes[10],
+                "ma20_slope": ma_slopes[20],
             }
 
             results.append(result)
+
+        # 过滤：MA10或MA20斜率为负且小于25%分位的淘汰（避免下降通道）
+        if results:
+            df_temp = pd.DataFrame(results)
+            # 计算MA10和MA20斜率的25%分位（排除nan）
+            ma10_q25 = df_temp["ma10_slope"].dropna().quantile(0.25)
+            ma20_q25 = df_temp["ma20_slope"].dropna().quantile(0.25)
+
+            filtered_results = []
+            for r in results:
+                ma10 = r["ma10_slope"]
+                ma20 = r["ma20_slope"]
+                symbol = r["symbol"]
+                is_dig_target = (symbol == dig_symbol)
+
+                # 检查MA10：斜率为负且小于25%分位
+                if pd.notna(ma10) and ma10 < 0 and ma10 < ma10_q25:
+                    if is_dig_target:
+                        dig_info.append(f"❌ 被淘汰: MA10斜率{ma10:.4f}为负且小于25%分位{ma10_q25:.4f}")
+                    continue
+
+                # 检查MA20：斜率为负且小于25%分位
+                if pd.notna(ma20) and ma20 < 0 and ma20 < ma20_q25:
+                    if is_dig_target:
+                        dig_info.append(f"❌ 被淘汰: MA20斜率{ma20:.4f}为负且小于25%分位{ma20_q25:.4f}")
+                    continue
+
+                filtered_results.append(r)
+
+            results = filtered_results
 
         # 输出追踪信息
         if dig_info:
@@ -676,9 +781,10 @@ class Screener:
             print(f"(数据天数: {self.data_days}天，RSI-6基于全量数据计算)")
             print()
 
-            # 使用 tabulate 打印表格，按换手率从大到小排序
+            # 使用 tabulate 打印表格，按MA5、MA10、MA20斜率联合排序
             df = pl.DataFrame(results).to_pandas()
-            df = df.sort_values("turnover", ascending=False)
+            # 按MA5、MA10、MA20斜率排序（nan值排到最后）
+            df = df.sort_values(by=["ma5_slope", "ma10_slope", "ma20_slope"], ascending=[False, False, False], na_position="last")
             headers = {
                 "symbol": "代码",
                 "name": "名称",
@@ -688,11 +794,20 @@ class Screener:
                 "volume_ratio": "量比",
                 "turnover": "换手率",
                 "rsi_6": "RSI",
+                "ma5_slope": "MA5斜率",
+                "ma10_slope": "MA10斜率",
+                "ma20_slope": "MA20斜率",
             }
             # 调整列顺序
-            column_order = ["代码", "名称", "放量日", "距今", "收阳天数", "量比", "换手率", "RSI"]
+            column_order = ["代码", "名称", "放量日", "距今", "收阳天数", "量比", "换手率", "RSI", "MA5斜率", "MA10斜率", "MA20斜率"]
             df.columns = [headers.get(c, c) for c in df.columns]
             df = df[column_order]
+
+            # 格式化斜率列为2位小数
+            for col in ["MA5斜率", "MA10斜率", "MA20斜率"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "nan")
+
             print(tabulate(df.values.tolist(), headers=df.columns.tolist(), tablefmt="simple"))
 
             # 保存筛选结果到CSV文件
