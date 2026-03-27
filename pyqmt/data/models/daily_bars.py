@@ -4,7 +4,7 @@ from pathlib import Path
 import polars as pl
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_timezone
 from pyqmt.core.enums import FrameType
 from pyqmt.core.singleton import singleton
 from pyqmt.data.helper import hfq_adjustment, qfq_adjustment
@@ -78,7 +78,7 @@ class DailyBars(Bars):
         assert self._calendar is not None
 
         if end is None:
-            end = datetime.datetime.now(tz=cfg.TIMEZONE)
+            end = datetime.datetime.now(tz=get_runtime_timezone())
         end_date = self._calendar.floor(end, FrameType.DAY)
         start_date = self._calendar.shift(end_date, -n + 1, FrameType.DAY)
 

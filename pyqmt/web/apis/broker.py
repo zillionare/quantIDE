@@ -3,10 +3,9 @@ import datetime
 from fasthtml.common import fast_app
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from pyqmt.config import cfg, get_config_dir, init_config
+from pyqmt.config.runtime import get_runtime_config
 from pyqmt.core.enums import FrameType
 from pyqmt.core.errors import TradeError, TradeErrors
-from pyqmt.data import init_data
 from pyqmt.data.sqlite import Asset, db
 from pyqmt.service.discovery import strategy_loader
 from pyqmt.service.grid_search import GridSearch
@@ -15,9 +14,6 @@ from pyqmt.service.runner import BacktestRunner
 # 确保配置和数据已初始化 (方便单独运行 broker app)
 # try:
 #     init_config(get_config_dir())
-#     if cfg.home:
-#         print(f"Initializing data at: {cfg.home}")
-#         init_data(cfg.home)
 # except Exception as e:
 #     print(f"Warning: Failed to auto-initialize data in broker.py: {e}")
 
@@ -72,6 +68,10 @@ def _require_broker(req):
     if broker is None:
         raise RuntimeError("broker not found")
     return broker
+
+
+def _backtest_requires_bid_time(bid_time: datetime.datetime | None) -> bool:
+    return bid_time is None and get_runtime_config().runtime_mode == "backtest"
 
 
 @rt("/status")
@@ -142,7 +142,7 @@ async def buy(
 ):
     broker = _require_broker(req)
 
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     return await broker.buy(
@@ -163,7 +163,7 @@ async def buy_percent(
     timeout: float = 0.5,
 ):
     broker = _require_broker(req)
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     if not 0 < percent <= 1.0:
@@ -182,7 +182,7 @@ async def buy_amount(
     timeout: float = 0.5,
 ):
     broker = _require_broker(req)
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     return await broker.buy_amount(asset, amount, price, bid_time, timeout)
@@ -198,7 +198,7 @@ async def sell(
     timeout: float = 0.5,
 ):
     broker = _require_broker(req)
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     return await broker.sell(
@@ -219,7 +219,7 @@ async def sell_percent(
     timeout: float = 0.5,
 ):
     broker = _require_broker(req)
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     if not 0 < percent <= 1.0:
@@ -238,7 +238,7 @@ async def sell_amount(
     timeout: float = 0.5,
 ):
     broker = _require_broker(req)
-    if bid_time is None and cfg.broker == "backtest":
+    if _backtest_requires_bid_time(bid_time):
         return Response("bid_time must be provided", status_code=400)
 
     return await broker.sell_amount(asset, amount, price, bid_time, timeout)

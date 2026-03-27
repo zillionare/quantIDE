@@ -13,8 +13,12 @@ import cfg4py
 import httpx
 from loguru import logger
 
+from pyqmt.config.runtime import (
+    get_runtime_dingtalk_access_token,
+    get_runtime_dingtalk_secret,
+)
+
 logger = logging.getLogger(__name__)
-cfg = cfg4py.get_instance()
 
 
 class DingTalkMessage:
@@ -34,24 +38,21 @@ class DingTalkMessage:
     @classmethod
     def _get_access_token(cls):
         """获取钉钉机器人的access_token"""
-        if hasattr(cfg.notify, "dingtalk_access_token"):
-            return cfg.notify.dingtalk.access_token
-        else:
-            logger.error(
-                "Dingtalk not configured, please add the following items:\n"
-                "notify:\n"
-                "  dingtalk_access_token: xxxx\n"
-                "  dingtalk_secret: xxxx\n"
-            )
-            raise ValueError("dingtalk_access_token not found")
+        token = get_runtime_dingtalk_access_token()
+        if token:
+            return token
+        logger.error(
+            "Dingtalk not configured, please add the following items:\n"
+            "notify:\n"
+            "  dingtalk_access_token: xxxx\n"
+            "  dingtalk_secret: xxxx\n"
+        )
+        raise ValueError("dingtalk_access_token not found")
 
     @classmethod
     def _get_secret(cls):
         """获取钉钉机器人的secret"""
-        if hasattr(cfg.notify, "dingtalk_secret"):
-            return cfg.notify.dingtalk.secret
-        else:
-            return None
+        return get_runtime_dingtalk_secret() or None
 
     @classmethod
     def _get_url(cls):

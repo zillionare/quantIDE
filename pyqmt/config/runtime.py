@@ -213,4 +213,105 @@ def get_runtime_config() -> RuntimeConfig:
     )
 
 
-__all__ = ["RuntimeConfig", "get_runtime_config"]
+def get_runtime_home() -> str:
+    """获取运行时 home 目录。"""
+    return get_runtime_config().app_home
+
+
+def get_runtime_timezone() -> datetime.tzinfo:
+    """获取运行时时区。"""
+    return get_runtime_config().timezone
+
+
+def get_runtime_epoch() -> datetime.date:
+    """获取运行时数据起点日期。"""
+    return get_runtime_config().epoch
+
+
+def get_runtime_tushare_token() -> str:
+    """获取运行时 tushare token。"""
+    state = _load_app_state()
+    return str(getattr(state, "tushare_token", "") or _cfg_value("tushare_token", "") or "")
+
+
+def get_runtime_dingtalk_access_token() -> str:
+    """获取运行时钉钉 access token。"""
+    state = _load_app_state()
+    return str(
+        getattr(state, "notify_dingtalk_access_token", "")
+        or _cfg_value("notify.dingtalk.access_token", "")
+        or ""
+    )
+
+
+def get_runtime_dingtalk_secret() -> str:
+    """获取运行时钉钉 secret。"""
+    state = _load_app_state()
+    return str(
+        getattr(state, "notify_dingtalk_secret", "")
+        or _cfg_value("notify.dingtalk.secret", "")
+        or ""
+    )
+
+
+def get_runtime_dingtalk_keyword() -> str:
+    """获取运行时钉钉 keyword。"""
+    state = _load_app_state()
+    return str(
+        getattr(state, "notify_dingtalk_keyword", "")
+        or _cfg_value("notify.dingtalk.keyword", "")
+        or ""
+    )
+
+
+def _normalize_receivers(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value or "").strip()
+    if not text:
+        return []
+    text = text.replace(";", ",")
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def get_runtime_mail_receivers() -> list[str]:
+    """获取运行时邮件接收者列表。"""
+    state = _load_app_state()
+    value = getattr(state, "notify_mail_to", "") or _cfg_value("notify.mail.mail_to", [])
+    return _normalize_receivers(value)
+
+
+def get_runtime_mail_sender() -> str:
+    """获取运行时邮件发送者。"""
+    state = _load_app_state()
+    return str(
+        getattr(state, "notify_mail_from", "")
+        or _cfg_value("notify.mail.mail_from", "")
+        or ""
+    )
+
+
+def get_runtime_mail_server() -> str:
+    """获取运行时邮件服务器。"""
+    state = _load_app_state()
+    return str(
+        getattr(state, "notify_mail_server", "")
+        or _cfg_value("notify.mail.mail_server", "")
+        or ""
+    )
+
+
+__all__ = [
+    "RuntimeConfig",
+    "get_runtime_config",
+    "get_runtime_home",
+    "get_runtime_timezone",
+    "get_runtime_epoch",
+    "get_runtime_tushare_token",
+    "get_runtime_dingtalk_access_token",
+    "get_runtime_dingtalk_secret",
+    "get_runtime_dingtalk_keyword",
+    "get_runtime_mail_receivers",
+    "get_runtime_mail_sender",
+    "get_runtime_mail_server",
+]

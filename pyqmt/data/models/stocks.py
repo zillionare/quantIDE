@@ -6,7 +6,7 @@ import pandas as pd
 import polars as pl
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_timezone
 from pyqmt.core.singleton import singleton
 from pyqmt.data.fetchers import fetch_stock_list
 
@@ -65,7 +65,7 @@ class StockList:
         self._data = pl.from_pandas(df)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(self.path, index=False)
-        self._last_update_time = datetime.datetime.now(cfg.TIMEZONE)
+        self._last_update_time = datetime.datetime.now(get_runtime_timezone())
 
     def update(self) -> None:
         """更新股票列表"""

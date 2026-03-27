@@ -18,14 +18,14 @@ from starlette.responses import RedirectResponse
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 
-from pyqmt.config import cfg, init_config
-from pyqmt.config.runtime import get_runtime_config
+from pyqmt.config import init_config
+from pyqmt.config.runtime import get_runtime_home
 from pyqmt.core.runtime import RuntimeBootstrap
 
 
 def _check_single_instance():
     """检查是否已有实例在运行，防止多实例启动"""
-    pid_file = Path(get_runtime_config().app_home or cfg.home) / ".pyqmt.pid"
+    pid_file = Path(get_runtime_home()) / ".pyqmt.pid"
 
     if pid_file.exists():
         try:
@@ -98,7 +98,7 @@ def init():
     # 检查是否已有实例在运行
     _check_single_instance()
 
-    init_data(get_runtime_config().app_home or cfg.home)
+    init_data(get_runtime_home())
     runtime = RuntimeBootstrap().bootstrap()
     reg = runtime.registry
     strategy_runtime_manager.bootstrap_from_runtime(runtime)

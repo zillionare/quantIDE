@@ -9,7 +9,7 @@ from typing import Any
 
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_home
 from pyqmt.core.enums import BrokerKind, FrameType, OrderSide
 from pyqmt.core.runtime import RuntimeContext
 from pyqmt.data.sqlite import db
@@ -530,7 +530,7 @@ class StrategyRuntimeManager:
         return []
 
     def _state_file(self) -> Path:
-        home = Path(str(cfg.home))
+        home = Path(get_runtime_home())
         home.mkdir(parents=True, exist_ok=True)
         return home / "strategy_runtimes.json"
 

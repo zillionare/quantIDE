@@ -10,7 +10,7 @@ import pandas as pd
 import polars as pl
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_epoch
 from pyqmt.data.fetchers.tushare import fetch_stock_list
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.calendar import Calendar
@@ -32,7 +32,7 @@ class StockSyncService:
         self.stock_list = stock_list
         self.daily_store = daily_store
         self.calendar = calendar
-        self._epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
+        self._epoch = get_runtime_epoch()
 
     def sync_stock_list(self) -> int:
         """同步股票列表
@@ -63,7 +63,7 @@ class StockSyncService:
         """同步日线行情数据
 
         Args:
-            start: 开始日期，默认为 cfg.epoch
+            start: 开始日期，默认为运行时 epoch
             end: 结束日期，默认为最近交易日
             progress_callback: 进度回调函数，接收 (current_date, completed_count, total_count) 参数
 
@@ -128,7 +128,7 @@ class StockSyncService:
         首次启动时调用，下载从 start 到当前的所有历史数据。
 
         Args:
-            start: 起始日期，默认为 cfg.epoch
+            start: 起始日期，默认为运行时 epoch
 
         Returns:
             同步结果统计

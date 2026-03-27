@@ -15,6 +15,12 @@ from tenacity import (
     wait_exponential,
 )
 
+from pyqmt.config.runtime import (
+    get_runtime_mail_receivers,
+    get_runtime_mail_sender,
+    get_runtime_mail_server,
+)
+
 
 def mail_notify(
     subject: str = "Quantide 交易通知",
@@ -64,13 +70,16 @@ def mail_notify(
         else:
             msg = compose(subject, plain_txt=body)
 
-    cfg = cfg4py.get_instance()
     if not receivers:
-        receivers = cfg.notify.mail_to
+        receivers = get_runtime_mail_receivers()
 
     password = os.environ.get("PYQMT_MAIL_PASSWORD")
     return send_mail(
-        cfg.notify.mail_from, receivers, password, msg, host=cfg.notify.mail_server
+        get_runtime_mail_sender(),
+        receivers,
+        password,
+        msg,
+        host=get_runtime_mail_server(),
     )
 
 

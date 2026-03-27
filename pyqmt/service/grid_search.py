@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Type
 import pandas as pd
 from loguru import logger
 
-from pyqmt.config import cfg, init_config
+from pyqmt.config import init_config
+from pyqmt.config.runtime import get_runtime_home
 from pyqmt.core.enums import FrameType
 from pyqmt.core.strategy import BaseStrategy
 from pyqmt.data import init_data
@@ -29,7 +30,7 @@ def _run_task(
     init_config()
 
     # Use provided home_dir or default from config
-    data_home = home_dir or cfg.home
+    data_home = home_dir or get_runtime_home()
     # Only init db if db_path is NOT provided or if it's not :memory:
     # Actually, if db_path is provided (like :memory:), we should skip default solo.db init
     # because runner.run will init db with db_path.
@@ -74,7 +75,7 @@ def _run_task(
             result["assets"] = assets_df.to_dicts()
 
         # 4. Get Trades
-        trades_df = db.query_trades(portfolio_id)
+        trades_df = db.get_trades(portfolio_id=portfolio_id)
         if not trades_df.is_empty():
             result["trades"] = trades_df.to_dicts()
 

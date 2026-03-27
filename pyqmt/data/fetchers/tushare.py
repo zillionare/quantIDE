@@ -11,7 +11,6 @@ import pandas as pd
 import tushare as ts
 from loguru import logger
 
-from pyqmt.config import cfg
 from pyqmt.core.message import msg_hub
 
 

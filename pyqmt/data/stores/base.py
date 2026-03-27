@@ -14,7 +14,7 @@ import pandas as pd
 import polars as pl
 from loguru import logger
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_timezone
 from pyqmt.core.enums import FrameType
 from pyqmt.core.message import msg_hub
 from pyqmt.data.models.calendar import Calendar
@@ -539,7 +539,7 @@ class ParquetStorage:
         """
         start = self.end or self._calendar.epoch
 
-        now = datetime.datetime.now(tz=cfg.TIMEZONE)
+        now = datetime.datetime.now(tz=get_runtime_timezone())
         end = self._calendar.floor(now, FrameType.DAY)
 
         logger.info("开始更新日线数据: {} 到 {}", start, end)
