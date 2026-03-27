@@ -19,9 +19,21 @@ def reset_service_state(db):
 
 def test_get_state_loads_defaults_from_config(db, monkeypatch):
     fake_cfg = SimpleNamespace(
+        TIMEZONE=datetime.timezone.utc,
         home="~/pyqmt-home",
         server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
-        gateway=SimpleNamespace(base_url="http://127.0.0.1:8000"),
+        gateway=SimpleNamespace(
+            base_url="http://127.0.0.1:8000",
+            username="gateway-user",
+            password="gateway-pass",
+            timeout=15,
+        ),
+        livequote=SimpleNamespace(mode="gateway"),
+        runtime=SimpleNamespace(
+            mode="live",
+            market_adapter="demo-market",
+            broker_adapter="demo-broker",
+        ),
         apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
         notify=SimpleNamespace(
             dingtalk=SimpleNamespace(
@@ -35,9 +47,10 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
                 mail_server="smtp.example.com",
             ),
         ),
+        tushare_token="ts-cfg-token",
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("pyqmt.service.init_wizard.cfg", fake_cfg)
+    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
 
     service = InitWizardService()
     state = service.get_state(force_refresh=True)
@@ -49,11 +62,20 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
     assert state.gateway_base_url == "/"
     assert state.gateway_enabled is True
     assert state.gateway_api_key == "demo-key"
-    assert state.gateway_username == ""
-    assert state.gateway_password == ""
-    assert state.gateway_timeout == 10
+    assert state.gateway_username == "gateway-user"
+    assert state.gateway_password == "gateway-pass"
+    assert state.gateway_timeout == 15
     assert state.livequote_mode == "gateway"
     assert state.runtime_mode == "live"
+    assert state.runtime_market_adapter == "demo-market"
+    assert state.runtime_broker_adapter == "demo-broker"
+    assert state.notify_dingtalk_access_token == "dt-token"
+    assert state.notify_dingtalk_secret == "dt-secret"
+    assert state.notify_dingtalk_keyword == "dt-keyword"
+    assert state.notify_mail_to == "to@example.com"
+    assert state.notify_mail_from == "from@example.com"
+    assert state.notify_mail_server == "smtp.example.com"
+    assert state.tushare_token == "ts-cfg-token"
     assert state.epoch == datetime.date(2015, 1, 1)
     assert state.history_start_date >= datetime.date(2015, 1, 1)
 

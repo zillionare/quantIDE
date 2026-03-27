@@ -14,7 +14,7 @@ from loguru import logger
 from monsterui.all import *
 from starlette.responses import StreamingResponse
 
-from pyqmt.config import cfg
+from pyqmt.config.runtime import get_runtime_home
 from pyqmt.core.message import msg_hub
 from pyqmt.data.models.calendar import calendar
 from pyqmt.data.models.daily_bars import daily_bars
@@ -179,7 +179,7 @@ def Step2_Runtime(state: dict | None = None):
                 LabelInput(
                     label="home",
                     name="app_home",
-                    value=state.get("app_home", str(getattr(cfg, "home", ""))),
+                    value=state.get("app_home", get_runtime_home()),
                     placeholder="例如：~/pyqmt",
                     required=True,
                     cls="mb-3",

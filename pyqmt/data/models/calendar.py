@@ -910,8 +910,8 @@ class Calendar:
         调用本函数前，请先通过`floor`或者`ceiling`将时间帧对齐到`frame_type`的边界值
 
         Example:
-            >>> start = datetime.datetime(2020, 1, 13, 10, 0, tzinfo=cfg.TIMEZONE)
-            >>> end = datetime.datetime(2020, 1, 13, 13, 30, tzinfo=cfg.TIMEZONE)
+            >>> start = datetime.datetime(2020, 1, 13, 10, 0, tzinfo=get_runtime_timezone())
+            >>> end = datetime.datetime(2020, 1, 13, 13, 30, tzinfo=get_runtime_timezone())
             >>> tf.get_frames(start, end, FrameType.MIN30)
             [datetime.datetime(2020,1,13,10,0), datetime.datetime(2020,1,13,10,30), datetime.datetime(2020,1,13,11,0), datetime.datetime(2020,1,13,11,30), datetime.datetime(2020,1,13,13,30)]
 
@@ -934,10 +934,10 @@ class Calendar:
         调用前请将`end`对齐到`frame_type`的边界
 
         Examples:
-            >>> end = datetime.datetime(2020, 1, 6, 14, 30, tzinfo=cfg.TIMEZONE)
+            >>> end = datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_runtime_timezone())
             >>> tf.get_frames_by_count(end, 2, FrameType.MIN30)
-            [datetime.datetime(2020, 1, 6, 14, 0, tzinfo=cfg.TIMEZONE),
-             datetime.datetime(2020, 1, 6, 14, 30, tzinfo=cfg.TIMEZONE)]
+            [datetime.datetime(2020, 1, 6, 14, 0, tzinfo=get_runtime_timezone()),
+             datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_runtime_timezone())]
 
         Args:
             end:

@@ -95,9 +95,6 @@ doc = [
     "virtualenv"
     ]
 
-[tool.poetry.scripts]
-pyqmt = 'pyqmt.cli:main'
-
 [[tool.poetry.source]]
 name = "tsinghua"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

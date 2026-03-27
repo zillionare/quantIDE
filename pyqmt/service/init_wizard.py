@@ -10,8 +10,16 @@ from typing import Any
 
 from loguru import logger
 
-from pyqmt.config import cfg
-from pyqmt.config.runtime import get_runtime_config
+from pyqmt.config.runtime import (
+    get_runtime_config,
+    get_runtime_dingtalk_access_token,
+    get_runtime_dingtalk_keyword,
+    get_runtime_dingtalk_secret,
+    get_runtime_mail_receivers,
+    get_runtime_mail_sender,
+    get_runtime_mail_server,
+    get_runtime_tushare_token,
+)
 from pyqmt.data.models.app_state import AppState
 from pyqmt.data.sqlite import db
 
@@ -47,61 +55,36 @@ class InitWizardService:
             AppState: 默认初始化状态。
         """
         state = AppState()
-        server = getattr(cfg, "server", None)
-        state.app_home = str(getattr(cfg, "home", "") or "")
-        state.app_host = str(getattr(server, "host", "0.0.0.0") or "0.0.0.0")
-        state.app_port = int(getattr(server, "port", 8130) or 8130)
-        state.app_prefix = str(getattr(server, "prefix", "/zillionare-qmt") or "/")
+        runtime = get_runtime_config()
 
-        gateway = getattr(cfg, "gateway", None)
-        base_url = str(getattr(gateway, "base_url", "") or "").strip()
+        state.app_home = runtime.app_home
+        state.app_host = runtime.app_host
+        state.app_port = runtime.app_port
+        state.app_prefix = runtime.app_prefix
+
+        base_url = runtime.gateway_base_url.strip()
         parsed = urllib.parse.urlparse(base_url)
         state.gateway_base_url = parsed.path or "/"
-        state.gateway_scheme = parsed.scheme or "http"
+        state.gateway_scheme = parsed.scheme or runtime.gateway_scheme or "http"
         state.gateway_server = parsed.hostname or ""
-        state.gateway_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        state.gateway_port = parsed.port or runtime.gateway_port
         state.gateway_enabled = bool(parsed.hostname)
-        state.gateway_username = str(getattr(gateway, "username", "") or "")
-        state.gateway_password = str(getattr(gateway, "password", "") or "")
-        state.gateway_timeout = int(getattr(gateway, "timeout", 10) or 10)
-
-        livequote = getattr(cfg, "livequote", None)
-        state.livequote_mode = str(getattr(livequote, "mode", "gateway") or "gateway")
-
-        runtime = getattr(cfg, "runtime", None)
-        state.runtime_mode = str(getattr(runtime, "mode", "live") or "live")
-        state.runtime_market_adapter = str(
-            getattr(runtime, "market_adapter", "") or ""
-        )
-        state.runtime_broker_adapter = str(
-            getattr(runtime, "broker_adapter", "") or ""
-        )
-
-        apikeys = getattr(cfg, "apikeys", None)
-        clients = getattr(apikeys, "clients", []) or []
-        if clients and isinstance(clients, list):
-            first = clients[0] or {}
-            state.gateway_api_key = str(first.get("key", "") or "")
-
-        notify = getattr(cfg, "notify", None)
-        dingtalk = getattr(notify, "dingtalk", None)
-        if dingtalk is not None:
-            state.notify_dingtalk_access_token = str(
-                getattr(dingtalk, "access_token", "") or ""
-            )
-            state.notify_dingtalk_secret = str(getattr(dingtalk, "secret", "") or "")
-            state.notify_dingtalk_keyword = str(getattr(dingtalk, "keyword", "") or "")
-
-        mail = getattr(notify, "mail", None)
-        if mail is not None:
-            state.notify_mail_to = str(getattr(mail, "mail_to", "") or "")
-            state.notify_mail_from = str(getattr(mail, "mail_from", "") or "")
-            state.notify_mail_server = str(getattr(mail, "mail_server", "") or "")
-
-        epoch = getattr(cfg, "epoch", datetime.date(2005, 1, 1))
-        if isinstance(epoch, str):
-            epoch = datetime.datetime.strptime(epoch, "%Y-%m-%d").date()
-        state.epoch = epoch
+        state.gateway_username = runtime.gateway_username
+        state.gateway_password = runtime.gateway_password
+        state.gateway_timeout = int(runtime.gateway_timeout)
+        state.livequote_mode = runtime.livequote_mode
+        state.runtime_mode = runtime.runtime_mode
+        state.runtime_market_adapter = runtime.runtime_market_adapter
+        state.runtime_broker_adapter = runtime.runtime_broker_adapter
+        state.gateway_api_key = runtime.gateway_api_key
+        state.notify_dingtalk_access_token = get_runtime_dingtalk_access_token()
+        state.notify_dingtalk_secret = get_runtime_dingtalk_secret()
+        state.notify_dingtalk_keyword = get_runtime_dingtalk_keyword()
+        state.notify_mail_to = ",".join(get_runtime_mail_receivers())
+        state.notify_mail_from = get_runtime_mail_sender()
+        state.notify_mail_server = get_runtime_mail_server()
+        state.tushare_token = get_runtime_tushare_token()
+        state.epoch = runtime.epoch
         state.history_years = 3
         state.history_start_date = self._compute_history_start_date(
             epoch=state.epoch,

@@ -20,10 +20,12 @@ pip install qmt-gateway
 
 ## 使用
 
-### 命令行启动
+### ASGI 启动
 
 ```bash
-qmt-gateway
+cd qmt-gateway
+poetry install
+poetry run uvicorn qmt_gateway.app:app --host 0.0.0.0 --port 8130
 ```
 
 ### 首次启动
@@ -58,10 +60,12 @@ http://localhost:8130/init-wizard?force=true
 
 ## 开发
 
+开发期同样通过 ASGI 入口启动，不再保留单独的 CLI 发布入口：
+
 ```bash
 cd qmt-gateway
 poetry install
-poetry run qmt-gateway
+poetry run uvicorn qmt_gateway.app:app --host 0.0.0.0 --port 8130
 ```
 
 ## 技术栈
