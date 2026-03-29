@@ -16,6 +16,9 @@ import pytz
 from loguru import logger
 
 
+_LAST_APP_STATE_LOAD_ERROR: tuple[type[BaseException], str] | None = None
+
+
 def _cfg_value(path: str, default: Any = None) -> Any:
     current = cfg4py.get_instance()
     for name in path.split("."):
@@ -56,14 +59,21 @@ def _load_app_state() -> Any | None:
     from pyqmt.data.sqlite import db
     from pyqmt.data.models.app_state import AppState
 
+    global _LAST_APP_STATE_LOAD_ERROR
+
     if not db._initialized:
         return None
 
     try:
         row = db["app_state"].get(1)
     except Exception as exc:
-        logger.debug(f"load app_state failed, fallback to cfg4py: {exc}")
+        error_key = (type(exc), str(exc))
+        if error_key != _LAST_APP_STATE_LOAD_ERROR:
+            logger.debug(f"load app_state failed, fallback to cfg4py: {exc}")
+            _LAST_APP_STATE_LOAD_ERROR = error_key
         return None
+
+    _LAST_APP_STATE_LOAD_ERROR = None
 
     if not row:
         return None

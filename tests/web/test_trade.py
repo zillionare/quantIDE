@@ -1,10 +1,14 @@
 """测试交易模块页面"""
+from email.message import Message
+import urllib.error
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from starlette.responses import RedirectResponse
 from starlette.testclient import TestClient
+from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from starlette.middleware import Middleware
 from fasthtml.common import fast_app, Mount
@@ -46,29 +50,29 @@ def test_app(cfg):
         from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
         from pyqmt.core.errors import BaseTradeError
         from pyqmt.web.pages.home import home_app
-        from pyqmt.web.pages.login import login_app
         from pyqmt.web.pages.trade import trade_app
         from pyqmt.web.pages.live import live_app
         from pyqmt.web.apis.broker import app as broker_api_app
 
-        auth = AuthManager(config={"login_path": "/login"})
+        auth = AuthManager(config={"login_path": "/auth/login"})
 
         app, rt = fast_app(
-            hdrs=Theme.blue.headers(),
+            hdrs=tuple(Theme.blue.headers()),
             before=auth.create_beforeware(),
-            middleware=[Middleware(BrokerRegistryMiddleware, registry=reg)],
+            middleware=(Middleware(BrokerRegistryMiddleware, registry=reg),),
             exception_handlers={
                 Exception: exception_handler,
                 BaseTradeError: exception_handler,
             },
-            routes=[
-                Mount("/login", login_app),
+            routes=(
+                Route("/login", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
+                Route("/login/", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
                 Mount("/home", home_app),
                 Mount("/trade/simulation", trade_app),
                 Mount("/trade/live", live_app),
                 Mount("/broker", broker_api_app),
                 Mount("/", home_app),
-            ],
+            ),
         )
 
         static_dir = Path(__file__).resolve().parent.parent.parent / "pyqmt" / "web" / "static"
@@ -105,6 +109,82 @@ class TestSimulationTrade:
         """测试仿真账户列表页面"""
         response = test_client.get("/trade/simulation", follow_redirects=False)
         assert response.status_code in [200, 302, 303, 404]
+
+
+class TestLoginRoutes:
+    """测试登录入口兼容性."""
+
+    def test_login_redirect_path(self, test_client):
+        response = test_client.get("/login", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/auth/login"
+
+    def test_login_slash_redirect_path(self, test_client):
+        response = test_client.get("/login/", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/auth/login"
+
+    def test_auth_login_get_page(self, test_client):
+        response = test_client.get("/auth/login", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "匡醍量化" in response.text
+        assert "business@quantide.cn" in response.text
+
+    def test_auth_login_post_succeeds(self, test_client):
+        response = test_client.post(
+            "/auth/login",
+            data={"username": "admin", "password": "admin123"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/"
+
+    def test_home_tolerates_broker_asset_errors(self, test_client, monkeypatch):
+        headers = Message()
+
+        class BrokenBroker:
+            portfolio_id = "gateway"
+
+            @property
+            def asset(self):
+                raise urllib.error.HTTPError(
+                    url="http://localhost:8000/api/trade/asset",
+                    code=404,
+                    msg="Not Found",
+                    hdrs=headers,
+                    fp=None,
+                )
+
+            @property
+            def positions(self):
+                raise urllib.error.HTTPError(
+                    url="http://localhost:8000/api/trade/positions",
+                    code=404,
+                    msg="Not Found",
+                    hdrs=headers,
+                    fp=None,
+                )
+
+        from pyqmt.web.pages import home as home_page
+
+        monkeypatch.setattr(home_page, "_get_broker", lambda req: BrokenBroker())
+
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "首页" in response.text
 
     def test_create_simulation_account_modal(self, test_client):
         """测试创建仿真账户对话框"""

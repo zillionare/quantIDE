@@ -2,6 +2,7 @@ import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pyqmt.config.runtime as runtime_module
 from pyqmt.config.runtime import (
     get_runtime_config,
     get_runtime_dingtalk_access_token,
@@ -15,6 +16,34 @@ from pyqmt.config.runtime import (
     get_runtime_timezone,
 )
 from pyqmt.data.models.app_state import AppState
+
+
+class FailingTable:
+    def get(self, _pk):
+        raise RuntimeError("table missing")
+
+
+class SequenceTable:
+    def __init__(self, results):
+        self._results = list(results)
+
+    def get(self, _pk):
+        if not self._results:
+            return None
+        result = self._results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class FakeDb:
+    def __init__(self, table):
+        self._initialized = True
+        self._table = table
+
+    def __getitem__(self, name: str):
+        assert name == "app_state"
+        return self._table
 
 
 def test_runtime_config_falls_back_to_cfg(monkeypatch):
@@ -190,3 +219,42 @@ def test_runtime_notify_and_token_helpers_follow_db_state(db, monkeypatch):
     assert get_runtime_mail_sender() == "db-from@example.com"
     assert get_runtime_mail_server() == "smtp.db.example.com"
     assert get_runtime_tushare_token() == "db-ts-token"
+
+
+def test_load_app_state_logs_repeated_failure_once(monkeypatch):
+    messages: list[str] = []
+
+    monkeypatch.setattr(runtime_module, "_LAST_APP_STATE_LOAD_ERROR", None)
+    monkeypatch.setattr("pyqmt.data.sqlite.db", FakeDb(FailingTable()))
+    monkeypatch.setattr(runtime_module.logger, "debug", messages.append)
+
+    assert runtime_module._load_app_state() is None
+    assert runtime_module._load_app_state() is None
+    assert messages == ["load app_state failed, fallback to cfg4py: table missing"]
+
+
+def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
+    messages: list[str] = []
+    table = SequenceTable(
+        [
+            RuntimeError("table missing"),
+            {"id": 1},
+            RuntimeError("table missing"),
+        ]
+    )
+
+    monkeypatch.setattr(runtime_module, "_LAST_APP_STATE_LOAD_ERROR", None)
+    monkeypatch.setattr("pyqmt.data.sqlite.db", FakeDb(table))
+    monkeypatch.setattr(
+        "pyqmt.data.models.app_state.AppState.from_dict",
+        staticmethod(lambda row: row),
+    )
+    monkeypatch.setattr(runtime_module.logger, "debug", messages.append)
+
+    assert runtime_module._load_app_state() is None
+    assert runtime_module._load_app_state() == {"id": 1}
+    assert runtime_module._load_app_state() is None
+    assert messages == [
+        "load app_state failed, fallback to cfg4py: table missing",
+        "load app_state failed, fallback to cfg4py: table missing",
+    ]

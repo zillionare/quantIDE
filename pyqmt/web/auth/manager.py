@@ -68,12 +68,26 @@ class AuthManager:
         # Register auth routes if app is provided
         if app is not None:
             self.register_routes(app, prefix=prefix)
+            self._prioritize_prefixed_routes(app, prefix)
 
         admin = self.get_user("admin")
         (f"Admin User class: {type(admin)}")
         print(f"Are they the same class? {type(admin) is User}")
 
         return self.db
+
+    def _prioritize_prefixed_routes(self, app, prefix: str) -> None:
+        """Move auth routes ahead of catch-all mounts like `/`."""
+        routes = list(getattr(app.router, "routes", []))
+        prefixed = [
+            route
+            for route in routes
+            if str(getattr(route, "path", "")).startswith(prefix)
+        ]
+        if not prefixed:
+            return
+        others = [route for route in routes if route not in prefixed]
+        app.router.routes[:] = prefixed + others
 
     def create_beforeware(self, additional_public_paths=None):
         return self.middleware.create_beforeware(additional_public_paths)

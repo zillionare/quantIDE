@@ -4,6 +4,7 @@ repo_name: pyqmt
 
 nav:
   - home: index.md
+  - init-wizard: init-wizard.md
 
 theme:
   name: material

@@ -1,4 +1,5 @@
 import datetime
+from typing import Any
 
 from fasthtml.common import *
 from loguru import logger
@@ -13,6 +14,74 @@ from pyqmt.web.layouts.main import MainLayout
 from pyqmt.web.theme import AppTheme
 
 home_app, rt = fast_app(hdrs=AppTheme.headers())
+
+
+def _safe_broker_attr(broker: Any, name: str, default: Any = None) -> Any:
+    """Safely read a broker attribute.
+
+    Args:
+        broker: Broker-like object.
+        name: Attribute name.
+        default: Fallback value when unavailable.
+
+    Returns:
+        The attribute value or the fallback value.
+    """
+    try:
+        return getattr(broker, name)
+    except AttributeError:
+        return default
+    except Exception as exc:
+        logger.warning(f"读取 broker.{name} 失败，已降级忽略: {exc}")
+        return default
+
+
+def _normalize_positions(positions: Any) -> list[Position]:
+    """Normalize broker positions to a list.
+
+    Args:
+        positions: Broker positions in dict/list form.
+
+    Returns:
+        A list of positions.
+    """
+    if not positions:
+        return []
+    if isinstance(positions, dict):
+        return list(positions.values())
+    return list(positions)
+
+
+def _build_broker_asset_overview(broker: Any) -> dict[str, Any] | None:
+    """Build asset overview from a broker with graceful fallback.
+
+    Args:
+        broker: Broker-like object.
+
+    Returns:
+        Asset overview dict or None.
+    """
+    asset = _safe_broker_attr(broker, "asset")
+    if asset is not None:
+        return build_asset_overview(asset)
+
+    total = _safe_broker_attr(broker, "total_assets")
+    if total is None:
+        return None
+
+    cash = _safe_broker_attr(broker, "cash", 0)
+    principal = _safe_broker_attr(broker, "principal", 0)
+    market_value = total - cash
+    pnl = total - principal
+    pnl_pct = pnl / principal if principal else 0
+    return {
+        "total": total,
+        "cash": cash,
+        "frozen_cash": 0,
+        "market_value": market_value,
+        "pnl": pnl,
+        "pnl_pct": pnl_pct,
+    }
 
 
 def AccountTabs():
@@ -755,27 +824,9 @@ def index(req, session):
         # 获取经纪人数据
         broker = _get_broker(req)
         if broker is not None:
-            if hasattr(broker, "asset"):
-                asset_overview = build_asset_overview(broker.asset)  # type: ignore
-            elif hasattr(broker, "total_assets"):
-                # SimulationBroker 等没有 asset 属性，但有 total_assets, cash, principal
-                total = broker.total_assets
-                cash = broker.cash if hasattr(broker, "cash") else 0
-                principal = broker.principal if hasattr(broker, "principal") else 0
-                market_value = total - cash
-                pnl = total - principal
-                pnl_pct = pnl / principal if principal else 0
-                asset_overview = {
-                    "total": total,
-                    "cash": cash,
-                    "frozen_cash": 0,
-                    "market_value": market_value,
-                    "pnl": pnl,
-                    "pnl_pct": pnl_pct,
-                }
-            if hasattr(broker, "positions"):
-                positions = broker.positions
-            portfolio_id = broker.portfolio_id if hasattr(broker, "portfolio_id") else None
+            asset_overview = _build_broker_asset_overview(broker)
+            positions = _normalize_positions(_safe_broker_attr(broker, "positions", []))
+            portfolio_id = _safe_broker_attr(broker, "portfolio_id")
             if portfolio_id:
                 orders_df = db.get_orders(datetime.date.today(), portfolio_id)
                 if orders_df is not None and not orders_df.is_empty():
@@ -801,7 +852,7 @@ def index(req, session):
 @rt("/positions")
 async def get_positions(req):
     broker = _get_broker(req)
-    positions = broker.positions if broker else []
+    positions = _normalize_positions(_safe_broker_attr(broker, "positions", [])) if broker else []
     return PositionInfo(positions)
 
 @rt("/order", methods=["POST"])
@@ -823,16 +874,16 @@ async def place_order(req):
             await broker.sell(asset, shares, price)
 
         # Return updated components with OOB swap
-        positions = broker.positions
+        positions = _normalize_positions(_safe_broker_attr(broker, "positions", []))
 
         # Build overview manually or use helper if possible
-        overview = {
-            "total": broker.total_assets,
-            "cash": broker.cash,
+        overview = _build_broker_asset_overview(broker) or {
+            "total": 0,
+            "cash": 0,
             "frozen_cash": 0,
-            "market_value": broker.total_assets - broker.cash,
-            "pnl": broker.total_assets - broker.principal,
-            "pnl_pct": (broker.total_assets - broker.principal) / broker.principal if broker.principal else 0
+            "market_value": 0,
+            "pnl": 0,
+            "pnl_pct": 0,
         }
 
         return (

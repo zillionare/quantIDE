@@ -211,7 +211,7 @@ class AuthRoutes:
             error = req.query_params.get("error")
             # Get redirect destination from query params
             redirect_to = req.query_params.get("redirect_to", "/")
-            return Title("Login"), Container(
+            return Title("匡醍量化登录"), (
                 create_login_form(
                     error=error, action=f"{prefix}/login", redirect_to=redirect_to
                 )

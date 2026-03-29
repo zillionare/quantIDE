@@ -82,7 +82,6 @@ from pyqmt.web.pages.history_positions import history_positions_list
 from pyqmt.web.pages.history_trades import history_trades_list
 from pyqmt.web.pages.home import home_app
 from pyqmt.web.pages.live import live_app
-from pyqmt.web.pages.login import login_app
 from pyqmt.web.pages.strategy import strategy_app
 from pyqmt.web.pages.trade import trade_app
 from pyqmt.web.pages.trade_main import trade_main_page, set_active_account
@@ -103,7 +102,7 @@ def init():
     reg = runtime.registry
     strategy_runtime_manager.bootstrap_from_runtime(runtime)
 
-    auth = AuthManager(config={"login_path": "/login"})
+    auth = AuthManager(config={"login_path": "/auth/login"})
 
     from pyqmt.web.theme import AppTheme
 
@@ -123,7 +122,8 @@ def init():
             Mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "web" / "static")), name="static"),
             Route("/init-wizard", lambda req: RedirectResponse(f"/init-wizard/?{req.url.query}" if req.url.query else "/init-wizard/")),
             Mount("/init-wizard", init_wizard_app),
-            Mount("/login", login_app),
+            Route("/login", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
+            Route("/login/", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),
             Mount("/trade/live", live_app),

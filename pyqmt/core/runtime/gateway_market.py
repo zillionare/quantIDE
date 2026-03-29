@@ -38,7 +38,6 @@ class GatewayMarketDataAdapter(MarketDataPort):
         """启动行情服务."""
         if self._thread and self._thread.is_alive():
             return
-        self._client.ensure_login()
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run_ws_loop,
@@ -113,12 +112,9 @@ class GatewayMarketDataAdapter(MarketDataPort):
             logger.error(f"gateway ws requires websockets package: {exc}")
             return
         url = self._client.ws_url("/ws/quotes")
-        headers = {}
-        cookie = self._client.cookie_header()
-        if cookie:
-            headers["Cookie"] = cookie
         while not self._stop_event.is_set():
             try:
+                headers = self._build_ws_headers()
                 async with websockets.connect(
                     url,
                     additional_headers=headers,
@@ -132,6 +128,14 @@ class GatewayMarketDataAdapter(MarketDataPort):
             except Exception as exc:
                 logger.error(f"gateway ws reconnect after error: {exc}")
                 await asyncio.sleep(2)
+
+    def _build_ws_headers(self) -> dict[str, str]:
+        """构建 WS 连接头并确保登录态已就绪。"""
+        self._client.ensure_login()
+        cookie = self._client.cookie_header()
+        if not cookie:
+            return {}
+        return {"Cookie": cookie}
 
     def _on_gateway_quote(self, payload: dict[str, Any]) -> None:
         """处理 gateway 推送数据."""

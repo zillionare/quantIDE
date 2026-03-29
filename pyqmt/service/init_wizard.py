@@ -408,8 +408,8 @@ class InitWizardService:
         if state.can_use_backtest():
             return "/strategy"
         if runtime.gateway_enabled and runtime.gateway_base_url:
-            return "/login"
-        return "/login"
+            return "/auth/login"
+        return "/auth/login"
 
     def get_progress(self) -> dict[str, Any]:
         """获取初始化进度信息
