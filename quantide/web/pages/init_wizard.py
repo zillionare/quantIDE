@@ -372,8 +372,10 @@ def StepIndicator(current_step: int, steps: list[dict]):
 
     # 构建连接线 - 使用伪元素或背景实现贯穿效果
     # 连接线容器：从第一个圆圈中心到最后一个圆圈中心
+    # 顶部偏移 48px 与右侧标题对齐，底部偏移 16px
+    progress_percent = ((current_step - 1) / max(total_steps - 1, 1)) * 100
     connector_line = Div(
-        style=f"position: absolute; left: 50%; top: 16px; bottom: 16px; width: 2px; background: linear-gradient(to bottom, {PRIMARY_COLOR} 0%, {PRIMARY_COLOR} {((current_step - 1) / max(total_steps - 1, 1)) * 100}%, #e5e7eb {((current_step - 1) / max(total_steps - 1, 1)) * 100}%, #e5e7eb 100%); transform: translateX(-50%); z-index: 1;"
+        style=f"position: absolute; left: 50%; top: 48px; bottom: 16px; width: 2px; background: linear-gradient(to bottom, {PRIMARY_COLOR} 0%, {PRIMARY_COLOR} {progress_percent}%, #e5e7eb {progress_percent}%, #e5e7eb 100%); transform: translateX(-50%); z-index: 1;"
     ) if total_steps > 1 else ""
 
     return Div(
@@ -381,7 +383,7 @@ def StepIndicator(current_step: int, steps: list[dict]):
         Ul(
             *step_items,
             cls="steps-vertical list-none p-0 m-0 relative",
-            style="width: 48px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; height: 100%;",
+            style="width: 48px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; height: 100%; padding-top: 32px; padding-bottom: 0;",
         ),
         cls="relative flex-shrink-0 h-full",
     )
@@ -905,8 +907,10 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     padding: 48px 24px 64px;
                 }
                 #step-indicator-wrapper {
-                    padding-top: 48px;
+                    padding-top: 0;
                     min-height: 520px;
+                    display: flex;
+                    align-items: flex-start;
                 }
                 """
             ),
