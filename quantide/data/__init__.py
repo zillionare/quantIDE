@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from quantide.config.paths import get_app_db_path
 from quantide.data.models.calendar import calendar
 from quantide.data.models.daily_bars import daily_bars
 from quantide.data.models.index_bars import index_bars
@@ -7,12 +8,17 @@ from quantide.data.models.stocks import stock_list
 from quantide.data.sqlite import db
 
 
-def init_data(home: str | Path, init_db: bool = True) -> None:
+def init_data(
+    home: str | Path,
+    init_db: bool = True,
+    db_path: str | Path | None = None,
+) -> None:
     """初始化数据层对象：stocklist、calendar、daily_bars、index_bars，并进行模块级导出。
 
     Args:
-        home (str | Path | None): 指定Alpha的主目录。
+        home (str | Path | None): 指定行情数据主目录。
         init_db (bool): 是否初始化数据库。默认为True。
+        db_path (str | Path | None): sqlite 数据库路径。未指定时使用固定配置目录。
 
     Returns:
         tuple[StockList, Calendar, DailyBars, IndexBars, SQLiteDB]: 依次返回 stocklist, calendar, daily_bars, index_bars, db
@@ -23,7 +29,6 @@ def init_data(home: str | Path, init_db: bool = True) -> None:
     stocklist_path = home_dir / "data/stock_list.parquet"
     daily_bars_path = home_dir / "data/bars/daily"
     index_bars_path = home_dir / "data/bars/index"
-    db_path = home_dir / "quantide.db"
 
     daily_bars_path.mkdir(parents=True, exist_ok=True)
     index_bars_path.mkdir(parents=True, exist_ok=True)
@@ -42,4 +47,5 @@ def init_data(home: str | Path, init_db: bool = True) -> None:
     index_bars.connect(str(index_bars_path), calendar)
 
     if init_db:
-        db.init(db_path)
+        target_db_path = Path(db_path).expanduser() if db_path is not None else get_app_db_path()
+        db.init(target_db_path)

@@ -9,6 +9,7 @@ from typing import Any
 
 from loguru import logger
 
+from quantide.config.paths import get_strategy_runtime_state_path
 from quantide.config.runtime import get_runtime_home
 from quantide.core.enums import BrokerKind, FrameType, OrderSide
 from quantide.core.runtime import RuntimeContext
@@ -530,9 +531,7 @@ class StrategyRuntimeManager:
         return []
 
     def _state_file(self) -> Path:
-        home = Path(get_runtime_home())
-        home.mkdir(parents=True, exist_ok=True)
-        return home / "strategy_runtimes.json"
+        return get_strategy_runtime_state_path()
 
     def _save_specs(self) -> None:
         file_path = self._state_file()

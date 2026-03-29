@@ -4,6 +4,8 @@ from pathlib import Path
 from fasthtml.common import *
 from monsterui.all import *
 
+from quantide.config.paths import get_app_db_path
+
 from .database import AuthDatabase
 from .middleware import AuthBeforeware
 from .models import User
@@ -27,17 +29,19 @@ class AuthManager:
 
     _instance = None
 
-    def __new__(cls, db_path="data/quantide.db", config=None):
+    def __new__(cls, db_path: str | Path | None = None, config=None):
         if cls._instance is None:
             cls._instance = super(AuthManager, cls).__new__(cls)
             cls._instance.__initialized = False
         return cls._instance
 
-    def __init__(self, db_path="data/quantide.db", config=None):
+    def __init__(self, db_path: str | Path | None = None, config=None):
         if self.__initialized:
             return
         self.__initialized = True
         self.config = config or {}
+        if db_path is None:
+            db_path = get_app_db_path()
         self.auth_db = AuthDatabase(db_path)
         self.middleware = AuthBeforeware(self, self.config)
         self.db = None

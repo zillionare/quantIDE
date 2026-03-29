@@ -6,6 +6,7 @@ This file sets up the FastHTML application with MonsterUI styling.
 """
 
 import atexit
+import datetime
 import os
 import sys
 from pathlib import Path
@@ -13,25 +14,27 @@ from pathlib import Path
 from fasthtml.common import *
 from monsterui.all import *
 from fasthtml.common import Script
+from loguru import logger
 from starlette.middleware import Middleware
 from starlette.responses import RedirectResponse
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 
 from quantide.config import init_config
+from quantide.config.paths import get_app_db_path, get_pid_file_path
 from quantide.config.runtime import get_runtime_home
 from quantide.core.runtime import RuntimeBootstrap
 
 
 def _check_single_instance():
     """检查是否已有实例在运行，防止多实例启动"""
-    pid_file = Path(get_runtime_home()) / ".quantide.pid"
+    pid_file = get_pid_file_path()
 
     if pid_file.exists():
         try:
             with open(pid_file, "r") as f:
                 pid = int(f.read().strip())
-                
+
             if sys.platform == "win32":
                 import ctypes
                 kernel32 = ctypes.windll.kernel32
@@ -64,9 +67,41 @@ def _check_single_instance():
             pid_file.unlink()
 
     atexit.register(cleanup_pid)
+
+
+def _initialize_app_database() -> Path:
+    """Initialize the fixed sqlite database in the config directory.
+
+    If the existing database file is unreadable, move it aside and create a
+    fresh one so the init wizard can continue.
+    """
+    db_path = get_app_db_path()
+
+    try:
+        db.init(db_path)
+        return db_path
+    except Exception as exc:
+        if not db_path.exists():
+            raise
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_path = db_path.with_name(f"{db_path.stem}.corrupt.{timestamp}{db_path.suffix}")
+        logger.warning(f"配置数据库无法读取，已备份到 {backup_path}: {exc}")
+        try:
+            db_path.rename(backup_path)
+        except Exception:
+            logger.exception("备份损坏配置数据库失败")
+            raise
+
+        db._initialized = False
+        db.init(db_path)
+        return db_path
+
 from quantide.core.errors import BaseTradeError
 from quantide.data import init_data
+from quantide.data.sqlite import db
 from quantide.service.strategy_runtime import strategy_runtime_manager
+from quantide.service.registry import BrokerRegistry
 from quantide.web.apis.broker import app as broker_api_app
 from quantide.web.auth.manager import AuthManager
 from quantide.web.middleware import BrokerRegistryMiddleware, exception_handler
@@ -93,17 +128,23 @@ from quantide.web.pages.data_db import data_db_app
 
 def init():
     init_config()
+    db_path = _initialize_app_database()
 
     # 检查是否已有实例在运行
     _check_single_instance()
 
-    init_data(get_runtime_home())
-    runtime = RuntimeBootstrap().bootstrap()
-    reg = runtime.registry
-    strategy_runtime_manager.bootstrap_from_runtime(runtime)
+    runtime = None
+    reg = BrokerRegistry()
+    try:
+        if init_wizard.is_initialized():
+            init_data(get_runtime_home(), init_db=False)
+            runtime = RuntimeBootstrap().bootstrap()
+            reg = runtime.registry
+            strategy_runtime_manager.bootstrap_from_runtime(runtime)
+    except Exception as e:
+        logger.warning(f"应用运行时初始化失败，将进入初始化向导模式: {e}")
 
-    auth_db_path = str((Path(get_runtime_home()).expanduser() / "quantide.db").resolve())
-    auth = AuthManager(db_path=auth_db_path, config={"login_path": "/auth/login"})
+    auth = AuthManager(db_path=str(db_path), config={"login_path": "/auth/login"})
 
     from quantide.web.theme import AppTheme
 

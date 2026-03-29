@@ -187,3 +187,32 @@ def test_get_progress_uses_new_step_labels(db):
         "数据初始化与下载",
         "完成",
     ]
+
+
+def test_save_runtime_config_keeps_auth_on_fixed_config_db(db, monkeypatch, tmp_path):
+    rebound: dict[str, str] = {}
+    fake_auth = SimpleNamespace(
+        auth_db=SimpleNamespace(db_path="/tmp/old.db"),
+        rebind_database=lambda path: rebound.setdefault("db_path", path),
+    )
+
+    monkeypatch.setattr(
+        init_wizard_module.AuthManager,
+        "get_instance",
+        staticmethod(lambda: fake_auth),
+    )
+    monkeypatch.setattr(
+        init_wizard_module,
+        "get_app_db_path",
+        lambda: tmp_path / "config" / "quantide.db",
+    )
+
+    service = InitWizardService()
+    service.save_runtime_config(
+        home=str(tmp_path / "market-home"),
+        host="127.0.0.1",
+        port=8130,
+        prefix="/",
+    )
+
+    assert rebound["db_path"] == str((tmp_path / "config" / "quantide.db").resolve())

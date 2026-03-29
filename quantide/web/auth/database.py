@@ -3,16 +3,20 @@ from pathlib import Path
 
 from fasthtml.common import database
 
+from quantide.config.paths import get_app_db_path
+
 
 class AuthDatabase:
     """Database manager owned by auth system"""
 
-    def __init__(self, db_path="data/quantide.db"):
+    def __init__(self, db_path: str | Path | None = None):
+        if db_path is None:
+            db_path = get_app_db_path()
         # Ensure directory exists
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         # Create database connection
         self.db = database(db_path)
-        self.db_path = db_path
+        self.db_path = str(db_path)
 
         # Table references (will be populated)
         self.users = None

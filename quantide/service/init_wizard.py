@@ -12,6 +12,7 @@ from typing import Any
 
 from loguru import logger
 
+from quantide.config.paths import get_app_db_path
 from quantide.config.runtime import (
     get_runtime_config,
     get_runtime_dingtalk_access_token,
@@ -243,7 +244,7 @@ class InitWizardService:
         self.save_state(state)
         auth = AuthManager.get_instance()
         if auth is not None:
-            db_path = str((Path(state.app_home).expanduser() / "quantide.db").resolve())
+            db_path = str(get_app_db_path().resolve())
             if getattr(auth.auth_db, "db_path", None) != db_path:
                 auth.rebind_database(db_path)
         logger.info("运行环境配置已保存")
