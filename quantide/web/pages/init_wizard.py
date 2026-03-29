@@ -93,10 +93,73 @@ def _render_inline_error(message: str):
     )
 
 
-# ========== 步骤指示器组件 ==========
+# ========== 样式配置 ==========
 
 # 主色调配置
 PRIMARY_COLOR = "#D13527"
+
+# 字体大小和 weight 层级
+FONT_STYLES = {
+    "title": "font-size: 20px; font-weight: 600;",
+    "subtitle": "font-size: 16px; font-weight: 500;",
+    "description": "font-size: 14px; font-weight: 400; color: #6b7280;",
+    "label": "font-size: 13px; font-weight: 500; color: #374151;",
+    "hint": "font-size: 12px; font-weight: 400; color: #9ca3af;",
+    "required": "color: #dc2626; margin-left: 2px;",
+}
+
+
+def RequiredMark():
+    """必填项标记 - 红色星号"""
+    return Span("*", style=FONT_STYLES["required"])
+
+
+def InfoTooltip(tooltip_text: str):
+    """信息提示图标 - 鼠标悬停显示 tooltip
+
+    Args:
+        tooltip_text: 提示文本内容
+    """
+    return Span(
+        "ⓘ",
+        title=tooltip_text,
+        style="color: #9ca3af; cursor: help; margin-left: 4px; font-size: 12px;",
+        cls="tooltip-icon",
+    )
+
+
+def FormLabel(label: str, required: bool = False, tooltip: str | None = None):
+    """表单标签组件
+
+    Args:
+        label: 标签文本
+        required: 是否为必填项
+        tooltip: 可选的提示文本
+    """
+    children = [Span(label, style=FONT_STYLES["label"])]
+    if required:
+        children.append(RequiredMark())
+    if tooltip:
+        children.append(InfoTooltip(tooltip))
+    return Div(*children, cls="mb-1")
+
+
+def FormHint(text: str):
+    """表单提示文本"""
+    return P(text, style=FONT_STYLES["hint"], cls="mt-1 mb-3")
+
+
+def SectionTitle(text: str):
+    """章节标题"""
+    return H4(text, cls="mb-3", style=f"{FONT_STYLES['title']} color: {PRIMARY_COLOR};")
+
+
+def SectionDescription(text: str):
+    """章节描述"""
+    return P(text, style=FONT_STYLES["description"], cls="mb-4")
+
+
+# ========== 步骤指示器组件 ==========
 
 
 def StepIndicator(current_step: int, steps: list[dict]):
@@ -115,36 +178,46 @@ def StepIndicator(current_step: int, steps: list[dict]):
 
         # 确定步骤样式
         if is_active:
-            # 当前步骤：使用主色调
-            text_style = f"color: {PRIMARY_COLOR}; font-weight: bold;"
+            # 当前步骤：使用主色调，加粗
+            text_style = f"color: {PRIMARY_COLOR}; font-weight: 600; font-size: 14px;"
             circle_bg = PRIMARY_COLOR
+            circle_style = f"background: {circle_bg}; color: white; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; margin-right: 10px; flex-shrink: 0; box-shadow: 0 2px 4px rgba(209, 53, 39, 0.3);"
         elif is_completed:
-            # 已完成步骤：主色调
-            text_style = f"color: {PRIMARY_COLOR};"
+            # 已完成步骤：主色调，对勾图标
+            text_style = f"color: {PRIMARY_COLOR}; font-weight: 500; font-size: 13px;"
             circle_bg = PRIMARY_COLOR
+            circle_style = f"background: {circle_bg}; color: white; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; margin-right: 10px; flex-shrink: 0;"
         else:
             # 未开始步骤：灰色
-            text_style = "color: #9ca3af;"
+            text_style = "color: #9ca3af; font-weight: 400; font-size: 13px;"
             circle_bg = "#e5e7eb"
+            circle_style = f"background: {circle_bg}; color: #9ca3af; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; margin-right: 10px; flex-shrink: 0;"
+
+        # 圆圈内容：当前步骤显示数字，已完成显示对勾，未开始显示数字
+        circle_content = "✓" if is_completed else str(i)
 
         step_items.append(
             Li(
                 Div(
-                    # 步骤编号圆圈 - 使用固定宽高比确保圆形
+                    # 步骤编号圆圈
                     Span(
-                        str(i),
+                        circle_content,
                         cls="step-number flex-shrink-0",
-                        style=f"background: {circle_bg}; color: white; width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; margin-right: 12px; flex-shrink: 0;",
+                        style=circle_style,
                     ),
-                    # 步骤名称 - 不换行
+                    # 步骤名称
                     Span(step["name"], style=f"{text_style} white-space: nowrap;"),
-                    cls="flex items-center py-3",
+                    cls="flex items-center py-2.5",
                 ),
-                cls="step",
+                cls="step transition-all duration-200",
             )
         )
 
-    return Ul(*step_items, cls="steps-vertical list-none p-0 m-0 w-full")
+    return Ul(
+        *step_items,
+        cls="steps-vertical list-none p-0 m-0 w-full",
+        style="border-right: 1px solid #e5e7eb; padding-right: 16px;",
+    )
 
 
 # ========== 步骤内容组件 ==========
@@ -152,15 +225,15 @@ def StepIndicator(current_step: int, steps: list[dict]):
 def Step1_Welcome():
     """步骤1：欢迎页"""
     return Div(
-        H3("欢迎使用 Quant IDE!", cls="mb-6", style=f"color: {PRIMARY_COLOR};"),
-        P("QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。", cls="text-gray-600 mb-4"),
-        P("本向导将引导您完成以下工作：", cls="text-gray-600 mb-3"),
+        SectionTitle("欢迎使用 Quant IDE!"),
+        SectionDescription("QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。"),
+        P("本向导将引导您完成以下工作：", style=FONT_STYLES["description"], cls="mb-3"),
         Ol(
-            Li("配置运行时环境，比如数据存放目录。"),
-            Li("配置管理员密码"),
-            Li("配置交易/实时行情网关"),
-            Li("配置数据源并下载历史数据。"),
-            cls="list-decimal pl-6 mb-4 text-gray-600",
+            Li("配置运行时环境，比如数据存放目录。", style=FONT_STYLES["description"]),
+            Li("配置管理员密码", style=FONT_STYLES["description"]),
+            Li("配置交易/实时行情网关", style=FONT_STYLES["description"]),
+            Li("配置数据源并下载历史数据。", style=FONT_STYLES["description"]),
+            cls="list-decimal pl-6 mb-4",
         ),
         cls="py-4",
     )
@@ -205,45 +278,46 @@ def Step3_Admin(state: dict | None = None):
     }.get(strength, "#6b7280")
 
     return Div(
-        H4("设置管理员密码", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。", cls="text-gray-600 mb-3"),
+        SectionTitle("设置管理员密码"),
+        SectionDescription("首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。"),
         Card(
             CardBody(
-                LabelInput(
-                    label="管理员账号",
+                # 管理员账号（只读）
+                FormLabel("管理员账号", tooltip="固定使用 admin 作为管理员账号，用于首次登录和系统管理。完成初始化后，请使用 admin 和设置的密码登录。"),
+                Input(
                     value="admin",
                     disabled=True,
-                    cls="mb-3",
+                    cls="uk-input mb-4",
                 ),
-                P("该账号用于首次登录和后续系统管理。", cls="text-xs text-gray-500 mb-4"),
+                # 管理员密码
+                FormLabel("管理员密码", required=True, tooltip="建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。"),
                 Div(
-                    LabelInput(
-                        label="管理员密码",
+                    Input(
                         name="admin_password",
                         type="password",
                         value=password,
                         placeholder="请输入管理员密码",
                         required=True,
                         oninput="checkPasswordStrength(this.value)",
+                        cls="uk-input",
                     ),
                     # 密码强度提示
                     Div(
-                        Span(strength_text, style=f"color: {strength_color};"),
+                        Span(strength_text, style=f"{FONT_STYLES['hint']} color: {strength_color};"),
                         id="password-strength",
-                        cls="text-sm mt-1",
-                    ) if password else Div(id="password-strength", cls="text-sm mt-1"),
-                    cls="mb-3",
+                        cls="mt-1 mb-4",
+                    ) if password else Div(id="password-strength", cls="mt-1 mb-4"),
                 ),
-                P("提示：建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。", cls="text-xs text-gray-500 mb-3"),
-                LabelInput(
-                    label="确认密码",
+                # 确认密码
+                FormLabel("确认密码", required=True),
+                Input(
                     name="admin_password_confirm",
                     type="password",
                     value=state.get("admin_password_confirm", ""),
                     placeholder="再次输入管理员密码",
                     required=True,
+                    cls="uk-input mb-4",
                 ),
-                P("完成初始化后，请使用 admin 和这里设置的密码登录。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
         # 密码强度检查脚本
@@ -294,19 +368,20 @@ def Step2_Runtime(state: dict | None = None):
     localhost_only = host == "127.0.0.1"
 
     return Div(
-        H4("运行环境", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("配置数据存储位置、访问控制、监听端口和路径前缀。", cls="text-gray-600 mb-3"),
+        SectionTitle("运行环境"),
+        SectionDescription("配置数据存储位置、访问控制、监听端口和路径前缀。"),
         Card(
             CardBody(
-                LabelInput(
-                    label="数据存储位置",
+                # 数据存储位置
+                FormLabel("数据存储位置", required=True, tooltip="行情数据、数据库将存放在此处。"),
+                Input(
                     name="home",
                     value=state.get("home", "~/.quantide"),
                     placeholder="~/.quantide",
                     required=True,
-                    cls="mb-3",
+                    cls="uk-input mb-4",
                 ),
-                P("行情数据、数据库将存放在此处。", cls="text-xs text-gray-500 mb-4"),
+                # 只允许本机访问
                 Div(
                     Label(
                         Input(
@@ -316,27 +391,28 @@ def Step2_Runtime(state: dict | None = None):
                             checked=localhost_only,
                             cls="uk-checkbox mr-2",
                         ),
-                        Span("只允许本机访问"),
-                        cls="flex items-center mb-3",
+                        Span("只允许本机访问", style=FONT_STYLES["label"]),
+                        InfoTooltip("勾选后仅允许本机访问，取消勾选则允许外部访问。"),
+                        cls="flex items-center mb-4",
                     ),
-                    P("是否仅允许本机访问。如未勾选，则允许外部访问。", cls="text-xs text-gray-500 mb-4"),
                 ),
-                LabelInput(
-                    label="监听端口",
+                # 监听端口
+                FormLabel("监听端口", tooltip="除非端口已被其它应用占用，否则可使用默认值。"),
+                Input(
                     name="port",
                     type="number",
                     value=state.get("port", 80),
                     placeholder="80",
-                    cls="mb-3",
+                    cls="uk-input mb-4",
                 ),
-                P("除非端口已被其它应用占用，否则可使用默认值。", cls="text-xs text-gray-500 mb-4"),
-                LabelInput(
-                    label="路径前缀",
+                # 路径前缀
+                FormLabel("路径前缀", tooltip="可选。如果不明白含义，可保持默认。"),
+                Input(
                     name="prefix",
                     value=state.get("prefix", "/"),
                     placeholder="/",
+                    cls="uk-input mb-4",
                 ),
-                P("可选。如果不明白含义，可保持默认。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
         cls="max-w-3xl mx-auto",
@@ -349,9 +425,11 @@ def Step4_Gateway(state: dict | None = None):
     enabled = bool(state.get("gateway_enabled", True))  # 默认勾选
 
     return Div(
-        H4("配置交易/实时行情网关", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        SectionTitle("配置交易/实时行情网关"),
+        SectionDescription("配置 gateway 连接信息，用于获取实时行情和执行交易。"),
         Card(
             CardBody(
+                # 启用 gateway
                 Div(
                     Label(
                         Input(
@@ -361,46 +439,48 @@ def Step4_Gateway(state: dict | None = None):
                             checked=enabled,
                             cls="uk-checkbox mr-2",
                         ),
-                        Span("启用 gateway"),
-                        title="请安装 quantide gateway并配置，否则无法获得实时行情和执行交易。",
-                        cls="flex items-center mb-2",
+                        Span("启用 gateway", style=FONT_STYLES["label"]),
+                        InfoTooltip("请安装 quantide gateway 并配置，否则无法获得实时行情和执行交易。"),
+                        cls="flex items-center mb-4",
                     ),
-                    cls="mb-3",
                 ),
-                LabelInput(
-                    label="gateway 服务器地址",
+                # gateway 服务器地址
+                FormLabel("服务器地址", tooltip="gateway 服务器的主机名或 IP 地址。"),
+                Input(
                     name="gateway_server",
                     value=state.get("gateway_server", "localhost"),
                     placeholder="localhost",
                     disabled=not enabled,
-                    cls="mb-3",
+                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
                 ),
-                LabelInput(
-                    label="gateway 端口",
+                # gateway 端口
+                FormLabel("端口", tooltip="gateway 服务监听的端口号。"),
+                Input(
                     name="gateway_port",
                     type="number",
                     value=state.get("gateway_port", 8000),
                     placeholder="8000",
                     disabled=not enabled,
-                    cls="mb-3",
+                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
                 ),
-                LabelInput(
-                    label="gateway 访问密钥",
+                # gateway 访问密钥
+                FormLabel("访问密钥", tooltip="可在 gateway 用户头像菜单中生成和查看密钥。"),
+                Input(
                     name="gateway_api_key",
                     value=state.get("gateway_api_key", ""),
                     placeholder="",
                     disabled=not enabled,
-                    cls="mb-3",
+                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
                 ),
-                P("可在 gateway 用户头像菜单中生成和查看密钥。", cls="text-xs text-gray-500 mb-3"),
-                LabelInput(
-                    label="路径前缀",
+                # 路径前缀
+                FormLabel("路径前缀", tooltip="默认值为 /。"),
+                Input(
                     name="gateway_prefix",
                     value=state.get("gateway_prefix", "/"),
                     placeholder="/",
                     disabled=not enabled,
+                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
                 ),
-                P("默认值为 /。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
         cls="max-w-3xl mx-auto",
@@ -431,60 +511,53 @@ def Step5_DataSetup(state: dict | None = None):
     download_start, download_end = _calculate_download_range(years)
 
     return Div(
-        H4("数据源设置及下载", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。", cls="text-gray-600 mb-4"),
+        SectionTitle("数据源设置及下载"),
+        SectionDescription("配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。"),
         Card(
             CardBody(
-                LabelInput(
-                    label="数据起始日",
+                # 数据起始日
+                FormLabel("数据起始日", required=True, tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。"),
+                Input(
                     name="epoch",
                     value=epoch,
                     placeholder="2005-01-01",
                     required=True,
-                    cls="mb-3",
+                    cls="uk-input mb-4",
                 ),
-                P("行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。", cls="text-xs text-gray-500 mb-4"),
-                LabelInput(
-                    label="Tushare 访问密钥",
+                # Tushare 访问密钥
+                FormLabel("Tushare 访问密钥", required=True, tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。"),
+                Input(
                     name="tushare_token",
                     value=state.get("tushare_token", ""),
-                    placeholder="",
+                    placeholder="请输入您的 tushare token",
                     required=True,
-                    cls="mb-3",
+                    cls="uk-input mb-4",
                 ),
-                P("访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。", cls="text-xs text-gray-500 mb-4"),
-                Div(
-                    Label("首次下载时长（年）", cls="text-sm font-medium"),
-                    Div(
-                        Input(
-                            type="number",
-                            name="history_years",
-                            min="1",
-                            value=years,
-                            required=True,
-                            cls="uk-input",
-                        ),
-                        cls="mt-1",
-                    ),
-                    P("本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。", cls="text-xs text-gray-500 mt-2"),
-                    cls="mb-4",
+                # 首次下载时长
+                FormLabel("首次下载时长（年）", required=True, tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。"),
+                Input(
+                    type="number",
+                    name="history_years",
+                    min="1",
+                    value=years,
+                    required=True,
+                    cls="uk-input mb-4",
                 ),
-            ),
-            cls="mb-4",
+            )
         ),
         # 下载范围描述
         Div(
-            P(f"当前设置将下载从 {download_start.strftime('%Y年%m月%d日')} 到 {download_end.strftime('%Y年%m月%d日')} 的数据。", cls="text-gray-600 mb-4"),
+            P(f"当前设置将下载从 {download_start.strftime('%Y年%m月%d日')} 到 {download_end.strftime('%Y年%m月%d日')} 的数据。", style=FONT_STYLES["description"], cls="mb-4 mt-4"),
             id="download-range-info",
         ),
         # 数据种类描述
-        P("将下载以下数据种类：", cls="text-gray-600 mb-2"),
+        P("将下载以下数据种类：", style=FONT_STYLES["description"], cls="mb-2"),
         Ul(
-            Li("证券日历"),
-            Li("全A 证券列表"),
-            Li("历史日线行情（含复权因子与涨跌停价格）"),
-            Li("ST 数据"),
-            cls="list-disc pl-6 text-sm text-gray-600 mb-4",
+            Li("证券日历", style=FONT_STYLES["hint"]),
+            Li("全A 证券列表", style=FONT_STYLES["hint"]),
+            Li("历史日线行情（含复权因子与涨跌停价格）", style=FONT_STYLES["hint"]),
+            Li("ST 数据", style=FONT_STYLES["hint"]),
+            cls="list-disc pl-6 mb-4",
         ),
         cls="max-w-3xl mx-auto",
     )
@@ -495,17 +568,18 @@ def Step6_Complete(state: dict | None = None):
     state = state or {}
 
     return Div(
-        H4("完成", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。", cls="text-gray-600 mb-4"),
+        SectionTitle("初始化完成"),
+        SectionDescription("恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。"),
         Div(
             Button(
-                "完成",
+                "进入系统",
                 cls="btn px-6 py-2 rounded",
                 style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                 hx_post="/init-wizard/complete",
                 hx_target="#wizard-form-container",
                 hx_swap="innerHTML",
-            )
+            ),
+            cls="mt-6",
         ),
         cls="max-w-3xl mx-auto py-4",
     )
