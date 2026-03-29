@@ -1,42 +1,37 @@
 # Init Wizard
 
+在系统安装后首次启动时运行本初始化向导。亦可通过 /init-wizard?force=true 强制重新运行。
 
+!!! attention
+    强制重新运行一般仅用于测试。在生产环境下禁止使用。这可能导致之前的数据丢失。
 
 ## Scope
 
-The initialization wizard is responsible for:
+init-wizard 的作用是：
 
-- bootstrapping runtime configuration
-- optionally enabling gateway-backed live trading capabilities
-- configuring notification channels
-- configuring and downloading initial market data
-- marking the application as initialized
+- 配置运行时环境，比如数据存放目录，并初始化数据库。
+- 配置管理员密码（账号锁定为 admin）
+- 配置本服务的监听端口，以及是否仅限本机使用
+- 配置实时行情与交易网关（如 qmt-gateway）
+- 配置通知渠道
+- 配置数据源（tushare token），epoch 及初始下载数据大小，并下载历史数据。
+- 在完成后，应该进入/ (但会被拦截到/auth/login)
 
-This document does not describe the post-login navigation flow in detail.
+## 进入规则
 
-## Entry Rules
+### 第一次访问时
 
-### First-Time Access
+在应用初始化之前， 所有请求，包括/init-wizard 都应该被重定向到 `/init-wizard`。
 
-When the application has not been initialized, any normal GET request is redirected to `/init-wizard` before the main application pages are served.
-
-This behavior is enforced by the initialization middleware, so from a user perspective the first usable page is always the initialization wizard.
-
-### Revisit After Initialization
+### 初始化完成后再次访问
 
 Once initialization has completed, revisiting `/init-wizard` redirects back to `/`.
 
-At the application level, `/` is effectively the home entry point. Any later authentication redirect behavior is outside the scope of this document.
+一旦始化完成后再次访问/init-wizard，应该被重定向到 / ，除非带有 `?force=true`参数。该参数应该只被用于测试。再次初始化时，可能之前的数据丢失（比如选择了不一样的数据目录）。
 
-### Forced Re-Initialization
+## 向导流程
 
-`/init-wizard?force=true` forces the wizard to reopen even after initialization has completed.
-
-This is the supported entry for re-running initialization intentionally.
-
-## Current Implemented Flow
-
-The current wizard has seven steps.
+向导共有7步。
 
 1. Welcome
 2. Runtime
