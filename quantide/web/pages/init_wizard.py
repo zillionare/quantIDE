@@ -347,45 +347,44 @@ def StepIndicator(current_step: int, steps: list[dict]):
         # 确定圆圈样式
         if is_active:
             # 当前步骤：实心主色调
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; position: relative; z-index: 2;"
+            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
         elif is_completed:
             # 已完成步骤：实心主色调，白色对勾
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; position: relative; z-index: 2;"
+            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
         else:
             # 未开始步骤：白色背景，灰色边框
-            circle_style = "background: white; color: #9ca3af; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; border: 2px solid #e5e7eb; position: relative; z-index: 2;"
+            circle_style = "background: white; color: #9ca3af; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; border: 2px solid #e5e7eb;"
 
         # 圆圈内容
         circle_content = "✓" if is_completed else str(i)
 
+        # 添加连接线（除了最后一个）
+        if i < total_steps:
+            connector = Div(
+                style=f"width: 2px; height: 40px; background: {'#e5e7eb' if not is_completed else PRIMARY_COLOR}; margin: 4px 0;"
+            )
+        else:
+            connector = None
+
         step_items.append(
             Li(
-                Span(
-                    circle_content,
-                    style=circle_style,
+                Div(
+                    Span(
+                        circle_content,
+                        style=circle_style,
+                    ),
+                    cls="flex justify-center",
                 ),
-                cls="step flex justify-center",
-                style="position: relative;",
+                connector if connector else "",
+                cls="step",
                 title=step["name"],
             )
         )
 
-    # 构建连接线 - 使用伪元素或背景实现贯穿效果
-    # 连接线容器：从第一个圆圈中心到最后一个圆圈中心
-    # 顶部偏移 48px 与右侧标题对齐，底部偏移 16px
-    progress_percent = ((current_step - 1) / max(total_steps - 1, 1)) * 100
-    connector_line = Div(
-        style=f"position: absolute; left: 50%; top: 48px; bottom: 16px; width: 2px; background: linear-gradient(to bottom, {PRIMARY_COLOR} 0%, {PRIMARY_COLOR} {progress_percent}%, #e5e7eb {progress_percent}%, #e5e7eb 100%); transform: translateX(-50%); z-index: 1;"
-    ) if total_steps > 1 else ""
-
-    return Div(
-        connector_line,
-        Ul(
-            *step_items,
-            cls="steps-vertical list-none p-0 m-0 relative",
-            style="width: 48px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; height: 100%; padding-top: 32px; padding-bottom: 0;",
-        ),
-        cls="relative flex-shrink-0 h-full",
+    return Ul(
+        *step_items,
+        cls="steps-vertical list-none p-0 m-0",
+        style="width: 48px; flex-shrink: 0;",
     )
 
 
@@ -904,13 +903,11 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     align-items: flex-start;
                     max-width: 900px;
                     margin: 0 auto;
-                    padding: 48px 24px 64px;
+                    padding: 64px 24px 64px;
                 }
                 #step-indicator-wrapper {
-                    padding-top: 0;
+                    padding-top: 8px;
                     min-height: 520px;
-                    display: flex;
-                    align-items: flex-start;
                 }
                 """
             ),
