@@ -1,12 +1,6 @@
 # Init Wizard
 
-## Purpose
 
-This document defines the release-facing behavior of the PyQMT initialization wizard.
-
-The goal is to make the initialization flow stable enough that subsequent development follows this document first, and code changes are evaluated against it.
-
-Unless explicitly marked as a planned adjustment, statements in this document describe the current implementation.
 
 ## Scope
 
@@ -46,10 +40,10 @@ The current wizard has seven steps.
 
 1. Welcome
 2. Runtime
-3. Gateway
-4. Notification
-5. Data Initialization
-6. Data Download
+3. Administrator Password
+4. Gateway
+5. Notification
+6. Data Initialization And Download
 7. Complete
 
 The wizard persists step state into `app_state` as the user advances.
@@ -76,7 +70,28 @@ The runtime step configures:
 
 This information is saved when the user advances to the next step.
 
-### Step 3: Gateway
+The runtime step comes before administrator-password setup because the application data location must be known first.
+
+Current implementation detail:
+
+- application state is stored in `app_home/solo.db`
+- auth storage is rebound to the same sqlite file after runtime configuration is saved
+
+### Step 3: Administrator Password
+
+After the welcome step, the wizard requires the operator to set the administrator password.
+
+Current behavior:
+
+- administrator username is fixed to `admin`
+- the wizard asks for password and password confirmation
+- mismatched passwords are rejected inline
+- passwords shorter than 6 characters are rejected inline
+- the password is written into the auth user store during the wizard flow
+
+This step is now the primary path for administrator credential setup.
+
+### Step 4: Gateway
 
 The gateway step configures:
 
@@ -90,15 +105,15 @@ The step also provides a connectivity test button.
 
 The test checks the configured target and returns inline success or failure feedback without leaving the wizard.
 
-### Step 4: Notification
+### Step 5: Notification
 
 The notification step configures DingTalk and mail delivery fields.
 
 This information is saved when the user advances to the next step.
 
-### Step 5: Data Initialization
+### Step 6: Data Initialization And Download
 
-The data initialization step configures:
+The merged data step configures:
 
 - epoch
 - Tushare token
@@ -106,9 +121,7 @@ The data initialization step configures:
 
 The effective history start date is derived from the epoch and the requested number of years.
 
-### Step 6: Data Download
-
-The data download step summarizes the initial download plan and the expected datasets:
+The same step also summarizes the initial download plan and the expected datasets:
 
 - trading calendar
 - stock universe
@@ -116,9 +129,14 @@ The data download step summarizes the initial download plan and the expected dat
 - adjustment factors and price limits
 - ST data
 
-The current implementation exposes a dedicated `开始下载` button instead of a normal `下一步` button on this step.
+The merged step exposes both:
 
-When the user clicks the button:
+- an explicit `开始下载` button in the content area
+- a normal `下一步` button in the footer
+
+Both entry paths trigger the same download flow.
+
+When the user clicks either action:
 
 1. the wizard validates and persists the current data-initialization fields if they were posted again
 2. a background synchronization task is started
@@ -145,70 +163,18 @@ The current completion page presents an entry button that routes to:
 
 ## Current Authentication Behavior
 
-The current wizard does not include a dedicated administrator-account step.
+The authentication subsystem still auto-creates a default administrator account if no admin user exists.
 
-Instead, the authentication subsystem auto-creates a default administrator account if none exists.
+However, the initialization wizard now overrides that bootstrap convenience by requiring the operator to set the administrator password during initialization.
 
-Current default credentials are:
+Operationally, the expected login identity after initialization is:
 
 - username: `admin`
-- password: `admin123`
-
-This is a temporary implementation convenience, not the desired long-term wizard behavior.
-
-## Agreed Adjustments
-
-The following changes are agreed and should drive the next iterations of the wizard.
-
-These items are part of the expected behavior contract even if some are not fully implemented yet.
-
-### Add Administrator Password Step
-
-After the welcome step, add a dedicated administrator credential step.
-
-The interaction should be similar in spirit to the `qmt-gateway` initialization wizard:
-
-- explicit administrator credential entry during initialization
-- password confirmation
-- inline validation feedback
-- credentials saved as part of the wizard flow rather than relying on a hard-coded default account
-
-At minimum, the document requires password setup. The final UI may also include username and related explanatory text, but the wizard must no longer depend on `admin / admin123` as the primary path.
-
-### Merge Data Initialization And Data Download
-
-The current Step 5 and Step 6 should be merged into one step.
-
-That merged step should contain:
-
-- the data initialization form fields
-- the download scope summary
-- the explicit button to start downloading data
-
-### Download Trigger Rules
-
-On the merged data step, the user should be able to start the download by clicking the explicit action button.
-
-If the user does not click the button and instead clicks `下一步`, the system must still trigger the same data download flow automatically.
-
-In other words, the explicit button is a visible affordance, but not the only path that leads to data synchronization.
-
-### Progress Dialog
-
-Data download should continue to use a modal progress dialog.
-
-The dialog should include:
-
-- current stage text
-- progress bar
-- detailed status text
-- final completion action once the job succeeds
-
-The dialog is part of the expected user-facing behavior and should not be treated as an implementation detail.
+- password: the value entered in Step 2
 
 ## Implementation Notes For Future Changes
 
-When code is updated to match the agreed adjustments, the following should remain true:
+The following should remain true for future changes:
 
 - `/init-wizard` remains the canonical initialization entry
 - `/init-wizard?force=true` remains the canonical forced re-entry path

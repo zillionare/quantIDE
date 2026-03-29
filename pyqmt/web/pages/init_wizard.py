@@ -166,6 +166,46 @@ def Step1_Welcome():
     )
 
 
+def Step3_Admin(state: dict | None = None):
+    """步骤3：管理员密码设置"""
+    state = state or {}
+
+    return Div(
+        H4("管理员密码", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        P("首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。", cls="text-gray-600 mb-3"),
+        Card(
+            CardBody(
+                LabelInput(
+                    label="管理员账号",
+                    value="admin",
+                    disabled=True,
+                    cls="mb-3",
+                ),
+                P("该账号用于首次登录和后续系统管理。", cls="text-xs text-gray-500 mb-4"),
+                LabelInput(
+                    label="管理员密码",
+                    name="admin_password",
+                    type="password",
+                    value=state.get("admin_password", ""),
+                    placeholder="至少 6 位",
+                    required=True,
+                    cls="mb-3",
+                ),
+                LabelInput(
+                    label="确认密码",
+                    name="admin_password_confirm",
+                    type="password",
+                    value=state.get("admin_password_confirm", ""),
+                    placeholder="再次输入管理员密码",
+                    required=True,
+                ),
+                P("完成初始化后，请使用 admin 和这里设置的密码登录。", cls="text-xs text-gray-500 mt-2"),
+            )
+        ),
+        cls="max-w-3xl mx-auto",
+    )
+
+
 def Step2_Runtime(state: dict | None = None):
     """步骤2：运行环境配置"""
     state = state or {}
@@ -237,8 +277,8 @@ def Step2_Runtime(state: dict | None = None):
     )
 
 
-def Step3_Gateway(state: dict | None = None):
-    """步骤3：网关配置"""
+def Step4_Gateway(state: dict | None = None):
+    """步骤4：网关配置"""
     state = state or {}
     enabled = bool(state.get("gateway_enabled", False))
 
@@ -311,8 +351,8 @@ def Step3_Gateway(state: dict | None = None):
     )
 
 
-def Step4_Notify(state: dict | None = None):
-    """步骤4：通知告警配置"""
+def Step5_Notify(state: dict | None = None):
+    """步骤5：通知告警配置"""
     state = state or {}
 
     return Div(
@@ -368,14 +408,18 @@ def Step4_Notify(state: dict | None = None):
     )
 
 
-def Step5_DataInit(state: dict | None = None):
-    """步骤5：数据初始化配置"""
+def Step6_DataSetup(state: dict | None = None):
+    """步骤6：数据初始化与下载"""
     state = state or {}
     epoch = _format_date_zh(state.get("epoch", "2005-01-01"))
+    years = state.get("history_years", 3)
+    start = state.get("history_start_date", "")
+    if isinstance(start, datetime.date):
+        start = start.strftime("%Y-%m-%d")
 
     return Div(
-        H4("数据初始化（含 Tushare Token）", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("本步骤将同时配置 epoch、Tushare Token 和首次下载年数。", cls="text-gray-600 mb-4"),
+        H4("数据初始化与下载", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        P("本步骤将同时配置 epoch、Tushare Token、首次下载年数，并触发首次下载。", cls="text-gray-600 mb-4"),
         Card(
             CardBody(
                 Div(
@@ -404,26 +448,13 @@ def Step5_DataInit(state: dict | None = None):
                     name="history_years",
                     type="number",
                     min="1",
-                    value=state.get("history_years", 3),
+                    value=years,
                     required=True,
                 ),
                 P("用途：决定首次下载范围。过小会影响策略研究样本。", cls="text-xs text-gray-500 mt-2"),
-            )
+            ),
+            cls="mb-4",
         ),
-        cls="max-w-3xl mx-auto",
-    )
-
-
-def Step6_Download(state: dict | None = None):
-    """步骤6：数据下载"""
-    state = state or {}
-    years = state.get("history_years", 3)
-    start = state.get("history_start_date", "")
-    if isinstance(start, datetime.date):
-        start = start.strftime("%Y-%m-%d")
-
-    return Div(
-        H4("数据下载", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P(f"将执行首次数据下载，预计范围约 {years} 年，起始日期 {start}。", cls="text-gray-600 mb-4"),
         Card(
             CardBody(
@@ -434,7 +465,20 @@ def Step6_Download(state: dict | None = None):
                     Li("ST 数据"),
                     cls="list-disc pl-6 text-sm text-gray-600",
                 ),
-                P("若中途失败，可修正配置后重新进入此步骤执行下载。", cls="text-xs text-gray-500 mt-3"),
+                P("可以点击开始下载，也可以直接点击下一步。两种方式都会触发下载。", cls="text-xs text-gray-500 mt-3"),
+                Div(
+                    Button(
+                        "开始下载",
+                        type="submit",
+                        cls="btn px-6 py-2 rounded mt-4",
+                        style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
+                        hx_post="/init-wizard/download",
+                        hx_target="#wizard-form-container",
+                        hx_swap="innerHTML",
+                        hx_include="[name]",
+                    ),
+                    cls="flex justify-end",
+                ),
             ),
             cls="mb-4",
         ),
@@ -493,8 +537,10 @@ def WizardButtons(current_step: int, total_steps: int = 7):
         if current_step == 6:
             right_buttons.append(
                 Button(
-                    "开始下载",
+                    "下一步",
                     type="submit",
+                    name="nav",
+                    value="next",
                     cls="btn px-6 py-2 rounded",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                     hx_post="/init-wizard/download",
@@ -544,20 +590,20 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
     steps = [
         {"id": 1, "name": "欢迎", "completed": state_dict.get("init_step", 0) > 1},
         {"id": 2, "name": "运行环境", "completed": state_dict.get("init_step", 0) > 2},
-        {"id": 3, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 3},
-        {"id": 4, "name": "通知告警", "completed": state_dict.get("init_step", 0) > 4},
-        {"id": 5, "name": "数据初始化", "completed": state_dict.get("init_step", 0) > 5},
-        {"id": 6, "name": "数据下载", "completed": state_dict.get("init_step", 0) > 6},
+        {"id": 3, "name": "管理员密码", "completed": state_dict.get("init_step", 0) > 3},
+        {"id": 4, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 4},
+        {"id": 5, "name": "通知告警", "completed": state_dict.get("init_step", 0) > 5},
+        {"id": 6, "name": "数据初始化与下载", "completed": state_dict.get("init_step", 0) > 6},
         {"id": 7, "name": "完成", "completed": state_dict.get("init_step", 0) >= 7},
     ]
 
     step_content_map = {
         1: Step1_Welcome(),
         2: Step2_Runtime(state_dict),
-        3: Step3_Gateway(state_dict),
-        4: Step4_Notify(state_dict),
-        5: Step5_DataInit(state_dict),
-        6: Step6_Download(state_dict),
+        3: Step3_Admin(state_dict),
+        4: Step4_Gateway(state_dict),
+        5: Step5_Notify(state_dict),
+        6: Step6_DataSetup(state_dict),
         7: Step7_Complete(state_dict),
     }
 
@@ -624,16 +670,50 @@ async def handle_step(request: Request, step: int):
     form_data = await request.form()
     form_dict = dict(form_data)
     nav = str(form_dict.get("nav", "next")).lower()
+    current_step = int(str(form_dict.get("_current_step", step)).strip() or step)
 
     if nav != "prev":
-        if step == 3:
+        if current_step == 2:
             init_wizard.save_runtime_config(
                 home=str(form_dict.get("app_home", "")).strip(),
                 host=str(form_dict.get("app_host", "0.0.0.0")).strip(),
                 port=int(form_dict.get("app_port", 8130)),
                 prefix=str(form_dict.get("app_prefix", "/")).strip(),
             )
-        elif step == 4:
+        elif current_step == 3:
+            password = str(form_dict.get("admin_password", "")).strip()
+            confirm = str(form_dict.get("admin_password_confirm", "")).strip()
+            state = init_wizard.get_state(force_refresh=True)
+            state_dict = state.to_dict()
+            state_dict["admin_password"] = password
+            state_dict["admin_password_confirm"] = confirm
+            if password != confirm:
+                return Div(
+                    Form(
+                        Input(type="hidden", name="_current_step", value="3"),
+                        Div(Step3_Admin(state_dict), id="wizard-content"),
+                        _render_inline_error("两次输入的管理员密码不一致"),
+                        WizardButtons(3),
+                        cls="flex-1",
+                    ),
+                    id="wizard-form-container",
+                    cls="flex-1 pl-8",
+                )
+            try:
+                init_wizard.save_admin_password(password)
+            except Exception as e:
+                return Div(
+                    Form(
+                        Input(type="hidden", name="_current_step", value="3"),
+                        Div(Step3_Admin(state_dict), id="wizard-content"),
+                        _render_inline_error(str(e)),
+                        WizardButtons(3),
+                        cls="flex-1",
+                    ),
+                    id="wizard-form-container",
+                    cls="flex-1 pl-8",
+                )
+        elif current_step == 4:
             init_wizard.save_gateway_config(
                 enabled="gateway_enabled" in form_dict,
                 server=str(form_dict.get("gateway_server", "")).strip(),
@@ -641,7 +721,7 @@ async def handle_step(request: Request, step: int):
                 prefix=str(form_dict.get("gateway_prefix", "/")).strip() or "/",
                 api_key=str(form_dict.get("gateway_api_key", "")).strip(),
             )
-        elif step == 5:
+        elif current_step == 5:
             init_wizard.save_notify_config(
                 dingtalk_access_token=str(
                     form_dict.get("notify_dingtalk_access_token", "")
@@ -654,13 +734,13 @@ async def handle_step(request: Request, step: int):
                 mail_from=str(form_dict.get("notify_mail_from", "")).strip(),
                 mail_server=str(form_dict.get("notify_mail_server", "")).strip(),
             )
-        elif step == 6:
+        elif current_step == 6:
             epoch_str = str(form_dict.get("epoch", "")).strip()
             try:
                 epoch = _parse_epoch_input(epoch_str)
             except ValueError as e:
                 state = init_wizard.get_state(force_refresh=True)
-                step_content = Step5_DataInit(state.to_dict())
+                step_content = Step6_DataSetup(state.to_dict())
                 return Div(
                     Form(
                         Input(type="hidden", name="_current_step", value=str(step)),
@@ -685,10 +765,10 @@ async def handle_step(request: Request, step: int):
     step_content_map = {
         1: Step1_Welcome(),
         2: Step2_Runtime(state_dict),
-        3: Step3_Gateway(state_dict),
-        4: Step4_Notify(state_dict),
-        5: Step5_DataInit(state_dict),
-        6: Step6_Download(state_dict),
+        3: Step3_Admin(state_dict),
+        4: Step4_Gateway(state_dict),
+        5: Step5_Notify(state_dict),
+        6: Step6_DataSetup(state_dict),
         7: Step7_Complete(state_dict),
     }
 
@@ -877,7 +957,7 @@ async def handle_download(request: Request):
             state = init_wizard.get_state(force_refresh=True)
         except Exception as e:
             state_dict = state.to_dict()
-            step_content = Step6_Download(state_dict)
+            step_content = Step6_DataSetup(state_dict)
             return Div(
                 Form(
                     Input(type="hidden", name="_current_step", value="6"),
@@ -907,7 +987,7 @@ async def handle_download(request: Request):
     logger.info(f"开始下载历史数据，起始日期: {state.history_start_date}")
 
     state_dict = state.to_dict()
-    step_content = Step6_Download(state_dict)
+    step_content = Step6_DataSetup(state_dict)
     return Div(
         Form(
             Input(type="hidden", name="_current_step", value="6"),

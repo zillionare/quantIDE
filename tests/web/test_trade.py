@@ -54,7 +54,7 @@ def test_app(cfg):
         from pyqmt.web.pages.live import live_app
         from pyqmt.web.apis.broker import app as broker_api_app
 
-        auth = AuthManager(config={"login_path": "/auth/login"})
+        auth = AuthManager(db_path=test_db_path, config={"login_path": "/auth/login"})
 
         app, rt = fast_app(
             hdrs=tuple(Theme.blue.headers()),

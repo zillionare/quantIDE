@@ -2,6 +2,7 @@ import datetime
 from types import SimpleNamespace
 
 import pytest
+import pyqmt.service.init_wizard as init_wizard_module
 
 from pyqmt.data.models.app_state import AppState
 from pyqmt.service.init_wizard import InitWizardService
@@ -146,3 +147,43 @@ def test_save_gateway_config_uses_slash_default_and_redirect_by_server(db):
     state = service.get_state(force_refresh=True)
     assert state.gateway_base_url == "/"
     assert service.get_completion_redirect() == "/auth/login"
+
+
+def test_save_admin_password_updates_existing_admin(db, monkeypatch):
+    class FakeRepo:
+        def __init__(self):
+            self.updated = None
+
+        def get_by_username(self, username):
+            assert username == "admin"
+            return SimpleNamespace(id=7, username="admin")
+
+        def update(self, user_id, **kwargs):
+            self.updated = (user_id, kwargs)
+            return True
+
+    fake_auth = SimpleNamespace(user_repo=FakeRepo())
+    monkeypatch.setattr(init_wizard_module.AuthManager, "get_instance", staticmethod(lambda: fake_auth))
+
+    service = InitWizardService()
+    service.save_admin_password("new-secret")
+
+    assert fake_auth.user_repo.updated == (7, {"password": "new-secret"})
+
+
+def test_get_progress_uses_new_step_labels(db):
+    service = InitWizardService()
+    service.save_state(AppState(init_step=3))
+
+    progress = service.get_progress()
+    names = [step["name"] for step in progress["steps"]]
+
+    assert names == [
+        "欢迎",
+        "运行环境",
+        "管理员密码",
+        "行情与交易网关",
+        "通知告警",
+        "数据初始化与下载",
+        "完成",
+    ]

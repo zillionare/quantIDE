@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 from fasthtml.common import *
 from monsterui.all import *
@@ -76,6 +77,17 @@ class AuthManager:
 
         return self.db
 
+    def rebind_database(self, db_path: str) -> None:
+        """Rebind auth storage to a new sqlite file.
+
+        Args:
+            db_path: Target sqlite database path.
+        """
+        self.auth_db = AuthDatabase(db_path)
+        self.db = self.auth_db.initialize_auth_tables()
+        self.user_repo = UserRepository(self.db)
+        self._create_default_admin()
+
     def _prioritize_prefixed_routes(self, app, prefix: str) -> None:
         """Move auth routes ahead of catch-all mounts like `/`."""
         routes = list(getattr(app.router, "routes", []))
@@ -101,6 +113,8 @@ class AuthManager:
         return self.middleware.require_admin()
 
     def get_user(self, username: str):
+        if self.user_repo is None:
+            return None
         return self.user_repo.get_by_username(username)
 
     def register_routes(
@@ -143,6 +157,8 @@ class AuthManager:
     # Create default admin
     def _create_default_admin(self):
         """Create default admin if needed"""
+        if self.user_repo is None:
+            return
         if not self.user_repo.get_by_username("admin"):
             self.user_repo.create(
                 username="admin",

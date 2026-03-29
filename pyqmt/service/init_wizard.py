@@ -6,6 +6,7 @@
 import datetime
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -22,6 +23,7 @@ from pyqmt.config.runtime import (
 )
 from pyqmt.data.models.app_state import AppState
 from pyqmt.data.sqlite import db
+from pyqmt.web.auth.manager import AuthManager
 
 
 class InitWizardService:
@@ -155,7 +157,7 @@ class InitWizardService:
         self._state.updated_at = datetime.datetime.now()
 
         try:
-            db["app_state"].upsert(self._state.to_dict(), pk="id")
+            db["app_state"].upsert(self._state.to_dict(), pk=AppState.__pk__)  # type: ignore[arg-type]
             # 强制提交，确保其他连接能看到更新
             db.conn.commit()
             logger.info("应用状态已保存")
@@ -238,6 +240,11 @@ class InitWizardService:
         state.app_port = int(port)
         state.app_prefix = prefix.strip() or "/"
         self.save_state(state)
+        auth = AuthManager.get_instance()
+        if auth is not None:
+            db_path = str((Path(state.app_home).expanduser() / "solo.db").resolve())
+            if getattr(auth.auth_db, "db_path", None) != db_path:
+                auth.rebind_database(db_path)
         logger.info("运行环境配置已保存")
 
     def save_gateway_config(
@@ -303,6 +310,40 @@ class InitWizardService:
         state.notify_mail_server = mail_server.strip()
         self.save_state(state)
         logger.info("通知配置已保存")
+
+    def save_admin_password(self, password: str) -> None:
+        """保存管理员密码。
+
+        Args:
+            password: 新管理员密码。
+        """
+        secret = str(password or "").strip()
+        if len(secret) < 6:
+            raise ValueError("管理员密码至少需要 6 位")
+
+        auth = AuthManager.get_instance() or AuthManager()
+        if auth.user_repo is None:
+            auth.initialize()
+        repo = auth.user_repo
+        if repo is None:
+            raise RuntimeError("认证仓库尚未初始化")
+
+        admin = repo.get_by_username("admin")
+        if admin is None:
+            repo.create(
+                username="admin",
+                email="admin@system.local",
+                password=secret,
+                role="admin",
+            )
+            logger.info("初始化向导已创建管理员账号")
+            return
+
+        if admin.id is None:
+            raise RuntimeError("管理员账号缺少主键")
+        if not repo.update(admin.id, password=secret):
+            raise RuntimeError("更新管理员密码失败")
+        logger.info("初始化向导已更新管理员密码")
 
     def save_data_init_config(
         self,
@@ -422,10 +463,10 @@ class InitWizardService:
         steps = [
             {"id": 1, "name": "欢迎", "completed": state.init_step > 1},
             {"id": 2, "name": "运行环境", "completed": state.init_step > 2},
-            {"id": 3, "name": "行情与交易网关", "completed": state.init_step > 3},
-            {"id": 4, "name": "通知告警", "completed": state.init_step > 4},
-            {"id": 5, "name": "数据初始化", "completed": state.init_step > 5},
-            {"id": 6, "name": "数据下载", "completed": state.init_step > 6},
+            {"id": 3, "name": "管理员密码", "completed": state.init_step > 3},
+            {"id": 4, "name": "行情与交易网关", "completed": state.init_step > 4},
+            {"id": 5, "name": "通知告警", "completed": state.init_step > 5},
+            {"id": 6, "name": "数据初始化与下载", "completed": state.init_step > 6},
             {"id": 7, "name": "完成", "completed": state.init_step >= 7},
         ]
 

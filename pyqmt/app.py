@@ -102,7 +102,8 @@ def init():
     reg = runtime.registry
     strategy_runtime_manager.bootstrap_from_runtime(runtime)
 
-    auth = AuthManager(config={"login_path": "/auth/login"})
+    auth_db_path = str((Path(get_runtime_home()).expanduser() / "solo.db").resolve())
+    auth = AuthManager(db_path=auth_db_path, config={"login_path": "/auth/login"})
 
     from pyqmt.web.theme import AppTheme
 
