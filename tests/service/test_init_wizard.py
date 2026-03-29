@@ -1,9 +1,12 @@
 import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import quantide.service.init_wizard as init_wizard_module
 
+from quantide.core.init_wizard_steps import WIZARD_FINAL_STEP, WIZARD_TOTAL_STEPS
+from quantide.config.paths import DEFAULT_DATA_HOME
 from quantide.data.models.app_state import AppState
 from quantide.service.init_wizard import InitWizardService
 
@@ -86,7 +89,8 @@ def test_feature_status_and_redirect_follow_gateway_state(db):
 
     state = AppState(
         init_completed=True,
-        init_step=7,
+        init_step=WIZARD_FINAL_STEP,
+        app_home="/tmp/market-home",
         tushare_token="ts-token",
         gateway_enabled=False,
         gateway_base_url="",
@@ -129,7 +133,8 @@ def test_save_gateway_config_uses_slash_default_and_redirect_by_server(db):
     service.save_state(
         AppState(
             init_completed=True,
-            init_step=7,
+            init_step=WIZARD_FINAL_STEP,
+            app_home="/tmp/market-home",
             gateway_enabled=False,
             gateway_base_url="/",
         )
@@ -183,10 +188,21 @@ def test_get_progress_uses_new_step_labels(db):
         "运行环境",
         "管理员密码",
         "行情与交易网关",
-        "通知告警",
-        "数据初始化与下载",
+        "数据源设置及下载",
         "完成",
     ]
+    assert progress["total_steps"] == WIZARD_TOTAL_STEPS
+
+
+def test_complete_initialization_uses_shared_final_step(db):
+    service = InitWizardService()
+    service.save_state(AppState(app_home="/tmp/market-home", init_step=5))
+
+    service.complete_initialization()
+
+    state = service.get_state(force_refresh=True)
+    assert state.init_completed is True
+    assert state.init_step == WIZARD_FINAL_STEP
 
 
 def test_save_runtime_config_keeps_auth_on_fixed_config_db(db, monkeypatch, tmp_path):
@@ -216,3 +232,17 @@ def test_save_runtime_config_keeps_auth_on_fixed_config_db(db, monkeypatch, tmp_
     )
 
     assert rebound["db_path"] == str((tmp_path / "config" / "quantide.db").resolve())
+
+
+def test_save_runtime_config_defaults_blank_home_and_expands_user(db):
+    service = InitWizardService()
+
+    service.save_runtime_config(
+        home="   ",
+        host="127.0.0.1",
+        port=8130,
+        prefix="/",
+    )
+
+    state = service.get_state(force_refresh=True)
+    assert state.app_home == str(Path(DEFAULT_DATA_HOME).expanduser())

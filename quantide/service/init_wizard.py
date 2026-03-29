@@ -12,7 +12,12 @@ from typing import Any
 
 from loguru import logger
 
-from quantide.config.paths import get_app_db_path
+from quantide.core.init_wizard_steps import (
+    WIZARD_FINAL_STEP,
+    WIZARD_TOTAL_STEPS,
+    build_wizard_steps,
+)
+from quantide.config.paths import get_app_db_path, normalize_data_home
 from quantide.config.runtime import (
     get_runtime_config,
     get_runtime_dingtalk_access_token,
@@ -214,7 +219,7 @@ class InitWizardService:
         """更新当前初始化步骤
 
         Args:
-            step: 当前步骤（1-7）
+            step: 当前步骤（1-6）
         """
         state = self.get_state()
         state.init_step = step
@@ -236,8 +241,10 @@ class InitWizardService:
             port: 服务端口。
             prefix: 服务前缀。
         """
+        normalized_home = normalize_data_home(home)
+
         state = self.get_state()
-        state.app_home = home.strip()
+        state.app_home = normalized_home
         state.app_host = host.strip()
         state.app_port = int(port)
         state.app_prefix = prefix.strip() or "/"
@@ -444,7 +451,7 @@ class InitWizardService:
         state = self.get_state()
         state.init_completed = True
         state.init_completed_at = datetime.datetime.now()
-        state.init_step = 7
+        state.init_step = WIZARD_FINAL_STEP
         self.save_state(state)
         logger.info("初始化流程完成")
 
@@ -472,21 +479,11 @@ class InitWizardService:
         """
         state = self.get_state()
 
-        steps = [
-            {"id": 1, "name": "欢迎", "completed": state.init_step > 1},
-            {"id": 2, "name": "运行环境", "completed": state.init_step > 2},
-            {"id": 3, "name": "管理员密码", "completed": state.init_step > 3},
-            {"id": 4, "name": "行情与交易网关", "completed": state.init_step > 4},
-            {"id": 5, "name": "通知告警", "completed": state.init_step > 5},
-            {"id": 6, "name": "数据初始化与下载", "completed": state.init_step > 6},
-            {"id": 7, "name": "完成", "completed": state.init_step >= 7},
-        ]
-
         return {
             "current_step": state.init_step,
-            "total_steps": 7,
+            "total_steps": WIZARD_TOTAL_STEPS,
             "init_completed": state.init_completed,
-            "steps": steps,
+            "steps": build_wizard_steps(state.init_step),
             "started_at": state.init_started_at,
             "completed_at": state.init_completed_at,
         }

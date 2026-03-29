@@ -6,6 +6,7 @@
 import datetime
 from dataclasses import dataclass, field
 
+from quantide.core.init_wizard_steps import WIZARD_FINAL_STEP
 from quantide.data.models.base import Entity
 
 
@@ -37,7 +38,7 @@ class AppState(Entity):
     """初始化版本，用于未来升级"""
 
     init_step: int = 0
-    """当前初始化步骤（0-7），用于意外中断后恢复"""
+    """当前初始化步骤（0-6），用于意外中断后恢复"""
 
     # ========== 运行环境 ==========
     app_home: str = ""
@@ -153,6 +154,13 @@ class AppState(Entity):
             self.created_at = datetime.datetime.fromisoformat(self.created_at)
         if isinstance(self.updated_at, str):
             self.updated_at = datetime.datetime.fromisoformat(self.updated_at)
+        if not isinstance(self.init_completed, bool):
+            self.init_completed = str(self.init_completed).lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
         if not isinstance(self.gateway_enabled, bool):
             self.gateway_enabled = str(self.gateway_enabled).lower() in {
                 "1",
@@ -208,7 +216,11 @@ class AppState(Entity):
         Returns:
             bool: True 表示已完成初始化
         """
-        return self.init_completed and self.init_step >= 7
+        return (
+            self.init_completed
+            and self.init_step >= WIZARD_FINAL_STEP
+            and bool(str(self.app_home or "").strip())
+        )
 
     def can_use_live_trading(self) -> bool:
         """检查是否可以使用实盘/仿真交易功能

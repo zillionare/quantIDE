@@ -14,6 +14,8 @@ from loguru import logger
 from monsterui.all import *
 from starlette.responses import StreamingResponse
 
+from quantide.config.paths import DEFAULT_DATA_HOME
+from quantide.core.init_wizard_steps import WIZARD_TOTAL_STEPS, build_wizard_steps
 from quantide.config.runtime import get_runtime_home
 from quantide.core.message import msg_hub
 from quantide.data.models.calendar import calendar
@@ -91,6 +93,170 @@ def _render_inline_error(message: str):
         ),
         id="wizard-error",
     )
+
+
+ADMIN_FORM_FIELDS = {
+    "password": "admin_password",
+    "confirm": "admin_password_confirm",
+}
+
+RUNTIME_FORM_FIELDS = {
+    "home": "app_home",
+    "host": "app_host",
+    "port": "app_port",
+    "prefix": "app_prefix",
+    "localhost_only": "localhost_only",
+}
+
+GATEWAY_FORM_FIELDS = {
+    "enabled": "gateway_enabled",
+    "server": "gateway_server",
+    "port": "gateway_port",
+    "api_key": "gateway_api_key",
+    "prefix": "gateway_prefix",
+    "state_prefix": "gateway_base_url",
+}
+
+DATA_INIT_FORM_FIELDS = {
+    "epoch": "epoch",
+    "tushare_token": "tushare_token",
+    "history_years": "history_years",
+}
+
+RUNTIME_FIELD_ALIASES = {
+    RUNTIME_FORM_FIELDS["home"]: (RUNTIME_FORM_FIELDS["home"], "home"),
+    RUNTIME_FORM_FIELDS["host"]: (RUNTIME_FORM_FIELDS["host"], "host"),
+    RUNTIME_FORM_FIELDS["port"]: (RUNTIME_FORM_FIELDS["port"], "port"),
+    RUNTIME_FORM_FIELDS["prefix"]: (RUNTIME_FORM_FIELDS["prefix"], "prefix"),
+}
+
+GATEWAY_FIELD_ALIASES = {
+    GATEWAY_FORM_FIELDS["enabled"]: (GATEWAY_FORM_FIELDS["enabled"],),
+    GATEWAY_FORM_FIELDS["server"]: (GATEWAY_FORM_FIELDS["server"],),
+    GATEWAY_FORM_FIELDS["port"]: (GATEWAY_FORM_FIELDS["port"],),
+    GATEWAY_FORM_FIELDS["api_key"]: (GATEWAY_FORM_FIELDS["api_key"],),
+    GATEWAY_FORM_FIELDS["prefix"]: (
+        GATEWAY_FORM_FIELDS["prefix"],
+        GATEWAY_FORM_FIELDS["state_prefix"],
+    ),
+}
+
+DATA_INIT_FIELD_ALIASES = {
+    DATA_INIT_FORM_FIELDS["epoch"]: (DATA_INIT_FORM_FIELDS["epoch"],),
+    DATA_INIT_FORM_FIELDS["tushare_token"]: (DATA_INIT_FORM_FIELDS["tushare_token"],),
+    DATA_INIT_FORM_FIELDS["history_years"]: (DATA_INIT_FORM_FIELDS["history_years"],),
+}
+
+RUNTIME_DEFAULTS = {
+    RUNTIME_FORM_FIELDS["home"]: DEFAULT_DATA_HOME,
+    RUNTIME_FORM_FIELDS["host"]: "127.0.0.1",
+    RUNTIME_FORM_FIELDS["port"]: 8130,
+    RUNTIME_FORM_FIELDS["prefix"]: "/quantide",
+}
+
+GATEWAY_DEFAULTS = {
+    GATEWAY_FORM_FIELDS["enabled"]: True,
+    GATEWAY_FORM_FIELDS["server"]: "localhost",
+    GATEWAY_FORM_FIELDS["port"]: 8000,
+    GATEWAY_FORM_FIELDS["api_key"]: "",
+    GATEWAY_FORM_FIELDS["prefix"]: "/",
+}
+
+DATA_INIT_DEFAULTS = {
+    DATA_INIT_FORM_FIELDS["epoch"]: "2005-01-01",
+    DATA_INIT_FORM_FIELDS["tushare_token"]: "",
+    DATA_INIT_FORM_FIELDS["history_years"]: 1,
+}
+
+
+def _pick_first_value(
+    source: dict[str, Any] | None,
+    keys: tuple[str, ...],
+    default: Any,
+) -> Any:
+    if source is None:
+        return default
+    for key in keys:
+        if key in source:
+            return source[key]
+    return default
+
+
+def _coerce_checkbox(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    return text not in {"0", "false", "off", "no"}
+
+
+def _normalize_form_values(
+    source: dict[str, Any] | None,
+    aliases: dict[str, tuple[str, ...]],
+    defaults: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: _pick_first_value(source, field_aliases, defaults[field])
+        for field, field_aliases in aliases.items()
+    }
+
+
+def _extract_form_updates(
+    source: dict[str, Any] | None,
+    aliases: dict[str, tuple[str, ...]],
+) -> dict[str, Any]:
+    if source is None:
+        return {}
+    updates: dict[str, Any] = {}
+    for field, field_aliases in aliases.items():
+        for key in field_aliases:
+            if key in source:
+                updates[field] = source[key]
+                break
+    return updates
+
+
+def _runtime_form_state(source: dict[str, Any] | None = None) -> dict[str, Any]:
+    values = _normalize_form_values(source, RUNTIME_FIELD_ALIASES, RUNTIME_DEFAULTS)
+    host = str(values[RUNTIME_FORM_FIELDS["host"]] or RUNTIME_DEFAULTS[RUNTIME_FORM_FIELDS["host"]]).strip()
+    values[RUNTIME_FORM_FIELDS["host"]] = host or RUNTIME_DEFAULTS[RUNTIME_FORM_FIELDS["host"]]
+    values[RUNTIME_FORM_FIELDS["localhost_only"]] = values[RUNTIME_FORM_FIELDS["host"]] == "127.0.0.1"
+    return values
+
+
+def _gateway_form_state(source: dict[str, Any] | None = None) -> dict[str, Any]:
+    values = _normalize_form_values(source, GATEWAY_FIELD_ALIASES, GATEWAY_DEFAULTS)
+    values[GATEWAY_FORM_FIELDS["enabled"]] = _coerce_checkbox(
+        values[GATEWAY_FORM_FIELDS["enabled"]],
+        default=True,
+    )
+    return values
+
+
+def _data_init_form_state(source: dict[str, Any] | None = None) -> dict[str, Any]:
+    return _normalize_form_values(source, DATA_INIT_FIELD_ALIASES, DATA_INIT_DEFAULTS)
+
+
+def _merge_state(base_state: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    return base_state | updates
+
+
+def _parse_int_input(value: Any, label: str, default: int) -> int:
+    text = str(value).strip()
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ValueError(f"{label}必须是整数") from exc
+
+
+def _parse_positive_int_input(value: Any, label: str, default: int) -> int:
+    parsed = _parse_int_input(value, label, default)
+    return max(1, parsed)
 
 
 # ========== 样式配置 ==========
@@ -267,7 +433,7 @@ def _check_password_strength(password: str) -> tuple[str, str]:
 def Step3_Admin(state: dict | None = None):
     """步骤3：管理员密码设置"""
     state = state or {}
-    password = state.get("admin_password", "")
+    password = state.get(ADMIN_FORM_FIELDS["password"], "")
     strength, strength_text = _check_password_strength(password) if password else ("", "")
 
     # 根据强度设置颜色
@@ -294,7 +460,7 @@ def Step3_Admin(state: dict | None = None):
                 FormLabel("管理员密码", required=True, tooltip="建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。"),
                 Div(
                     Input(
-                        name="admin_password",
+                        name=ADMIN_FORM_FIELDS["password"],
                         type="password",
                         value=password,
                         placeholder="请输入管理员密码",
@@ -312,9 +478,9 @@ def Step3_Admin(state: dict | None = None):
                 # 确认密码
                 FormLabel("确认密码", required=True),
                 Input(
-                    name="admin_password_confirm",
+                    name=ADMIN_FORM_FIELDS["confirm"],
                     type="password",
-                    value=state.get("admin_password_confirm", ""),
+                    value=state.get(ADMIN_FORM_FIELDS["confirm"], ""),
                     placeholder="再次输入管理员密码",
                     required=True,
                     cls="uk-input mb-4",
@@ -322,7 +488,7 @@ def Step3_Admin(state: dict | None = None):
             )
         ),
         # 密码强度检查脚本
-        Script("""
+        Script(r"""
             function checkPasswordStrength(password) {
                 const strengthDiv = document.getElementById('password-strength');
                 if (!password) {
@@ -363,23 +529,19 @@ def Step3_Admin(state: dict | None = None):
 
 def Step2_Runtime(state: dict | None = None):
     """步骤2：运行环境配置"""
-    state = state or {}
-    # 默认勾选"只允许本机访问"，即 host 默认为 127.0.0.1
-    host = str(state.get("host", "127.0.0.1"))
-    localhost_only = host == "127.0.0.1"
+    values = _runtime_form_state(state)
 
     return Div(
         SectionTitle("运行环境"),
-        SectionDescription("配置数据存储位置、访问控制、监听端口和路径前缀。"),
+        SectionDescription("配置行情数据存储位置、访问控制、监听端口和路径前缀。配置数据库固定保存在系统配置目录。"),
         Card(
             CardBody(
                 # 数据存储位置
-                FormLabel("数据存储位置", required=True, tooltip="行情数据、数据库将存放在此处。"),
+                FormLabel("数据存储位置", tooltip="行情数据和相关缓存将存放在此处。留空时默认使用 ~/.quantide。配置数据库固定保存在系统配置目录。"),
                 Input(
-                    name="home",
-                    value=state.get("home", "~/.quantide"),
-                    placeholder="~/.quantide",
-                    required=True,
+                    name=RUNTIME_FORM_FIELDS["home"],
+                    value=values[RUNTIME_FORM_FIELDS["home"]],
+                    placeholder=DEFAULT_DATA_HOME,
                     cls="uk-input mb-4",
                 ),
                 # 只允许本机访问
@@ -387,9 +549,9 @@ def Step2_Runtime(state: dict | None = None):
                     Label(
                         Input(
                             type="checkbox",
-                            name="localhost_only",
+                            name=RUNTIME_FORM_FIELDS["localhost_only"],
                             value="true",
-                            checked=localhost_only,
+                            checked=values[RUNTIME_FORM_FIELDS["localhost_only"]],
                             cls="uk-checkbox mr-2",
                         ),
                         Span("只允许本机访问", style=FONT_STYLES["label"]),
@@ -400,18 +562,18 @@ def Step2_Runtime(state: dict | None = None):
                 # 监听端口
                 FormLabel("监听端口", tooltip="除非端口已被其它应用占用，否则可使用默认值。"),
                 Input(
-                    name="port",
+                    name=RUNTIME_FORM_FIELDS["port"],
                     type="number",
-                    value=state.get("port", 80),
-                    placeholder="80",
+                    value=values[RUNTIME_FORM_FIELDS["port"]],
+                    placeholder="8130",
                     cls="uk-input mb-4",
                 ),
                 # 路径前缀
                 FormLabel("路径前缀", tooltip="可选。如果不明白含义，可保持默认。"),
                 Input(
-                    name="prefix",
-                    value=state.get("prefix", "/"),
-                    placeholder="/",
+                    name=RUNTIME_FORM_FIELDS["prefix"],
+                    value=values[RUNTIME_FORM_FIELDS["prefix"]],
+                    placeholder="/quantide",
                     cls="uk-input mb-4",
                 ),
             )
@@ -422,8 +584,8 @@ def Step2_Runtime(state: dict | None = None):
 
 def Step4_Gateway(state: dict | None = None):
     """步骤4：网关配置"""
-    state = state or {}
-    enabled = bool(state.get("gateway_enabled", True))  # 默认勾选
+    values = _gateway_form_state(state)
+    enabled = bool(values[GATEWAY_FORM_FIELDS["enabled"]])
 
     return Div(
         SectionTitle("配置交易/实时行情网关"),
@@ -435,7 +597,7 @@ def Step4_Gateway(state: dict | None = None):
                     Label(
                         Input(
                             type="checkbox",
-                            name="gateway_enabled",
+                            name=GATEWAY_FORM_FIELDS["enabled"],
                             value="true",
                             checked=enabled,
                             cls="uk-checkbox mr-2",
@@ -448,8 +610,8 @@ def Step4_Gateway(state: dict | None = None):
                 # gateway 服务器地址
                 FormLabel("服务器地址", tooltip="gateway 服务器的主机名或 IP 地址。"),
                 Input(
-                    name="gateway_server",
-                    value=state.get("gateway_server", "localhost"),
+                    name=GATEWAY_FORM_FIELDS["server"],
+                    value=values[GATEWAY_FORM_FIELDS["server"]],
                     placeholder="localhost",
                     disabled=not enabled,
                     cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
@@ -457,9 +619,9 @@ def Step4_Gateway(state: dict | None = None):
                 # gateway 端口
                 FormLabel("端口", tooltip="gateway 服务监听的端口号。"),
                 Input(
-                    name="gateway_port",
+                    name=GATEWAY_FORM_FIELDS["port"],
                     type="number",
-                    value=state.get("gateway_port", 8000),
+                    value=values[GATEWAY_FORM_FIELDS["port"]],
                     placeholder="8000",
                     disabled=not enabled,
                     cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
@@ -467,8 +629,8 @@ def Step4_Gateway(state: dict | None = None):
                 # gateway 访问密钥
                 FormLabel("访问密钥", tooltip="可在 gateway 用户头像菜单中生成和查看密钥。"),
                 Input(
-                    name="gateway_api_key",
-                    value=state.get("gateway_api_key", ""),
+                    name=GATEWAY_FORM_FIELDS["api_key"],
+                    value=values[GATEWAY_FORM_FIELDS["api_key"]],
                     placeholder="",
                     disabled=not enabled,
                     cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
@@ -476,8 +638,8 @@ def Step4_Gateway(state: dict | None = None):
                 # 路径前缀
                 FormLabel("路径前缀", tooltip="默认值为 /。"),
                 Input(
-                    name="gateway_prefix",
-                    value=state.get("gateway_prefix", "/"),
+                    name=GATEWAY_FORM_FIELDS["prefix"],
+                    value=values[GATEWAY_FORM_FIELDS["prefix"]],
                     placeholder="/",
                     disabled=not enabled,
                     cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
@@ -504,9 +666,13 @@ def _calculate_download_range(years: int) -> tuple[datetime.date, datetime.date]
 
 def Step5_DataSetup(state: dict | None = None):
     """步骤5：数据源设置及下载"""
-    state = state or {}
-    epoch = state.get("epoch", "2005-01-01")
-    years = int(state.get("history_years", 1))
+    values = _data_init_form_state(state)
+    epoch = values[DATA_INIT_FORM_FIELDS["epoch"]]
+    years_raw = values[DATA_INIT_FORM_FIELDS["history_years"]]
+    try:
+        years = _parse_positive_int_input(years_raw, "首次下载时长", 1)
+    except ValueError:
+        years = 1
 
     # 计算下载起止时间
     download_start, download_end = _calculate_download_range(years)
@@ -519,7 +685,7 @@ def Step5_DataSetup(state: dict | None = None):
                 # 数据起始日
                 FormLabel("数据起始日", required=True, tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。"),
                 Input(
-                    name="epoch",
+                    name=DATA_INIT_FORM_FIELDS["epoch"],
                     value=epoch,
                     placeholder="2005-01-01",
                     required=True,
@@ -528,8 +694,8 @@ def Step5_DataSetup(state: dict | None = None):
                 # Tushare 访问密钥
                 FormLabel("Tushare 访问密钥", required=True, tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。"),
                 Input(
-                    name="tushare_token",
-                    value=state.get("tushare_token", ""),
+                    name=DATA_INIT_FORM_FIELDS["tushare_token"],
+                    value=values[DATA_INIT_FORM_FIELDS["tushare_token"]],
                     placeholder="请输入您的 tushare token",
                     required=True,
                     cls="uk-input mb-4",
@@ -538,9 +704,9 @@ def Step5_DataSetup(state: dict | None = None):
                 FormLabel("首次下载时长（年）", required=True, tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。"),
                 Input(
                     type="number",
-                    name="history_years",
+                    name=DATA_INIT_FORM_FIELDS["history_years"],
                     min="1",
-                    value=years,
+                    value=years_raw,
                     required=True,
                     cls="uk-input mb-4",
                 ),
@@ -588,7 +754,26 @@ def Step6_Complete(state: dict | None = None):
 
 # ========== 导航按钮组件 ==========
 
-def WizardButtons(current_step: int, total_steps: int = 6):
+
+def _build_step_content(step: int, state_dict: dict[str, Any]):
+    step_content_builders = {
+        1: Step1_Welcome,
+        2: lambda: Step2_Runtime(state_dict),
+        3: lambda: Step3_Admin(state_dict),
+        4: lambda: Step4_Gateway(state_dict),
+        5: lambda: Step5_DataSetup(state_dict),
+        6: lambda: Step6_Complete(state_dict),
+    }
+    builder = step_content_builders.get(step, Step1_Welcome)
+    return builder()
+
+
+def _build_step_progress(state_dict: dict[str, Any]) -> list[dict[str, int | str | bool]]:
+    current_step = int(state_dict.get("init_step", 0) or 0)
+    return build_wizard_steps(current_step)
+
+
+def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
     """向导导航按钮 - 上一步在左，下一步在右"""
     if current_step >= total_steps:
         return Div(cls="mt-8")
@@ -667,25 +852,8 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
         state = init_wizard.get_state()
         state_dict = state.to_dict()
 
-    steps = [
-        {"id": 1, "name": "欢迎", "completed": state_dict.get("init_step", 0) > 1},
-        {"id": 2, "name": "运行环境", "completed": state_dict.get("init_step", 0) > 2},
-        {"id": 3, "name": "管理员密码", "completed": state_dict.get("init_step", 0) > 3},
-        {"id": 4, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 4},
-        {"id": 5, "name": "数据源设置及下载", "completed": state_dict.get("init_step", 0) > 5},
-        {"id": 6, "name": "完成", "completed": state_dict.get("init_step", 0) >= 6},
-    ]
-
-    step_content_map = {
-        1: Step1_Welcome(),
-        2: Step2_Runtime(state_dict),
-        3: Step3_Admin(state_dict),
-        4: Step4_Gateway(state_dict),
-        5: Step5_DataSetup(state_dict),
-        6: Step6_Complete(state_dict),
-    }
-
-    step_content = step_content_map.get(step, Step1_Welcome())
+    steps = _build_step_progress(state_dict)
+    step_content = _build_step_content(step, state_dict)
 
     return BaseLayout(
         Div(
@@ -789,19 +957,46 @@ async def handle_step(request: Request, step: int):
 
     if nav != "prev":
         if current_step == 2:
-            init_wizard.save_runtime_config(
-                home=str(form_dict.get("app_home", "")).strip(),
-                host=str(form_dict.get("app_host", "0.0.0.0")).strip(),
-                port=int(form_dict.get("app_port", 8130)),
-                prefix=str(form_dict.get("app_prefix", "/")).strip(),
+            state = init_wizard.get_state(force_refresh=True)
+            state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, RUNTIME_FIELD_ALIASES))
+            state_dict[RUNTIME_FORM_FIELDS["localhost_only"]] = (
+                RUNTIME_FORM_FIELDS["localhost_only"] in form_dict
             )
+            state_dict[RUNTIME_FORM_FIELDS["host"]] = (
+                "127.0.0.1"
+                if state_dict[RUNTIME_FORM_FIELDS["localhost_only"]]
+                else "0.0.0.0"
+            )
+            try:
+                init_wizard.save_runtime_config(
+                    home=str(state_dict[RUNTIME_FORM_FIELDS["home"]]).strip(),
+                    host=str(state_dict[RUNTIME_FORM_FIELDS["host"]]).strip(),
+                    port=_parse_int_input(
+                        state_dict[RUNTIME_FORM_FIELDS["port"]],
+                        "监听端口",
+                        8130,
+                    ),
+                    prefix=str(state_dict[RUNTIME_FORM_FIELDS["prefix"]]).strip(),
+                )
+            except Exception as e:
+                return Div(
+                    Form(
+                        Input(type="hidden", name="_current_step", value="2"),
+                        Div(Step2_Runtime(state_dict), id="wizard-content"),
+                        _render_inline_error(str(e)),
+                        WizardButtons(2),
+                        cls="flex-1",
+                    ),
+                    id="wizard-form-container",
+                    cls="flex-1 pl-8",
+                )
         elif current_step == 3:
-            password = str(form_dict.get("admin_password", "")).strip()
-            confirm = str(form_dict.get("admin_password_confirm", "")).strip()
+            password = str(form_dict.get(ADMIN_FORM_FIELDS["password"], "")).strip()
+            confirm = str(form_dict.get(ADMIN_FORM_FIELDS["confirm"], "")).strip()
             state = init_wizard.get_state(force_refresh=True)
             state_dict = state.to_dict()
-            state_dict["admin_password"] = password
-            state_dict["admin_password_confirm"] = confirm
+            state_dict[ADMIN_FORM_FIELDS["password"]] = password
+            state_dict[ADMIN_FORM_FIELDS["confirm"]] = confirm
             if password != confirm:
                 return Div(
                     Form(
@@ -829,23 +1024,46 @@ async def handle_step(request: Request, step: int):
                     cls="flex-1 pl-8",
                 )
         elif current_step == 4:
-            enabled = "gateway_enabled" in form_dict
-            server = str(form_dict.get("gateway_server", "")).strip()
-            port = int(form_dict.get("gateway_port", 8000))
-            prefix = str(form_dict.get("gateway_prefix", "/")).strip() or "/"
-            api_key = str(form_dict.get("gateway_api_key", "")).strip()
+            state = init_wizard.get_state(force_refresh=True)
+            state_dict = _merge_state(
+                _gateway_form_state(state.to_dict()),
+                _extract_form_updates(form_dict, GATEWAY_FIELD_ALIASES),
+            )
+            state_dict[GATEWAY_FORM_FIELDS["enabled"]] = (
+                GATEWAY_FORM_FIELDS["enabled"] in form_dict
+            )
+            enabled = bool(state_dict[GATEWAY_FORM_FIELDS["enabled"]])
+            server = str(state_dict[GATEWAY_FORM_FIELDS["server"]]).strip()
+            prefix = str(state_dict[GATEWAY_FORM_FIELDS["prefix"]]).strip() or "/"
+            api_key = str(state_dict[GATEWAY_FORM_FIELDS["api_key"]]).strip()
+            try:
+                port = _parse_int_input(
+                    state_dict[GATEWAY_FORM_FIELDS["port"]],
+                    "网关端口",
+                    8000,
+                )
+            except ValueError as e:
+                return Div(
+                    Form(
+                        Input(type="hidden", name="_current_step", value="4"),
+                        Div(Step4_Gateway(state_dict), id="wizard-content"),
+                        _render_inline_error(str(e)),
+                        WizardButtons(4),
+                        cls="flex-1",
+                    ),
+                    id="wizard-form-container",
+                    cls="flex-1 pl-8",
+                )
 
             # 如果启用 gateway，进行连通性校验
             if enabled:
                 ok, msg = init_wizard.test_gateway_connection(server=server, port=port, prefix=prefix)
                 if not ok:
-                    state = init_wizard.get_state(force_refresh=True)
-                    state_dict = state.to_dict()
-                    state_dict["gateway_enabled"] = enabled
-                    state_dict["gateway_server"] = server
-                    state_dict["gateway_port"] = port
-                    state_dict["gateway_prefix"] = prefix
-                    state_dict["gateway_api_key"] = api_key
+                    state_dict[GATEWAY_FORM_FIELDS["enabled"]] = enabled
+                    state_dict[GATEWAY_FORM_FIELDS["server"]] = server
+                    state_dict[GATEWAY_FORM_FIELDS["port"]] = port
+                    state_dict[GATEWAY_FORM_FIELDS["prefix"]] = prefix
+                    state_dict[GATEWAY_FORM_FIELDS["api_key"]] = api_key
                     return Div(
                         Form(
                             Input(type="hidden", name="_current_step", value="4"),
@@ -866,12 +1084,18 @@ async def handle_step(request: Request, step: int):
                 api_key=api_key,
             )
         elif current_step == 5:
-            epoch_str = str(form_dict.get("epoch", "")).strip()
+            state = init_wizard.get_state(force_refresh=True)
+            state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, DATA_INIT_FIELD_ALIASES))
+            epoch_str = str(state_dict[DATA_INIT_FORM_FIELDS["epoch"]]).strip()
             try:
                 epoch = _parse_epoch_input(epoch_str)
+                history_years = _parse_positive_int_input(
+                    state_dict[DATA_INIT_FORM_FIELDS["history_years"]],
+                    "首次下载时长",
+                    1,
+                )
             except ValueError as e:
-                state = init_wizard.get_state(force_refresh=True)
-                step_content = Step5_DataSetup(state.to_dict())
+                step_content = Step5_DataSetup(state_dict)
                 return Div(
                     Form(
                         Input(type="hidden", name="_current_step", value=str(step)),
@@ -885,34 +1109,15 @@ async def handle_step(request: Request, step: int):
                 )
             init_wizard.save_data_init_config(
                 epoch=epoch,
-                tushare_token=str(form_dict.get("tushare_token", "")).strip(),
-                history_years=int(form_dict.get("history_years", 1)),
+                tushare_token=str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip(),
+                history_years=history_years,
             )
 
     init_wizard.update_step(step)
     state = init_wizard.get_state(force_refresh=True)
     state_dict = state.to_dict()
-
-    # 构建步骤列表
-    steps = [
-        {"id": 1, "name": "欢迎", "completed": state_dict.get("init_step", 0) > 1},
-        {"id": 2, "name": "运行环境", "completed": state_dict.get("init_step", 0) > 2},
-        {"id": 3, "name": "管理员密码", "completed": state_dict.get("init_step", 0) > 3},
-        {"id": 4, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 4},
-        {"id": 5, "name": "数据源设置及下载", "completed": state_dict.get("init_step", 0) > 5},
-        {"id": 6, "name": "完成", "completed": state_dict.get("init_step", 0) >= 6},
-    ]
-
-    step_content_map = {
-        1: Step1_Welcome(),
-        2: Step2_Runtime(state_dict),
-        3: Step3_Admin(state_dict),
-        4: Step4_Gateway(state_dict),
-        5: Step5_DataSetup(state_dict),
-        6: Step6_Complete(state_dict),
-    }
-
-    step_content = step_content_map.get(step, Step1_Welcome())
+    steps = _build_step_progress(state_dict)
+    step_content = _build_step_content(step, state_dict)
 
     # 返回包含步骤指示器和表单内容的完整结构
     # 使用 hx-swap-oob 来更新步骤指示器
@@ -941,15 +1146,29 @@ async def gateway_test(request: Request):
     """网关连通性测试"""
     form_data = await request.form()
     form_dict = dict(form_data)
-    if "gateway_enabled" not in form_dict:
+    values = _merge_state(
+        _gateway_form_state({}),
+        _extract_form_updates(form_dict, GATEWAY_FIELD_ALIASES),
+    )
+    values[GATEWAY_FORM_FIELDS["enabled"]] = (
+        GATEWAY_FORM_FIELDS["enabled"] in form_dict
+    )
+    if not values[GATEWAY_FORM_FIELDS["enabled"]]:
         return Div(
             Span("ℹ️", cls="mr-2"),
             Span("未启用 gateway，已禁用连通性测试。"),
             cls="text-sm text-gray-500 mt-2 flex items-center",
         )
-    server = str(form_dict.get("gateway_server", "")).strip()
-    port = int(form_dict.get("gateway_port", 8000))
-    prefix = str(form_dict.get("gateway_prefix", "/")).strip() or "/"
+    server = str(values[GATEWAY_FORM_FIELDS["server"]]).strip()
+    prefix = str(values[GATEWAY_FORM_FIELDS["prefix"]]).strip() or "/"
+    try:
+        port = _parse_int_input(values[GATEWAY_FORM_FIELDS["port"]], "网关端口", 8000)
+    except ValueError as e:
+        return Div(
+            Span("❌", cls="mr-2"),
+            Span(str(e)),
+            cls="text-sm text-red-600 mt-2 flex items-center",
+        )
     ok, msg = init_wizard.test_gateway_connection(server=server, port=port, prefix=prefix)
     if ok:
         return Div(
@@ -1092,13 +1311,14 @@ async def handle_download(request: Request):
     form_data = await request.form()
     form_dict = dict(form_data)
     state = init_wizard.get_state(force_refresh=True)
-    epoch_str = str(form_dict.get("epoch", "")).strip()
-    token_str = str(form_dict.get("tushare_token", "")).strip()
-    years_raw = str(form_dict.get("history_years", "")).strip()
+    state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, DATA_INIT_FIELD_ALIASES))
+    epoch_str = str(state_dict[DATA_INIT_FORM_FIELDS["epoch"]]).strip()
+    token_str = str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip()
+    years_raw = str(state_dict[DATA_INIT_FORM_FIELDS["history_years"]]).strip()
     if epoch_str or token_str or years_raw:
         try:
             epoch = _parse_epoch_input(epoch_str) if epoch_str else state.epoch
-            years = int(years_raw) if years_raw else state.history_years
+            years = _parse_positive_int_input(years_raw, "首次下载时长", state.history_years)
             token = token_str or state.tushare_token
             init_wizard.save_data_init_config(
                 epoch=epoch,
@@ -1107,7 +1327,6 @@ async def handle_download(request: Request):
             )
             state = init_wizard.get_state(force_refresh=True)
         except Exception as e:
-            state_dict = state.to_dict()
             step_content = Step5_DataSetup(state_dict)
             return Div(
                 Form(

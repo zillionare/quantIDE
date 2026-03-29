@@ -15,3 +15,8 @@ def test_get_app_config_dir_uses_appdata_on_windows(monkeypatch, tmp_path: Path)
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
 
     assert paths_module.get_app_config_dir() == tmp_path / "AppData" / "Roaming" / "quantide"
+
+
+def test_normalize_data_home_expands_user_and_defaults_blank():
+    assert paths_module.normalize_data_home("") == str(Path("~/.quantide").expanduser())
+    assert paths_module.normalize_data_home("~/market-data") == str(Path("~/market-data").expanduser())

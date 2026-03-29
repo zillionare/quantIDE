@@ -23,7 +23,34 @@ from starlette.staticfiles import StaticFiles
 from quantide.config import init_config
 from quantide.config.paths import get_app_db_path, get_pid_file_path
 from quantide.config.runtime import get_runtime_home
+from quantide.core.errors import BaseTradeError
 from quantide.core.runtime import RuntimeBootstrap
+from quantide.data import init_data
+from quantide.data.sqlite import db
+from quantide.service.registry import BrokerRegistry
+from quantide.service.strategy_runtime import strategy_runtime_manager
+from quantide.web.apis.analysis import kline_router, search_router
+from quantide.web.apis.broker import app as broker_api_app
+from quantide.web.auth.manager import AuthManager
+from quantide.web.middleware import BrokerRegistryMiddleware, exception_handler
+from quantide.web.middleware_feature import FeatureCheckMiddleware
+from quantide.web.middleware_init import InitCheckMiddleware
+from quantide.web.pages.accounts import accounts_app, accounts_list
+from quantide.web.pages.analysis import analysis_handler
+from quantide.web.pages.data_calendar import data_calendar_app
+from quantide.web.pages.data_db import data_db_app
+from quantide.web.pages.data_market import data_market_app
+from quantide.web.pages.data_stocks import data_stocks_app
+from quantide.web.pages.history_orders import history_orders_list
+from quantide.web.pages.history_positions import history_positions_list
+from quantide.web.pages.history_trades import history_trades_list
+from quantide.web.pages.home import home_app
+from quantide.web.pages.init_wizard import init_wizard, init_wizard_app
+from quantide.web.pages.live import live_app
+from quantide.web.pages.strategy import strategy_app
+from quantide.web.pages.trade import trade_app
+from quantide.web.pages.trade_main import set_active_account, trade_main_page
+from quantide.web.theme import AppTheme
 
 
 def _check_single_instance():
@@ -97,34 +124,6 @@ def _initialize_app_database() -> Path:
         db.init(db_path)
         return db_path
 
-from quantide.core.errors import BaseTradeError
-from quantide.data import init_data
-from quantide.data.sqlite import db
-from quantide.service.strategy_runtime import strategy_runtime_manager
-from quantide.service.registry import BrokerRegistry
-from quantide.web.apis.broker import app as broker_api_app
-from quantide.web.auth.manager import AuthManager
-from quantide.web.middleware import BrokerRegistryMiddleware, exception_handler
-from quantide.web.middleware_init import InitCheckMiddleware
-from quantide.web.middleware_feature import FeatureCheckMiddleware
-from quantide.web.pages.init_wizard import init_wizard_app
-from quantide.web.apis.analysis import kline_router, search_router
-from quantide.web.pages.init_wizard import init_wizard
-from quantide.web.pages.accounts import accounts_app, accounts_list
-from quantide.web.pages.analysis import analysis_handler
-from quantide.web.pages.history_orders import history_orders_list
-from quantide.web.pages.history_positions import history_positions_list
-from quantide.web.pages.history_trades import history_trades_list
-from quantide.web.pages.home import home_app
-from quantide.web.pages.live import live_app
-from quantide.web.pages.strategy import strategy_app
-from quantide.web.pages.trade import trade_app
-from quantide.web.pages.trade_main import trade_main_page, set_active_account
-from quantide.web.pages.data_calendar import data_calendar_app
-from quantide.web.pages.data_market import data_market_app
-from quantide.web.pages.data_stocks import data_stocks_app
-from quantide.web.pages.data_db import data_db_app
-
 
 def init():
     init_config()
@@ -145,8 +144,6 @@ def init():
         logger.warning(f"应用运行时初始化失败，将进入初始化向导模式: {e}")
 
     auth = AuthManager(db_path=str(db_path), config={"login_path": "/auth/login"})
-
-    from quantide.web.theme import AppTheme
 
     app, rt = fast_app(
         hdrs=AppTheme.headers(),

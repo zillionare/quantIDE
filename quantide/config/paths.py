@@ -5,6 +5,19 @@ import sys
 from pathlib import Path
 
 
+DEFAULT_DATA_HOME = "~/.quantide"
+
+
+def normalize_data_home(home: str | Path | None = None) -> str:
+    """Normalize the configured market-data home path.
+
+    Blank values fall back to the default per-user data directory and any
+    leading `~` is expanded for persistence.
+    """
+    text = str(home or "").strip() or DEFAULT_DATA_HOME
+    return str(Path(text).expanduser())
+
+
 def get_app_config_dir() -> Path:
     """Return the per-user configuration directory for Quantide."""
     if sys.platform.startswith("win"):
@@ -42,9 +55,11 @@ def get_strategy_runtime_state_path() -> Path:
 
 
 __all__ = [
+    "DEFAULT_DATA_HOME",
     "ensure_app_config_dir",
     "get_app_config_dir",
     "get_app_db_path",
     "get_pid_file_path",
     "get_strategy_runtime_state_path",
+    "normalize_data_home",
 ]
