@@ -317,28 +317,28 @@ def FormHint(text: str):
 
 def SectionTitle(text: str):
     """章节标题"""
-    return H4(text, cls="mb-3", style=f"{FONT_STYLES['title']} color: {PRIMARY_COLOR};")
+    return H4(text, cls="mb-4", style=f"{FONT_STYLES['title']} color: {PRIMARY_COLOR};")
 
 
 def SectionDescription(text: str):
     """章节描述"""
-    return P(text, style=FONT_STYLES["description"], cls="mb-4")
+    return P(text, style=FONT_STYLES["description"], cls="mb-8")
 
 
 # ========== 步骤指示器组件 ==========
 
 
 def StepIndicator(current_step: int, steps: list[dict]):
-    """步骤指示器组件（简洁数字圆圈样式）
+    """步骤指示器组件（垂直时间线样式）
 
-    参考示例设计，只保留数字圆圈，更加简洁清爽。
+    参考示例设计，使用贯穿的连接线，两边出头。
 
     Args:
         current_step: 当前步骤
         steps: 步骤列表，每个步骤包含 id, name, completed
     """
-    step_items = []
     total_steps = len(steps)
+    step_items = []
 
     for i, step in enumerate(steps, 1):
         is_active = i == current_step
@@ -347,44 +347,43 @@ def StepIndicator(current_step: int, steps: list[dict]):
         # 确定圆圈样式
         if is_active:
             # 当前步骤：实心主色调
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
+            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; position: relative; z-index: 2;"
         elif is_completed:
             # 已完成步骤：实心主色调，白色对勾
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
+            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; position: relative; z-index: 2;"
         else:
             # 未开始步骤：白色背景，灰色边框
-            circle_style = "background: white; color: #9ca3af; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; border: 2px solid #e5e7eb;"
+            circle_style = "background: white; color: #9ca3af; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; border: 2px solid #e5e7eb; position: relative; z-index: 2;"
 
         # 圆圈内容
         circle_content = "✓" if is_completed else str(i)
 
-        # 添加连接线（除了最后一个）
-        if i < total_steps:
-            connector = Div(
-                style=f"width: 2px; height: 24px; background: {'#e5e7eb' if not is_completed else PRIMARY_COLOR}; margin: 4px 0 4px 15px;"
-            )
-        else:
-            connector = None
-
         step_items.append(
             Li(
-                Div(
-                    Span(
-                        circle_content,
-                        style=circle_style,
-                    ),
-                    cls="flex justify-center",
+                Span(
+                    circle_content,
+                    style=circle_style,
                 ),
-                connector if connector else "",
-                cls="step",
-                title=step["name"],  # 鼠标悬停显示步骤名称
+                cls="step flex justify-center",
+                style="position: relative;",
+                title=step["name"],
             )
         )
 
-    return Ul(
-        *step_items,
-        cls="steps-vertical list-none p-0 m-0",
-        style="width: 48px; flex-shrink: 0;",
+    # 构建连接线 - 使用伪元素或背景实现贯穿效果
+    # 连接线容器：从第一个圆圈中心到最后一个圆圈中心
+    connector_line = Div(
+        style=f"position: absolute; left: 50%; top: 16px; bottom: 16px; width: 2px; background: linear-gradient(to bottom, {PRIMARY_COLOR} 0%, {PRIMARY_COLOR} {((current_step - 1) / max(total_steps - 1, 1)) * 100}%, #e5e7eb {((current_step - 1) / max(total_steps - 1, 1)) * 100}%, #e5e7eb 100%); transform: translateX(-50%); z-index: 1;"
+    ) if total_steps > 1 else ""
+
+    return Div(
+        connector_line,
+        Ul(
+            *step_items,
+            cls="steps-vertical list-none p-0 m-0 relative",
+            style="width: 48px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; height: 100%;",
+        ),
+        cls="relative flex-shrink-0 h-full",
     )
 
 
@@ -831,9 +830,13 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
             )
 
     return Div(
-        Div(*left_buttons, cls="flex gap-3"),
-        Div(*right_buttons, cls="flex gap-3"),
-        cls="flex justify-between mt-16 pt-6",
+        Div(style="height: 1px; background: #e5e7eb; margin-bottom: 24px;"),
+        Div(
+            Div(*left_buttons, cls="flex gap-3"),
+            Div(*right_buttons, cls="flex gap-3"),
+            cls="flex justify-between",
+        ),
+        cls="mt-12",
     )
 
 
@@ -862,8 +865,8 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                 #wizard-form-container {
                     background: white;
                     border-radius: 8px;
-                    padding: 40px 48px;
-                    min-height: 480px;
+                    padding: 48px 56px;
+                    min-height: 520px;
                 }
                 #wizard-form-container .uk-input {
                     border: 1px solid #e5e7eb;
@@ -894,14 +897,24 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     background: #D13527;
                     border-color: #D13527;
                 }
+                #wizard-main-container {
+                    display: flex;
+                    align-items: flex-start;
+                    max-width: 900px;
+                    margin: 0 auto;
+                    padding: 48px 24px 64px;
+                }
+                #step-indicator-wrapper {
+                    padding-top: 48px;
+                    min-height: 520px;
+                }
                 """
             ),
             Div(
                 Div(
                     StepIndicator(step, steps),
                     cls="flex-shrink-0",
-                    style="padding-top: 48px;",
-                    id="step-indicator-container",
+                    id="step-indicator-wrapper",
                 ),
                 Div(
                     Form(
@@ -914,8 +927,7 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     cls="flex-1 ml-12",
                     style="box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);",
                 ),
-                cls="flex",
-                style="max-width: 900px; margin: 0 auto; padding: 32px 24px;",
+                id="wizard-main-container",
             ),
         ),
         page_title="系统初始化 - Quantide",
