@@ -5,9 +5,9 @@ from pathlib import Path
 import polars as pl
 import pandas as pd
 import pytest
-from pyqmt.core.enums import BidType, OrderSide
-from pyqmt.data.sqlite import Asset, Order, Position, Trade, db
-from pyqmt.service.metrics import bills, metrics
+from quantide.core.enums import BidType, OrderSide
+from quantide.data.sqlite import Asset, Order, Position, Trade, db
+from quantide.service.metrics import bills, metrics
 
 
 @pytest.fixture(scope="function")

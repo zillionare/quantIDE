@@ -10,7 +10,7 @@
     ".vscode",
     "docs",
     "**/__pycache__",
-    "zillionare_pyqmt.egg-info"
+    "quantide.egg-info"
   ],
 
   "ignore": [

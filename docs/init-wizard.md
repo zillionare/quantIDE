@@ -69,7 +69,7 @@ The runtime step comes before administrator-password setup because the applicati
 
 Current implementation detail:
 
-- application state is stored in `app_home/solo.db`
+- application state is stored in `app_home/quantide.db`
 - auth storage is rebound to the same sqlite file after runtime configuration is saved
 
 ### Step 3: Administrator Password

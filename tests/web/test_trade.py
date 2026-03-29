@@ -14,18 +14,18 @@ from starlette.middleware import Middleware
 from fasthtml.common import fast_app, Mount
 from monsterui.all import Theme
 
-from pyqmt.core.enums import BrokerKind
-from pyqmt.data.sqlite import db as _db
-from pyqmt.service.registry import BrokerRegistry
-from pyqmt.service.sim_broker import SimulationBroker
+from quantide.core.enums import BrokerKind
+from quantide.data.sqlite import db as _db
+from quantide.service.registry import BrokerRegistry
+from quantide.service.sim_broker import SimulationBroker
 
 
 @pytest.fixture(scope="module")
 def test_app(cfg):
     """创建测试应用"""
-    from pyqmt.config import init_config
-    from pyqmt.core.scheduler import scheduler
-    from pyqmt.service.livequote import live_quote
+    from quantide.config import init_config
+    from quantide.core.scheduler import scheduler
+    from quantide.service.livequote import live_quote
 
     init_config()
 
@@ -46,13 +46,13 @@ def test_app(cfg):
         except Exception as e:
             print(f"Failed to create demo broker: {e}")
 
-        from pyqmt.web.auth.manager import AuthManager
-        from pyqmt.web.middleware import BrokerRegistryMiddleware, exception_handler
-        from pyqmt.core.errors import BaseTradeError
-        from pyqmt.web.pages.home import home_app
-        from pyqmt.web.pages.trade import trade_app
-        from pyqmt.web.pages.live import live_app
-        from pyqmt.web.apis.broker import app as broker_api_app
+        from quantide.web.auth.manager import AuthManager
+        from quantide.web.middleware import BrokerRegistryMiddleware, exception_handler
+        from quantide.core.errors import BaseTradeError
+        from quantide.web.pages.home import home_app
+        from quantide.web.pages.trade import trade_app
+        from quantide.web.pages.live import live_app
+        from quantide.web.apis.broker import app as broker_api_app
 
         auth = AuthManager(db_path=test_db_path, config={"login_path": "/auth/login"})
 
@@ -75,7 +75,7 @@ def test_app(cfg):
             ),
         )
 
-        static_dir = Path(__file__).resolve().parent.parent.parent / "pyqmt" / "web" / "static"
+        static_dir = Path(__file__).resolve().parent.parent.parent / "quantide" / "web" / "static"
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
         auth.initialize(app, prefix="/auth")
@@ -169,7 +169,7 @@ class TestLoginRoutes:
                     fp=None,
                 )
 
-        from pyqmt.web.pages import home as home_page
+        from quantide.web.pages import home as home_page
 
         monkeypatch.setattr(home_page, "_get_broker", lambda req: BrokenBroker())
 
@@ -332,7 +332,7 @@ class TestSimulationBroker:
 
         assert broker._market_value_update_interval == 5.0
 
-        from pyqmt.service.registry import BrokerRegistry
+        from quantide.service.registry import BrokerRegistry
 
         registry = BrokerRegistry()
         registry.unregister(BrokerKind.SIMULATION, portfolio_id)
@@ -348,7 +348,7 @@ class TestSimulationBroker:
 
         assert broker._market_value_update_interval == 10.0
 
-        from pyqmt.service.registry import BrokerRegistry
+        from quantide.service.registry import BrokerRegistry
 
         registry = BrokerRegistry()
         registry.unregister(BrokerKind.SIMULATION, portfolio_id)

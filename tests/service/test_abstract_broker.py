@@ -5,9 +5,9 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from pyqmt.core.enums import BidType, OrderSide
-from pyqmt.data.sqlite import Asset, Order, Position, Trade, db
-from pyqmt.service.abstract_broker import AbstractBroker
+from quantide.core.enums import BidType, OrderSide
+from quantide.data.sqlite import Asset, Order, Position, Trade, db
+from quantide.service.abstract_broker import AbstractBroker
 
 
 @pytest.fixture(scope="function")
@@ -19,8 +19,8 @@ def setup_db():
         db.close()
 
 
-from pyqmt.core.enums import BrokerKind
-from pyqmt.service.local_broker import LocalBroker
+from quantide.core.enums import BrokerKind
+from quantide.service.local_broker import LocalBroker
 
 
 class MockBroker(LocalBroker):

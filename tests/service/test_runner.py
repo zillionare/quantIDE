@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyqmt.core.enums import FrameType
-from pyqmt.core.strategy import BaseStrategy
-from pyqmt.data.sqlite import db
-from pyqmt.service.runner import BacktestRunner
+from quantide.core.enums import FrameType
+from quantide.core.strategy import BaseStrategy
+from quantide.data.sqlite import db
+from quantide.service.runner import BacktestRunner
 
 
 class SimpleStrategy(BaseStrategy):
@@ -35,11 +35,11 @@ async def test_run_daily():
     end_date = datetime.date(2024, 1, 2)
 
     # Mock dependencies
-    with patch("pyqmt.service.runner.calendar") as mock_calendar, \
-         patch("pyqmt.service.runner.BacktestBroker") as MockBroker, \
-         patch("pyqmt.service.runner.daily_bars") as mock_daily_bars, \
-         patch("pyqmt.service.runner.db") as mock_db, \
-         patch("pyqmt.service.runner.metrics") as mock_metrics:
+    with patch("quantide.service.runner.calendar") as mock_calendar, \
+         patch("quantide.service.runner.BacktestBroker") as MockBroker, \
+         patch("quantide.service.runner.daily_bars") as mock_daily_bars, \
+         patch("quantide.service.runner.db") as mock_db, \
+         patch("quantide.service.runner.metrics") as mock_metrics:
 
         # Setup calendar mock
         mock_calendar.ceiling.return_value = start_date
@@ -102,11 +102,11 @@ async def test_run_minute():
     end_date = datetime.date(2024, 1, 1) # 1 day
 
     # Mock dependencies
-    with patch("pyqmt.service.runner.calendar") as mock_calendar, \
-         patch("pyqmt.service.runner.BacktestBroker") as MockBroker, \
-         patch("pyqmt.service.runner.daily_bars") as mock_daily_bars, \
-         patch("pyqmt.service.runner.db") as mock_db, \
-         patch("pyqmt.service.runner.metrics") as mock_metrics:
+    with patch("quantide.service.runner.calendar") as mock_calendar, \
+         patch("quantide.service.runner.BacktestBroker") as MockBroker, \
+         patch("quantide.service.runner.daily_bars") as mock_daily_bars, \
+         patch("quantide.service.runner.db") as mock_db, \
+         patch("quantide.service.runner.metrics") as mock_metrics:
 
         # Setup calendar mock
         mock_calendar.ceiling.return_value = start_date

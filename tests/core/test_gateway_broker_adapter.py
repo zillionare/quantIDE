@@ -1,8 +1,8 @@
 import pytest
 
-from pyqmt.core.enums import OrderSide
-from pyqmt.core.ports import OrderRequest
-from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter, GatewayBrokerWrapper
+from quantide.core.enums import OrderSide
+from quantide.core.ports import OrderRequest
+from quantide.core.runtime.gateway_broker import GatewayBrokerAdapter, GatewayBrokerWrapper
 
 
 class DummyGatewayClient:

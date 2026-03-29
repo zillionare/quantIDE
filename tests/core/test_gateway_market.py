@@ -1,4 +1,4 @@
-from pyqmt.core.runtime import gateway_market
+from quantide.core.runtime import gateway_market
 
 
 class DummyClient:

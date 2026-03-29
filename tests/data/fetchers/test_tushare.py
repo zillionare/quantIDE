@@ -8,7 +8,7 @@ import pytest
 from freezegun import freeze_time
 from pandas.testing import assert_frame_equal
 
-from pyqmt.data.fetchers.tushare import (
+from quantide.data.fetchers.tushare import (
     fetch_adjust_factor,
     fetch_bars,
     fetch_bars_ext,
@@ -42,7 +42,7 @@ class TestTushareFetcher:
         assert left.equals(baseline)
 
     def test_fetch_stock_list(self):
-        with patch("pyqmt.data.fetchers.tushare.ts") as mock:
+        with patch("quantide.data.fetchers.tushare.ts") as mock:
             mock.pro_api.return_value.stock_basic.return_value = pd.DataFrame()
             with pytest.raises(ValueError):
                 fetch_stock_list()
@@ -173,7 +173,7 @@ class TestTushareFetcher:
 
         # 2007年之前，返回 类型稳定的空 DataFrame，且不触发远程调用
         pre_date = datetime.date(2006, 12, 31)
-        with patch("pyqmt.data.fetchers.tushare._fetch_by_dates") as mock:
+        with patch("quantide.data.fetchers.tushare._fetch_by_dates") as mock:
             empty_df, empty_errors = fetch_limit_price([pre_date])
             mock.assert_not_called()
         assert empty_df.empty
@@ -208,7 +208,7 @@ class TestTushareFetcher:
             )
 
         with patch(
-            "pyqmt.data.fetchers.tushare._fetch_by_dates",
+            "quantide.data.fetchers.tushare._fetch_by_dates",
             side_effect=fake_fetch_by_dates,
         ):
             mixed_df, mixed_errors = fetch_limit_price([pre_date] + valid_dates)
@@ -272,7 +272,7 @@ class TestTushareFetcher:
 
         # test pre-2016 dates return typed empty and no remote call
         pre_date = datetime.date(2015, 12, 31)
-        with patch("pyqmt.data.fetchers.tushare._fetch_by_dates") as mock:
+        with patch("quantide.data.fetchers.tushare._fetch_by_dates") as mock:
             df_pre, errors_pre = fetch_st_info([pre_date])
             mock.assert_not_called()
 
@@ -297,7 +297,7 @@ class TestTushareFetcher:
             return df_, []
 
         with patch(
-            "pyqmt.data.fetchers.tushare._fetch_by_dates",
+            "quantide.data.fetchers.tushare._fetch_by_dates",
             side_effect=fake_fetch_by_dates,
         ):
             df_mix, errors_mix = fetch_st_info([pre_date] + valid_dates)
@@ -308,7 +308,7 @@ class TestTushareFetcher:
         assert df_mix["st"].eq(True).all()
 
         # test empty input returns typed empty and no remote call
-        with patch("pyqmt.data.fetchers.tushare._fetch_by_dates") as mock2:
+        with patch("quantide.data.fetchers.tushare._fetch_by_dates") as mock2:
             df_empty, errors_empty = fetch_st_info([])
             mock2.assert_not_called()
 
@@ -332,7 +332,7 @@ class TestTushareFetcher:
                 "type_name": ["特别处理", "特别处理"],
             }
         )
-        with patch("pyqmt.data.fetchers.tushare.ts.pro_api", return_value=pro):
+        with patch("quantide.data.fetchers.tushare.ts.pro_api", return_value=pro):
             df, errors = fetch_st_info(date)
 
         assert len(errors) == 0
@@ -398,7 +398,7 @@ class TestTushareFetcher:
             }
         )
         with patch(
-            "pyqmt.data.fetchers.tushare.fetch_limit_price",
+            "quantide.data.fetchers.tushare.fetch_limit_price",
             return_value=(empty_limit, []),
         ):
             actual2, errors2 = fetch_bars_ext(dates)
@@ -418,7 +418,7 @@ class TestTushareFetcher:
         # 02 测试修改 func
         df = bars.iloc[-2:]
         with patch(
-            "pyqmt.data.fetchers.tushare.fetch_bars",
+            "quantide.data.fetchers.tushare.fetch_bars",
             return_value=(df, [["daily", datetime.date(2024, 1, 2), "msg"]]),
         ):
             actual, errors = fetch_bars_ext(dates)

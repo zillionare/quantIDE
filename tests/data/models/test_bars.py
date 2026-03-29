@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 from freezegun import freeze_time
 
-from pyqmt.data.models.daily_bars import daily_bars as bars
+from quantide.data.models.daily_bars import daily_bars as bars
 from tests import asset_dir
 
 

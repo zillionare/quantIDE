@@ -8,10 +8,10 @@ import pandas as pd
 import pytest
 from loguru import logger
 
-from pyqmt.core.enums import FrameType
-from pyqmt.core.strategy import BaseStrategy
-from pyqmt.data.sqlite import db as main_db
-from pyqmt.service.grid_search import GridSearch
+from quantide.core.enums import FrameType
+from quantide.core.strategy import BaseStrategy
+from quantide.data.sqlite import db as main_db
+from quantide.service.grid_search import GridSearch
 
 
 class MockStrategy(BaseStrategy):
@@ -20,7 +20,7 @@ class MockStrategy(BaseStrategy):
         param1 = self.config.get("param1", 0)
 
         # Debug: Check if portfolio exists
-        from pyqmt.data.sqlite import db
+        from quantide.data.sqlite import db
         pfs = db.portfolios_all()
         logger.info(f"Portfolios in DB: {pfs}")
         logger.info(f"My portfolio_id: {self.broker.portfolio_id}")
@@ -82,7 +82,7 @@ def grid_search_env(asset_dir):
 
     # We are pointing to a directory "data/bars/daily". So it expects partitioned data.
     # Let's create partition_key_year=2024 directory.
-    # pyqmt uses 'partition_key_year' as the partition column name.
+    # quantide uses 'partition_key_year' as the partition column name.
     year_dir = bars_dir / "partition_key_year=2024"
     year_dir.mkdir(parents=True)
 

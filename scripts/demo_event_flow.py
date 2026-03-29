@@ -1,8 +1,8 @@
 import asyncio
 import datetime
 
-from pyqmt.core.message import msg_hub
-from pyqmt.service.simulation_broker import QuoteEvent, SimulationBroker
+from quantide.core.message import msg_hub
+from quantide.service.simulation_broker import QuoteEvent, SimulationBroker
 
 
 class Cfg:
@@ -33,7 +33,7 @@ async def main():
 
     import pandas as pd
 
-    from pyqmt.data import init_data
+    from quantide.data import init_data
     base = Path("./.demo_store")
     (base / "data").mkdir(parents=True, exist_ok=True)
     # 预创建最小交易日历，避免远程获取
@@ -74,7 +74,7 @@ async def main():
     broker.on_day_close(t1_date)
     t2_date = t1_date + datetime.timedelta(days=1)
     broker.on_day_open(t2_date)
-    from pyqmt.data.sqlite import db
+    from quantide.data.sqlite import db
     trades = db.trades_all()
     positions = db.positions_all()
     assets = db.assets_all()

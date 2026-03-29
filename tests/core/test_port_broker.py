@@ -1,8 +1,8 @@
 import pytest
 
-from pyqmt.core.enums import BrokerKind, OrderSide, OrderStatus
-from pyqmt.core.runtime.gateway_broker import GatewayBrokerAdapter
-from pyqmt.core.runtime.port_broker import PortBackedBroker
+from quantide.core.enums import BrokerKind, OrderSide, OrderStatus
+from quantide.core.runtime.gateway_broker import GatewayBrokerAdapter
+from quantide.core.runtime.port_broker import PortBackedBroker
 from tests.core.test_gateway_broker_adapter import DummyGatewayClient
 
 

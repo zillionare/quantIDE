@@ -1,4 +1,4 @@
-from pyqmt.core.runtime import AdapterRegistry
+from quantide.core.runtime import AdapterRegistry
 
 
 def test_adapter_registry_register_and_resolve():

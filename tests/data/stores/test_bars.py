@@ -3,7 +3,7 @@ import datetime
 import pandas as pd
 import pytest
 
-from pyqmt.data.stores.bars import DailyBarsStore
+from quantide.data.stores.bars import DailyBarsStore
 from tests import asset_dir, bars
 
 

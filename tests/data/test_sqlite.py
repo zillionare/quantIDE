@@ -11,8 +11,8 @@ from typing import List, Optional, Union
 import polars as pl
 import pytest
 
-from pyqmt.core.enums import BidType, BrokerKind, OrderSide, OrderStatus
-from pyqmt.data.sqlite import Asset, Entity, Order, Portfolio, Position, Trade, db
+from quantide.core.enums import BidType, BrokerKind, OrderSide, OrderStatus
+from quantide.data.sqlite import Asset, Entity, Order, Portfolio, Position, Trade, db
 
 
 @pytest.fixture(scope="function")

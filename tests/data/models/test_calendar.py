@@ -9,9 +9,9 @@ import pandas as pd
 import pytest
 from freezegun import freeze_time
 
-from pyqmt.config import cfg, get_config_dir
-from pyqmt.core.enums import FrameType
-from pyqmt.data.models.calendar import Calendar
+from quantide.config import cfg, get_config_dir
+from quantide.core.enums import FrameType
+from quantide.data.models.calendar import Calendar
 from tests import asset_dir
 
 
@@ -847,7 +847,7 @@ def test_update(tmp_path):
     # fetch_calendar 会返回 df2, 04那天为非交易日
     df2 = pd.DataFrame({"date": dates2, "is_open": [1, 1, 0, 1], "prev": prev2})
 
-    with mock.patch("pyqmt.data.models.calendar.fetch_calendar", side_effect=[df2]):
+    with mock.patch("quantide.data.models.calendar.fetch_calendar", side_effect=[df2]):
         tf.load(path)
         assert tf.epoch == dates1[0]
 

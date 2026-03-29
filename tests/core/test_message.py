@@ -4,7 +4,7 @@ from queue import Empty, Queue
 
 import pytest
 
-from pyqmt.core.message import MessageHub, msg_hub
+from quantide.core.message import MessageHub, msg_hub
 
 
 @pytest.fixture(autouse=True)

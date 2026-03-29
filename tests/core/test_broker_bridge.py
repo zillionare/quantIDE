@@ -1,9 +1,9 @@
 import pytest
 
-from pyqmt.core.enums import OrderSide
-from pyqmt.core.ports import OrderRequest
-from pyqmt.core.runtime import LegacyBrokerPortAdapter
-from pyqmt.service.base_broker import TradeResult
+from quantide.core.enums import OrderSide
+from quantide.core.ports import OrderRequest
+from quantide.core.runtime import LegacyBrokerPortAdapter
+from quantide.service.base_broker import TradeResult
 
 
 class DummyBroker:

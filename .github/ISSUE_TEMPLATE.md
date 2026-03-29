@@ -1,4 +1,4 @@
-* pyqmt version:
+* quantide version:
 * Python version:
 * Operating System:
 

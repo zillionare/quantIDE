@@ -3,12 +3,12 @@ import datetime
 import polars as pl
 import pytest
 
-from pyqmt.core.enums import FrameType, OrderSide
-from pyqmt.data.sqlite import db
-from pyqmt.service import backtest_broker as backtest_broker_module
-from pyqmt.service import runner as runner_module
-from pyqmt.service.runner import BacktestRunner
-from pyqmt.strategies.example.dual_ma import DualMAStrategy
+from quantide.core.enums import FrameType, OrderSide
+from quantide.data.sqlite import db
+from quantide.service import backtest_broker as backtest_broker_module
+from quantide.service import runner as runner_module
+from quantide.service.runner import BacktestRunner
+from quantide.strategies.example.dual_ma import DualMAStrategy
 
 
 class StaticDailyFeed:

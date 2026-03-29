@@ -1,4 +1,4 @@
-# pyqmt
+# quantide
 
 This repository is in active architectural refactoring.
 

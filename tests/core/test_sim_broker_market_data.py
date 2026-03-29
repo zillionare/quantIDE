@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pyqmt.service.sim_broker import PaperBroker
+from quantide.service.sim_broker import PaperBroker
 
 
 @dataclass

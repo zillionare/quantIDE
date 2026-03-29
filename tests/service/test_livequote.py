@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from pyqmt.service.livequote import LiveQuote
+from quantide.service.livequote import LiveQuote
 
 
 def _reset_singleton():
@@ -39,7 +39,7 @@ def test_refresh_limits():
             "down_limit": [9.0],
         }
     )
-    with patch("pyqmt.service.livequote.fetch_limit_price", return_value=(df, None)):
+    with patch("quantide.service.livequote.fetch_limit_price", return_value=(df, None)):
         quote._refresh_limits(datetime.date(2024, 1, 2))
     down, up = quote.get_price_limits("000001.SZ")
     assert up == 11.0

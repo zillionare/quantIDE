@@ -1,4 +1,4 @@
-from pyqmt.core.runtime.gateway_client import GatewayClient
+from quantide.core.runtime.gateway_client import GatewayClient
 
 
 def test_gateway_client_ws_url_http():

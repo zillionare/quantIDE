@@ -1,10 +1,10 @@
 import datetime
 from types import SimpleNamespace
 
-from pyqmt.core.domain import QuoteSnapshot
-from pyqmt.core.enums import BrokerKind
-from pyqmt.core.runtime import modes as runtime_modes
-from pyqmt.data.sqlite import Asset, Portfolio, db
+from quantide.core.domain import QuoteSnapshot
+from quantide.core.enums import BrokerKind
+from quantide.core.runtime import modes as runtime_modes
+from quantide.data.sqlite import Asset, Portfolio, db
 
 
 class DummyGatewayMarketData:

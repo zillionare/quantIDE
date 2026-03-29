@@ -3,7 +3,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from pyqmt.data.helper import hfq_adjustment, qfq_adjustment
+from quantide.data.helper import hfq_adjustment, qfq_adjustment
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 import sqlite3
 
-from pyqmt.data.sqlite import db
+from quantide.data.sqlite import db
 
 
 def test_sqlite_init_drops_legacy_market_tables(tmp_path):

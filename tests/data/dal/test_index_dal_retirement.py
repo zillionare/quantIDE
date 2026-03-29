@@ -5,4 +5,4 @@ import pytest
 
 def test_index_dal_module_is_removed():
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("pyqmt.data.dal.index_dal")
+        importlib.import_module("quantide.data.dal.index_dal")

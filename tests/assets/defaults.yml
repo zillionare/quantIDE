@@ -2,7 +2,7 @@ server:
   key: quantide
   host: "0.0.0.0"
   port: 8000
-  prefix: '/zillionare-qmt'
+  prefix: '/quantide'
 
 users:
   - name: admin
@@ -35,5 +35,5 @@ notify:
     mail_server: smtp.exmail.qq.com
 
 db:
-  path: ${path: ~/pyqmt/tradedb.db}
+  path: ${path: ~/.quantide/quantide.db}
 

@@ -1,0 +1,57 @@
+server:
+  key: quantide
+  host: "0.0.0.0"
+  port: 8130
+  prefix: '/quantide'
+
+users:
+  - name: admin
+    password: admin-password
+  - name: trader
+    password: trader-password
+
+apikeys:
+  timeout: 300
+  clients:
+    - client: client1
+      key: key1
+
+# 实时行情数据源配置
+# 可选模式:
+#   - gateway: 从远程 qmt-gateway 获取实时推送
+#   - none: 不使用实时行情（仅使用历史数据）
+livequote:
+  mode: gateway
+
+gateway:
+  base_url: "http://127.0.0.1:8000"
+  username: "admin"
+  password: "1234"
+  timeout: 10
+
+runtime:
+  mode: live
+  market_adapter: ""
+  broker_adapter: ""
+
+brokers:
+  - kind: backtest
+    id: backtest
+    default: true
+  - kind: simulation
+    id: sim1
+  - kind: simulation
+    id: sim2
+
+notify:
+  dingtalk:
+    access_token: dingtalk-access-token
+    secret: dingtalk-secret
+    keyword: dingtalk-keyword
+  mail:
+    mail_to: nonexist@quantide.cn
+    mail_from: nonexist@quantide.cn
+    mail_server: smtp.exmail.qq.com
+
+home: ${path: ~/.quantide}
+epoch: 2005-01-01

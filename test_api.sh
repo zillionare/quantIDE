@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 确保在运行前启动了服务器:
-# python -m uvicorn pyqmt.web.apis.broker:app --reload
+# python -m uvicorn quantide.web.apis.broker:app --reload
 
 BASE_URL="http://localhost:8000/broker"
 

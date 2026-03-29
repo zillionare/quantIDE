@@ -5,8 +5,8 @@
 # Once you got persona token, set enviroment variable GH_TOKEN with it
 
 # Create repo and push code to github
-gh repo create pyqmt --public
-git remote add origin git@github.com:zillionare/pyqmt.git
+gh repo create quantide --public
+git remote add origin git@github.com:zillionare/quantide.git
 git add .
 pre-commit run --all-files
 git add .

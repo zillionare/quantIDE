@@ -4,11 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
-from pyqmt.core.domain import QuoteSnapshot
-from pyqmt.core.enums import OrderStatus
-from pyqmt.data.sqlite import db
-from pyqmt.service.metrics import metrics
-from pyqmt.service.sim_broker import PaperBroker, SimulationBroker
+from quantide.core.domain import QuoteSnapshot
+from quantide.core.enums import OrderStatus
+from quantide.data.sqlite import db
+from quantide.service.metrics import metrics
+from quantide.service.sim_broker import PaperBroker, SimulationBroker
 
 
 class DummyMarketData:

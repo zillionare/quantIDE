@@ -2,8 +2,8 @@ import datetime
 
 import pytest
 
-from pyqmt.core.enums import FrameType
-from pyqmt.core.runtime.clock_bridge import BacktestClockAdapter, SystemClockAdapter
+from quantide.core.enums import FrameType
+from quantide.core.runtime.clock_bridge import BacktestClockAdapter, SystemClockAdapter
 
 
 def test_backtest_clock_set_now_and_now():

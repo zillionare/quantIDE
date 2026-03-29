@@ -2,8 +2,8 @@ import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-import pyqmt.config.runtime as runtime_module
-from pyqmt.config.runtime import (
+import quantide.config.runtime as runtime_module
+from quantide.config.runtime import (
     get_runtime_config,
     get_runtime_dingtalk_access_token,
     get_runtime_dingtalk_secret,
@@ -15,7 +15,7 @@ from pyqmt.config.runtime import (
     get_runtime_tushare_token,
     get_runtime_timezone,
 )
-from pyqmt.data.models.app_state import AppState
+from quantide.data.models.app_state import AppState
 
 
 class FailingTable:
@@ -49,8 +49,8 @@ class FakeDb:
 def test_runtime_config_falls_back_to_cfg(monkeypatch):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(
             base_url="https://gateway.example.com/base",
             username="admin",
@@ -65,8 +65,8 @@ def test_runtime_config_falls_back_to_cfg(monkeypatch):
     monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
 
     runtime = get_runtime_config()
-    assert runtime.app_home == "~/pyqmt-home"
-    assert runtime.app_prefix == "/pyqmt"
+    assert runtime.app_home == "~/quantide-home"
+    assert runtime.app_prefix == "/quantide"
     assert runtime.gateway_base_url == "https://gateway.example.com/base"
     assert runtime.gateway_username == "admin"
     assert runtime.livequote_mode == "gateway"
@@ -77,8 +77,8 @@ def test_runtime_config_falls_back_to_cfg(monkeypatch):
 def test_runtime_config_prefers_app_state(db, monkeypatch, tmp_path: Path):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(
             base_url="http://127.0.0.1:8000",
             username="admin",
@@ -124,8 +124,8 @@ def test_runtime_config_prefers_app_state(db, monkeypatch, tmp_path: Path):
 def test_runtime_config_allows_db_to_disable_gateway(db, monkeypatch):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(
             base_url="http://127.0.0.1:8000",
             username="admin",
@@ -160,8 +160,8 @@ def test_runtime_config_allows_db_to_disable_gateway(db, monkeypatch):
 def test_runtime_helpers_follow_db_state(db, monkeypatch, tmp_path: Path):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(base_url="http://127.0.0.1:8000"),
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
@@ -186,8 +186,8 @@ def test_runtime_helpers_follow_db_state(db, monkeypatch, tmp_path: Path):
 def test_runtime_notify_and_token_helpers_follow_db_state(db, monkeypatch):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(base_url="http://127.0.0.1:8000"),
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
@@ -225,7 +225,7 @@ def test_load_app_state_logs_repeated_failure_once(monkeypatch):
     messages: list[str] = []
 
     monkeypatch.setattr(runtime_module, "_LAST_APP_STATE_LOAD_ERROR", None)
-    monkeypatch.setattr("pyqmt.data.sqlite.db", FakeDb(FailingTable()))
+    monkeypatch.setattr("quantide.data.sqlite.db", FakeDb(FailingTable()))
     monkeypatch.setattr(runtime_module.logger, "debug", messages.append)
 
     assert runtime_module._load_app_state() is None
@@ -244,9 +244,9 @@ def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
     )
 
     monkeypatch.setattr(runtime_module, "_LAST_APP_STATE_LOAD_ERROR", None)
-    monkeypatch.setattr("pyqmt.data.sqlite.db", FakeDb(table))
+    monkeypatch.setattr("quantide.data.sqlite.db", FakeDb(table))
     monkeypatch.setattr(
-        "pyqmt.data.models.app_state.AppState.from_dict",
+        "quantide.data.models.app_state.AppState.from_dict",
         staticmethod(lambda row: row),
     )
     monkeypatch.setattr(runtime_module.logger, "debug", messages.append)

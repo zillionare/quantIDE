@@ -4,9 +4,9 @@ import datetime
 import polars as pl
 import pytest
 
-from pyqmt.config import cfg
-from pyqmt.core.enums import OrderSide, OrderStatus
-from pyqmt.core.errors import (
+from quantide.config import cfg
+from quantide.core.enums import OrderSide, OrderStatus
+from quantide.core.errors import (
     BadPercent,
     ClockAfterEnd,
     ClockBeforeStart,
@@ -19,8 +19,8 @@ from pyqmt.core.errors import (
     NonMultipleOfLotSize,
     PriceNotMeet,
 )
-from pyqmt.data.sqlite import Position, db
-from pyqmt.service.backtest_broker import BacktestBroker
+from quantide.data.sqlite import Position, db
+from quantide.service.backtest_broker import BacktestBroker
 
 
 def make_dt(d: datetime.date, hour: int, minute: int = 0) -> datetime.datetime:

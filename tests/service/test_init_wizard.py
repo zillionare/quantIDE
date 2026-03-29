@@ -2,10 +2,10 @@ import datetime
 from types import SimpleNamespace
 
 import pytest
-import pyqmt.service.init_wizard as init_wizard_module
+import quantide.service.init_wizard as init_wizard_module
 
-from pyqmt.data.models.app_state import AppState
-from pyqmt.service.init_wizard import InitWizardService
+from quantide.data.models.app_state import AppState
+from quantide.service.init_wizard import InitWizardService
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +21,8 @@ def reset_service_state(db):
 def test_get_state_loads_defaults_from_config(db, monkeypatch):
     fake_cfg = SimpleNamespace(
         TIMEZONE=datetime.timezone.utc,
-        home="~/pyqmt-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/pyqmt"),
+        home="~/quantide-home",
+        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
         gateway=SimpleNamespace(
             base_url="http://127.0.0.1:8000",
             username="gateway-user",
@@ -56,10 +56,10 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
     service = InitWizardService()
     state = service.get_state(force_refresh=True)
 
-    assert state.app_home == "~/pyqmt-home"
+    assert state.app_home == "~/quantide-home"
     assert state.app_host == "127.0.0.1"
     assert state.app_port == 9100
-    assert state.app_prefix == "/pyqmt"
+    assert state.app_prefix == "/quantide"
     assert state.gateway_base_url == "/"
     assert state.gateway_enabled is True
     assert state.gateway_api_key == "demo-key"

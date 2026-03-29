@@ -1,6 +1,6 @@
 import pytest
 
-from pyqmt.core import xtwrapper
+from quantide.core import xtwrapper
 
 
 @pytest.mark.parametrize(

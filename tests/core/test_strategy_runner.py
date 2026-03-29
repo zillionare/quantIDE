@@ -7,10 +7,10 @@ from unittest import mock
 import pytest
 from loguru import logger
 
-from pyqmt.core.enums import FrameType
-from pyqmt.core.strategy import BaseStrategy
-from pyqmt.data.sqlite import db
-from pyqmt.service.runner import BacktestRunner
+from quantide.core.enums import FrameType
+from quantide.core.strategy import BaseStrategy
+from quantide.data.sqlite import db
+from quantide.service.runner import BacktestRunner
 
 
 # Mock Strategy
@@ -62,7 +62,7 @@ class MockAnnotatedStrategy(BaseStrategy):
 @pytest.fixture
 def mock_calendar():
     """Mock calendar to avoid loading real data files"""
-    with mock.patch("pyqmt.service.backtest_broker.calendar") as mock_cal:
+    with mock.patch("quantide.service.backtest_broker.calendar") as mock_cal:
         # Mock day_shift
         def side_effect_day_shift(start, offset):
             if isinstance(start, datetime.datetime):
@@ -88,7 +88,7 @@ def mock_calendar():
 def mock_data_feed():
     """Mock data feed"""
     # Patch where BacktestBroker imports it
-    with mock.patch("pyqmt.service.backtest_broker.daily_bars") as mock_feed:
+    with mock.patch("quantide.service.backtest_broker.daily_bars") as mock_feed:
         # Mock get_bars_in_range
         mock_df = mock.Mock()
         mock_df.is_empty.return_value = False
@@ -123,7 +123,7 @@ async def test_backtest_logging_and_annotations(caplog, db, mock_calendar, mock_
     end_date = datetime.date(2023, 1, 5)
 
     # Patch runner's calendar usage as well since Runner also imports calendar
-    with mock.patch("pyqmt.service.runner.calendar", mock_calendar):
+    with mock.patch("quantide.service.runner.calendar", mock_calendar):
         runner = BacktestRunner()
 
         # 捕获 loguru 日志
@@ -209,8 +209,8 @@ async def test_backtest_logging_and_annotations(caplog, db, mock_calendar, mock_
             # 2. Run Backtest
             # Patch metrics to avoid ZeroDivisionError with short data
             # Patch runner's daily_bars usage
-            with mock.patch("pyqmt.service.runner.daily_bars", mock_data_feed), \
-                 mock.patch("pyqmt.service.runner.metrics") as mock_metrics:
+            with mock.patch("quantide.service.runner.daily_bars", mock_data_feed), \
+                 mock.patch("quantide.service.runner.metrics") as mock_metrics:
 
                 mock_metrics.return_value = mock.Mock()
                 mock_metrics.return_value.to_dict.return_value = {}

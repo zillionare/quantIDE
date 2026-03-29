@@ -13,8 +13,8 @@ import pyarrow.parquet as pq
 import pytest
 from numpy.lib.stride_tricks import as_strided
 
-from pyqmt.config import get_config_dir
-from pyqmt.data.sqlite import db
+from quantide.config import get_config_dir
+from quantide.data.sqlite import db
 
 
 

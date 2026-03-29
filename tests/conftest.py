@@ -9,7 +9,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from pyqmt.data.sqlite import db as _db
+from quantide.data.sqlite import db as _db
 
 
 @pytest.fixture(scope="session")
@@ -66,7 +66,7 @@ def asset_dir():
 
 @pytest.fixture(scope="session")
 def calendar(asset_dir):
-    from pyqmt.data.models.calendar import Calendar
+    from quantide.data.models.calendar import Calendar
 
     c = Calendar()
     c.load(asset_dir / "baseline_calendar.parquet")

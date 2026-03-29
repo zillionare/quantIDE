@@ -1,6 +1,6 @@
 import pytest
 
-from pyqmt.web.apis.analysis.search import search_stocks
+from quantide.web.apis.analysis.search import search_stocks
 
 
 @pytest.mark.asyncio

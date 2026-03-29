@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pyqmt.service.strategy_runtime import StrategyRuntimeManager
+from quantide.service.strategy_runtime import StrategyRuntimeManager
 
 
 def test_strategy_runtime_manager_extract_symbols():

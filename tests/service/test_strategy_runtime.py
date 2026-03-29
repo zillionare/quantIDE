@@ -1,6 +1,6 @@
 import pytest
 
-from pyqmt.service.strategy_runtime import StrategyBrokerProxy
+from quantide.service.strategy_runtime import StrategyBrokerProxy
 
 
 class DummyBroker:

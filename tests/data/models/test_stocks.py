@@ -11,9 +11,9 @@ from freezegun import freeze_time
 
 
 from tests import asset_dir, bars_ext, calendar
-from pyqmt.data import daily_bars
-from pyqmt.data import stock_list
-from pyqmt.config import cfg
+from quantide.data import daily_bars
+from quantide.data import stock_list
+from quantide.config import cfg
 
 
 @pytest.fixture
@@ -25,8 +25,8 @@ def setup(asset_dir: Path):
     )
 
 
-@patch("pyqmt.data.models.stocks.logger")
-@patch("pyqmt.data.models.stocks.fetch_stock_list")
+@patch("quantide.data.models.stocks.logger")
+@patch("quantide.data.models.stocks.fetch_stock_list")
 def test_load(mock_fetch, mock_logger):
     with patch.object(stock_list, "save") as mock_save:
         stock_list.load("")

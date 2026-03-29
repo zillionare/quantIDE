@@ -12,10 +12,10 @@ import pyarrow as pa
 import pytest
 from freezegun import freeze_time
 
-from pyqmt.data.models.calendar import Calendar
-from pyqmt.data.stores.base import ParquetStorage
+from quantide.data.models.calendar import Calendar
+from quantide.data.stores.base import ParquetStorage
 from tests import asset_dir, bars, bars_mini_set
-from pyqmt.config import cfg
+from quantide.config import cfg
 
 
 @pytest.fixture

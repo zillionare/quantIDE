@@ -1,6 +1,6 @@
 import pytest
 
-from pyqmt.web.apis.analysis.kline import get_sector_kline
+from quantide.web.apis.analysis.kline import get_sector_kline
 
 
 @pytest.mark.asyncio

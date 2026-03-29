@@ -3,15 +3,15 @@ import datetime
 
 import pytest
 
-from pyqmt.core.domain import QuoteSnapshot
-from pyqmt.core.enums import OrderSide, OrderStatus
-from pyqmt.core.errors import (
+from quantide.core.domain import QuoteSnapshot
+from quantide.core.enums import OrderSide, OrderStatus
+from quantide.core.errors import (
     InsufficientCash,
     InsufficientPosition,
     NonMultipleOfLotSize,
 )
-from pyqmt.data.sqlite import Position, db
-from pyqmt.service.sim_broker import PaperBroker
+from quantide.data.sqlite import Position, db
+from quantide.service.sim_broker import PaperBroker
 
 
 class DummyMarketData:

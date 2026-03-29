@@ -1,6 +1,6 @@
-site_name: pyqmt
-repo_url: https://github.com/zillionare/pyqmt
-repo_name: pyqmt
+site_name: quantide
+repo_url: https://github.com/zillionare/quantide
+repo_name: quantide
 
 nav:
   - home: index.md
