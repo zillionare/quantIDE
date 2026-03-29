@@ -17,6 +17,19 @@ init-wizard 的作用是：
 - 配置数据源（tushare token），epoch 及初始下载数据大小，并下载历史数据。
 - 在完成后，应该进入/ (但会被拦截到/auth/login)
 
+## 通用 UI 说明
+
+![](https://cdn.jsdelivr.net/gh/zillionare/imgbed2@main/images/2026/03/20260329160311.png)
+
+UI将使用 monster ui中的 steps 组件来创建，布局如上图所示。
+
+左侧1区为向导步骤，右侧2区为配置项。在右侧中，又有：
+
+1. title， 见图中指示2。title 内容来自于向导流程中的列表，但具体步骤中可能特别说明，以具体步骤文档为准。
+2. 描述。有一些步聚会有额外的描述，请放在 title 下，form 之上。
+3. form 区。用户在这里填写配置项。见图中指示3.
+4. 状态区。在对用户填写的数据进行校验失败后，将对应的输入加上红色边框和 nudge 动作，再在状态区进行提示进一步信息，比如，指定目录无法读写等。
+
 ## 进入规则
 
 ### 第一次访问时
@@ -40,144 +53,94 @@ Once initialization has completed, revisiting `/init-wizard` redirects back to `
 5. 数据源设置及下载
 6. 完成
 
-向导会将每步状态保存在 app_state 中，最终写入数据库
+向导会将每步状态保存在 app_state 中，最终写入数据库。
 
 ### Step : 欢迎步
 
- configure:
+title: 欢迎使用 Quant IDE!
 
-- runtime environment
-- optional gateway
-- optional notification channels
-- initial data configuration and download
+introduce: QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。
 
-It also states that skipping gateway configuration leaves the system in strategy-research-only mode.
+本向导将引导您完成以下工作：
 
-### Step 2: Runtime
+1. 配置运行时环境，比如数据存放目录。
+2. 配置管理员密码
+3. 配置交易/实时行情网关
+4. 配置通知渠道
+5. 配置数据源并下载历史数据。
 
-The runtime step configures:
+### Step 2: 运行环境
 
-- `home`
-- `host`
-- `port`
-- `prefix`
+这一步配置以下选项：
 
-This information is saved when the user advances to the next step.
+| 可选？ | 配置项         | 控件类型   | placeholder         | 变量名和类型 | default     | tip                                              | 说明                                         |
+| ------ | -------------- | ---------- | ------------------- | ------------ | ----------- | ------------------------------------------------ | -------------------------------------------- |
+| N      | 数据存储位置   | 文本输入框 | ~/.quantide         | home, str    | ~/.quantide | 行情数据、数据库将存放在此处。                   | 向导要检查目录是否存在，是否为空，是否能读写 |
+| Y      | 只允许本机访问 | 复选框     | 无                  | host, str    | '127.0.0.1' | 是否仅允许本机访问                               | 默认勾选。如未勾选，则取值为'0.0.0.0'        |
+| Y      | 监听端口       | 文本输入框 | 默认将使用 web 端口 | port, int    | 80          | 选题。除非端口已被其它应用占用，否则可使用默认值 | NA                                           |
+| Y      | 路径前缘       | 文本输入框 | 默认为 /            | prefix, str  | '/'         | 可选。如果不明白含义，可保持默认                 | NA                                           |
 
-The runtime step comes before administrator-password setup because the application data location must be known first.
-
-Current implementation detail:
-
-- application state is stored in `app_home/quantide.db`
-- auth storage is rebound to the same sqlite file after runtime configuration is saved
+在实现时，要注意说明中的检查项。如果校验不通过，则进行错误提示，不得进入下一步。
 
 ### Step 3: Administrator Password
 
-After the welcome step, the wizard requires the operator to set the administrator password.
+设置管理员密码。两次输入，必须相同才能允许进入下一步。
 
-Current behavior:
-
-- administrator username is fixed to `admin`
-- the wizard asks for password and password confirmation
-- mismatched passwords are rejected inline
-- passwords shorter than 6 characters are rejected inline
-- the password is written into the auth user store during the wizard flow
-
-This step is now the primary path for administrator credential setup.
+提示用户使用8位以上密码，字母大小写、数字、特殊符号各一。用户输入第一个框完成后，即给出密码强弱评估，如果是强密码，则给出绿色提示；弱密码给出红色提示；中等给予黄色提示。但只要两次输入一致，允许用户进入下一步。风险由用户自己承担。
 
 ### Step 4: Gateway
 
-The gateway step configures:
+由一个复选框加上若干文本输入框组成。
 
-- whether gateway is enabled
-- gateway server
-- gateway port
-- gateway prefix
-- optional API key
+1. 复选框，是否启用 gateway。tooltip 信息：请安装 quantide gateway并配置，否则无法获得实时行情和执行交易。默认勾选，如果用户取消，则余下的输入框都 disable掉。
+2. 必填（如果勾选了复选框）gateway 服务器地址，默认值为 localhost。
+3. 必填（如果勾选了复选框）gateway 端口，默认值为 8000。
+4 必填（如果勾选了复选框） gateway 访问密钥，默认值为空字符串。提示信息，可在 gateway 用户头像菜单中生成和查看密钥。
+5. 可选填，路径前缘，默认值为 /。
 
-The step also provides a connectivity test button.
+校验：点击下一步时，进行校验。如果校验不通过，可以提示用户先不勾选复选框，后面再配置。校验逻辑是调用 http://gateway:port/prefix/ping
+如果能返回200，则配置正确。否则，提示用户，要么重新配置，要去暂时不勾选复选框。
 
-The test checks the configured target and returns inline success or failure feedback without leaving the wizard.
-
-### Step 5: Notification
-
-The notification step configures DingTalk and mail delivery fields.
-
-This information is saved when the user advances to the next step.
 
 ### Step 6: Data Initialization And Download
 
-The merged data step configures:
+描述是： 配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。
 
-- epoch
-- Tushare token
-- history download years
+这一步将配置以下选项。
 
-The effective history start date is derived from the epoch and the requested number of years.
+- 数据起始日。保存变量为 epoch, 类型为 datetime.date，默认为2005年1月1日。 placeholder 为 2005-01-01。tooltip 为：行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。
+- Tushare 访问密钥。tooltip 为，访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。
+- 首次下载时长。单位为年，默认为1年。tooltip 为：本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您开速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。
 
-The same step also summarizes the initial download plan and the expected datasets:
+在首次下载时长设置下面，有一段描述，介绍在当前选择下，数据下载的起止时间，当用户更改设置时自动更新。计算时使用自然日历。
 
-- trading calendar
-- stock universe
-- daily bars
-- adjustment factors and price limits
-- ST data
+在上述描述之下，还有一段描述，介绍将下载的数据种类，即：
 
-The merged step exposes both:
+- 证券日历
+- 全A 证券列表
+- 历史日线行情（含复权因子与涨跌停价格）
+- ST 数据
 
-- an explicit `开始下载` button in the content area
-- a normal `下一步` button in the footer
+在用户点击下一步时，根据用户设置，进行数据下载，并在下载的过程中，报告下载进度。下载进度将通过下面的对话框展示。
 
-Both entry paths trigger the same download flow.
+![](https://cdn.jsdelivr.net/gh/zillionare/imgbed2@main/images/2026/03/20260329164234.png)
 
-When the user clicks either action:
+当下载完成后，对话框消失，自动进入到下一步。
 
-1. the wizard validates and persists the current data-initialization fields if they were posted again
-2. a background synchronization task is started
-3. a modal progress dialog is shown immediately
-4. progress is streamed through SSE from `/init-wizard/sync-progress`
+如果下载中出现错误，需要在进度对话框中显示错误信息，并在进度对话框消失（比如进度完成，但有错误），在 wizard 对话框中显示错误信息。
 
-The progress dialog currently contains:
-
-- a stage title
-- a progress bar
-- status text
-- a disabled completion button that becomes enabled only after the download finishes successfully
-
-If synchronization fails, the dialog remains in an error state and the completion button stays disabled.
+**变更**： 这一步有一个下载按钮，取消。功能由『下一步』代替。
 
 ### Step 7: Complete
 
-After data synchronization completes, the wizard marks initialization complete and shows a final completion step.
+描述信息：恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。
 
-The current completion page presents an entry button that routes to:
+这一步按钮显示为完成。
 
-- `/trade` when gateway is enabled
-- `/strategy` when gateway is not enabled
+## 其它
 
-## Current Authentication Behavior
+现 init-wizard 中，有一步是设置通知的，这一步暂不实现，代码先删除。
 
-The authentication subsystem still auto-creates a default administrator account if no admin user exists.
+## 再初始化
 
-However, the initialization wizard now overrides that bootstrap convenience by requiring the operator to set the administrator password during initialization.
-
-Operationally, the expected login identity after initialization is:
-
-- username: `admin`
-- password: the value entered in Step 2
-
-## Implementation Notes For Future Changes
-
-The following should remain true for future changes:
-
-- `/init-wizard` remains the canonical initialization entry
-- `/init-wizard?force=true` remains the canonical forced re-entry path
-- initialization state continues to be stored in `app_state`
-- the wizard remains resumable from persisted state
-- download progress remains observable without a full page refresh
-
-## Change Policy
-
-Future wizard changes should update this document first or in the same change.
-
-If implementation and this document diverge, the divergence should be treated as a bug or an undocumented design decision that must be resolved quickly.
+如果用户通过 init-wizard?force=true 强制再次初始化时，需要代入已经保存的选项。如果用户选择的数据目录不变，则不重新初始化数据库表。

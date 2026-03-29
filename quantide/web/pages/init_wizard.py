@@ -152,26 +152,60 @@ def StepIndicator(current_step: int, steps: list[dict]):
 def Step1_Welcome():
     """步骤1：欢迎页"""
     return Div(
-        H3("欢迎使用 Quantide 初始化向导", cls="mb-6", style=f"color: {PRIMARY_COLOR};"),
-        P("该向导将帮助您完成系统初始化与能力开关配置。", cls="text-gray-600 mb-3"),
-        Ul(
-            Li("配置运行环境与访问地址"),
-            Li("可选配置实时行情与交易网关"),
-            Li("可选配置通知告警渠道"),
-            Li("配置数据初始化参数并执行首次下载"),
-            cls="list-disc pl-6 mb-4 text-gray-600",
+        H3("欢迎使用 Quant IDE!", cls="mb-6", style=f"color: {PRIMARY_COLOR};"),
+        P("QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。", cls="text-gray-600 mb-4"),
+        P("本向导将引导您完成以下工作：", cls="text-gray-600 mb-3"),
+        Ol(
+            Li("配置运行时环境，比如数据存放目录。"),
+            Li("配置管理员密码"),
+            Li("配置交易/实时行情网关"),
+            Li("配置数据源并下载历史数据。"),
+            cls="list-decimal pl-6 mb-4 text-gray-600",
         ),
-        P("若跳过网关配置，系统将仅保留策略研究能力。", cls="text-gray-500 text-sm"),
         cls="py-4",
     )
+
+
+def _check_password_strength(password: str) -> tuple[str, str]:
+    """检查密码强度
+
+    Returns:
+        tuple: (强度等级: 'weak'|'medium'|'strong', 提示文本)
+    """
+    if len(password) < 8:
+        return ("weak", "密码长度不足8位")
+
+    has_lower = any(c.islower() for c in password)
+    has_upper = any(c.isupper() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password)
+
+    score = sum([has_lower, has_upper, has_digit, has_special])
+
+    if score >= 4 and len(password) >= 10:
+        return ("strong", "强密码 ✓")
+    elif score >= 3:
+        return ("medium", "中等强度")
+    else:
+        return ("weak", "弱密码：建议使用字母大小写、数字、特殊符号组合")
 
 
 def Step3_Admin(state: dict | None = None):
     """步骤3：管理员密码设置"""
     state = state or {}
+    password = state.get("admin_password", "")
+    strength, strength_text = _check_password_strength(password) if password else ("", "")
+
+    # 根据强度设置颜色
+    strength_color = {
+        "weak": "#dc2626",  # 红色
+        "medium": "#ca8a04",  # 黄色
+        "strong": "#16a34a",  # 绿色
+        "": "#6b7280",  # 灰色（默认）
+    }.get(strength, "#6b7280")
 
     return Div(
-        H4("管理员密码", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        H4("设置管理员密码", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         P("首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。", cls="text-gray-600 mb-3"),
         Card(
             CardBody(
@@ -182,15 +216,25 @@ def Step3_Admin(state: dict | None = None):
                     cls="mb-3",
                 ),
                 P("该账号用于首次登录和后续系统管理。", cls="text-xs text-gray-500 mb-4"),
-                LabelInput(
-                    label="管理员密码",
-                    name="admin_password",
-                    type="password",
-                    value=state.get("admin_password", ""),
-                    placeholder="至少 6 位",
-                    required=True,
+                Div(
+                    LabelInput(
+                        label="管理员密码",
+                        name="admin_password",
+                        type="password",
+                        value=password,
+                        placeholder="请输入管理员密码",
+                        required=True,
+                        oninput="checkPasswordStrength(this.value)",
+                    ),
+                    # 密码强度提示
+                    Div(
+                        Span(strength_text, style=f"color: {strength_color};"),
+                        id="password-strength",
+                        cls="text-sm mt-1",
+                    ) if password else Div(id="password-strength", cls="text-sm mt-1"),
                     cls="mb-3",
                 ),
+                P("提示：建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。", cls="text-xs text-gray-500 mb-3"),
                 LabelInput(
                     label="确认密码",
                     name="admin_password_confirm",
@@ -202,6 +246,42 @@ def Step3_Admin(state: dict | None = None):
                 P("完成初始化后，请使用 admin 和这里设置的密码登录。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
+        # 密码强度检查脚本
+        Script("""
+            function checkPasswordStrength(password) {
+                const strengthDiv = document.getElementById('password-strength');
+                if (!password) {
+                    strengthDiv.innerHTML = '';
+                    return;
+                }
+
+                let strength = 'weak';
+                let text = '弱密码：建议使用字母大小写、数字、特殊符号组合';
+                let color = '#dc2626';
+
+                const hasLower = /[a-z]/.test(password);
+                const hasUpper = /[A-Z]/.test(password);
+                const hasDigit = /\d/.test(password);
+                const hasSpecial = /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password);
+                const score = [hasLower, hasUpper, hasDigit, hasSpecial].filter(Boolean).length;
+
+                if (password.length < 8) {
+                    strength = 'weak';
+                    text = '密码长度不足8位';
+                    color = '#dc2626';
+                } else if (score >= 4 && password.length >= 10) {
+                    strength = 'strong';
+                    text = '强密码 ✓';
+                    color = '#16a34a';
+                } else if (score >= 3) {
+                    strength = 'medium';
+                    text = '中等强度';
+                    color = '#ca8a04';
+                }
+
+                strengthDiv.innerHTML = '<span style="color: ' + color + '">' + text + '</span>';
+            }
+        """),
         cls="max-w-3xl mx-auto",
     )
 
@@ -209,68 +289,54 @@ def Step3_Admin(state: dict | None = None):
 def Step2_Runtime(state: dict | None = None):
     """步骤2：运行环境配置"""
     state = state or {}
-    host = str(state.get("app_host", "0.0.0.0"))
+    # 默认勾选"只允许本机访问"，即 host 默认为 127.0.0.1
+    host = str(state.get("host", "127.0.0.1"))
+    localhost_only = host == "127.0.0.1"
 
     return Div(
         H4("运行环境", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("配置服务监听地址、端口和路径前缀。", cls="text-gray-600 mb-3"),
+        P("配置数据存储位置、访问控制、监听端口和路径前缀。", cls="text-gray-600 mb-3"),
         Card(
             CardBody(
                 LabelInput(
-                    label="home",
-                    name="app_home",
-                    value=state.get("app_home", get_runtime_home()),
-                    placeholder="例如：~/.quantide",
+                    label="数据存储位置",
+                    name="home",
+                    value=state.get("home", "~/.quantide"),
+                    placeholder="~/.quantide",
                     required=True,
                     cls="mb-3",
                 ),
-                P("用途：数据与运行文件存储根目录。未配置将无法正常保存本地数据。", cls="text-xs text-gray-500 mb-4"),
+                P("行情数据、数据库将存放在此处。", cls="text-xs text-gray-500 mb-4"),
                 Div(
-                    Label("host 访问范围", cls="text-sm font-medium"),
-                    Div(
-                        Label(
-                            Input(
-                                type="radio",
-                                name="app_host",
-                                value="127.0.0.1",
-                                checked=host == "127.0.0.1",
-                                cls="uk-radio mr-2",
-                            ),
-                            Span("仅限本机访问"),
-                            cls="flex items-center mr-6",
+                    Label(
+                        Input(
+                            type="checkbox",
+                            name="localhost_only",
+                            value="true",
+                            checked=localhost_only,
+                            cls="uk-checkbox mr-2",
                         ),
-                        Label(
-                            Input(
-                                type="radio",
-                                name="app_host",
-                                value="0.0.0.0",
-                                checked=host != "127.0.0.1",
-                                cls="uk-radio mr-2",
-                            ),
-                            Span("开放访问"),
-                            cls="flex items-center",
-                        ),
-                        cls="flex items-center mt-2",
+                        Span("只允许本机访问"),
+                        cls="flex items-center mb-3",
                     ),
-                    cls="mb-3",
+                    P("是否仅允许本机访问。如未勾选，则允许外部访问。", cls="text-xs text-gray-500 mb-4"),
                 ),
-                P("用途：控制访问范围。仅本机访问时外部设备不可连接。", cls="text-xs text-gray-500 mb-4"),
                 LabelInput(
-                    label="port",
-                    name="app_port",
+                    label="监听端口",
+                    name="port",
                     type="number",
-                    value=state.get("app_port", 8130),
-                    required=True,
+                    value=state.get("port", 80),
+                    placeholder="80",
                     cls="mb-3",
                 ),
-                P("用途：服务端口。若不配置，将使用默认端口 8130。", cls="text-xs text-gray-500 mb-4"),
+                P("除非端口已被其它应用占用，否则可使用默认值。", cls="text-xs text-gray-500 mb-4"),
                 LabelInput(
-                    label="prefix",
-                    name="app_prefix",
-                    value=state.get("app_prefix", "/"),
+                    label="路径前缀",
+                    name="prefix",
+                    value=state.get("prefix", "/"),
                     placeholder="/",
                 ),
-                P("用途：API 路由前缀，可不填写。默认使用 /。", cls="text-xs text-gray-500 mt-2"),
+                P("可选。如果不明白含义，可保持默认。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
         cls="max-w-3xl mx-auto",
@@ -280,236 +346,174 @@ def Step2_Runtime(state: dict | None = None):
 def Step4_Gateway(state: dict | None = None):
     """步骤4：网关配置"""
     state = state or {}
-    enabled = bool(state.get("gateway_enabled", False))
+    enabled = bool(state.get("gateway_enabled", True))  # 默认勾选
 
     return Div(
-        H4("实时行情与交易网关", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        H4("配置交易/实时行情网关", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
         Card(
             CardBody(
                 Div(
-                    Input(
-                        type="checkbox",
-                        name="gateway_enabled",
-                        value="true",
-                        checked=enabled,
-                        onchange="(function(cb){const btn=document.getElementById('gateway-test-btn');if(!btn){return;}if(cb.checked){btn.disabled=false;btn.style.background='#D13527';btn.style.cursor='pointer';}else{btn.disabled=true;btn.style.background='#9ca3af';btn.style.cursor='not-allowed';}})(this)",
-                        cls="uk-checkbox mr-2",
+                    Label(
+                        Input(
+                            type="checkbox",
+                            name="gateway_enabled",
+                            value="true",
+                            checked=enabled,
+                            cls="uk-checkbox mr-2",
+                        ),
+                        Span("启用 gateway"),
+                        title="请安装 quantide gateway并配置，否则无法获得实时行情和执行交易。",
+                        cls="flex items-center mb-2",
                     ),
-                    Span("启用 gateway（用于仿真与实盘）"),
-                    cls="mb-3 flex items-center",
-                ),
-                P("用途：连接实时行情与交易通道。若跳过该步骤，仿真与实盘功能将不可用。", cls="text-xs text-gray-500 mb-4"),
-                LabelInput(
-                    label="server",
-                    name="gateway_server",
-                    value=state.get("gateway_server", ""),
-                    placeholder="例如：127.0.0.1",
                     cls="mb-3",
                 ),
                 LabelInput(
-                    label="port",
+                    label="gateway 服务器地址",
+                    name="gateway_server",
+                    value=state.get("gateway_server", "localhost"),
+                    placeholder="localhost",
+                    disabled=not enabled,
+                    cls="mb-3",
+                ),
+                LabelInput(
+                    label="gateway 端口",
                     name="gateway_port",
                     type="number",
                     value=state.get("gateway_port", 8000),
+                    placeholder="8000",
+                    disabled=not enabled,
                     cls="mb-3",
                 ),
                 LabelInput(
-                    label="prefix",
-                    name="gateway_prefix",
-                    value=state.get("gateway_base_url", "/"),
-                    placeholder="/",
-                    cls="mb-3",
-                ),
-                P(
-                    "说明：此处 prefix 指 gateway 的路径前缀，默认值为 /。网关地址由 server 与 port 组合，无需填写完整 URL。",
-                    cls="text-xs text-gray-500 mb-3",
-                ),
-                LabelInput(
-                    label="api_key",
+                    label="gateway 访问密钥",
                     name="gateway_api_key",
                     value=state.get("gateway_api_key", ""),
-                    placeholder="可选：网关鉴权 key",
+                    placeholder="",
+                    disabled=not enabled,
+                    cls="mb-3",
                 ),
-                Div(
-                    Button(
-                        "测试连通性",
-                        id="gateway-test-btn",
-                        disabled=not enabled,
-                        cls="btn px-4 py-2 rounded mt-4",
-                        style=f"background: {PRIMARY_COLOR if enabled else '#9ca3af'}; color: white; border: none; cursor: {'pointer' if enabled else 'not-allowed'};",
-                        hx_post="/init-wizard/gateway-test",
-                        hx_target="#gateway-test-result",
-                        hx_swap="innerHTML",
-                        hx_include="[name]",
-                    ),
-                    Div(id="gateway-test-result", cls="text-sm mt-3"),
-                    cls="mt-2",
+                P("可在 gateway 用户头像菜单中生成和查看密钥。", cls="text-xs text-gray-500 mb-3"),
+                LabelInput(
+                    label="路径前缀",
+                    name="gateway_prefix",
+                    value=state.get("gateway_prefix", "/"),
+                    placeholder="/",
+                    disabled=not enabled,
                 ),
+                P("默认值为 /。", cls="text-xs text-gray-500 mt-2"),
             )
         ),
         cls="max-w-3xl mx-auto",
     )
 
 
-def Step5_Notify(state: dict | None = None):
-    """步骤5：通知告警配置"""
+def _calculate_download_range(years: int) -> tuple[datetime.date, datetime.date]:
+    """计算下载起止日期
+
+    Args:
+        years: 下载年数
+
+    Returns:
+        tuple: (开始日期, 结束日期)
+    """
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=int(years * 365.25))
+    return start_date, end_date
+
+
+def Step5_DataSetup(state: dict | None = None):
+    """步骤5：数据源设置及下载"""
     state = state or {}
+    epoch = state.get("epoch", "2005-01-01")
+    years = int(state.get("history_years", 1))
+
+    # 计算下载起止时间
+    download_start, download_end = _calculate_download_range(years)
 
     return Div(
-        H4("通知告警配置", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        Card(
-            CardHeader(H5("DingTalk（可选）", cls="text-lg font-semibold")),
-            CardBody(
-                LabelInput(
-                    label="dingtalk.access_token",
-                    name="notify_dingtalk_access_token",
-                    value=state.get("notify_dingtalk_access_token", ""),
-                    cls="mb-3",
-                ),
-                LabelInput(
-                    label="dingtalk.secret",
-                    name="notify_dingtalk_secret",
-                    value=state.get("notify_dingtalk_secret", ""),
-                    cls="mb-3",
-                ),
-                LabelInput(
-                    label="dingtalk.keyword",
-                    name="notify_dingtalk_keyword",
-                    value=state.get("notify_dingtalk_keyword", ""),
-                ),
-                P("用途：推送运行告警。未配置将无法接收钉钉告警。", cls="text-xs text-gray-500 mt-2"),
-            ),
-            cls="mb-4",
-        ),
-        Card(
-            CardHeader(H5("Mail（可选）", cls="text-lg font-semibold")),
-            CardBody(
-                LabelInput(
-                    label="mail.mail_to",
-                    name="notify_mail_to",
-                    value=state.get("notify_mail_to", ""),
-                    cls="mb-3",
-                ),
-                LabelInput(
-                    label="mail.mail_from",
-                    name="notify_mail_from",
-                    value=state.get("notify_mail_from", ""),
-                    cls="mb-3",
-                ),
-                LabelInput(
-                    label="mail.mail_server",
-                    name="notify_mail_server",
-                    value=state.get("notify_mail_server", ""),
-                ),
-                P("用途：邮件告警通道。未配置将无法接收邮件告警。", cls="text-xs text-gray-500 mt-2"),
-            ),
-        ),
-        cls="max-w-3xl mx-auto",
-    )
-
-
-def Step6_DataSetup(state: dict | None = None):
-    """步骤6：数据初始化与下载"""
-    state = state or {}
-    epoch = _format_date_zh(state.get("epoch", "2005-01-01"))
-    years = state.get("history_years", 3)
-    start = state.get("history_start_date", "")
-    if isinstance(start, datetime.date):
-        start = start.strftime("%Y-%m-%d")
-
-    return Div(
-        H4("数据初始化与下载", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P("本步骤将同时配置 epoch、Tushare Token、首次下载年数，并触发首次下载。", cls="text-gray-600 mb-4"),
+        H4("数据源设置及下载", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        P("配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。", cls="text-gray-600 mb-4"),
         Card(
             CardBody(
-                Div(
-                    FormLabel("epoch", required=True),
-                    Input(
-                        type="text",
-                        name="epoch",
-                        value=epoch,
-                        placeholder="例如：2005年01月01日",
-                        cls="uk-input",
-                    ),
-                    P("用途：历史数据抓取起点。设置过晚会导致策略可用历史不足。", cls="text-xs text-gray-500 mt-1"),
-                    cls="mb-4",
-                ),
                 LabelInput(
-                    label="tushare token",
+                    label="数据起始日",
+                    name="epoch",
+                    value=epoch,
+                    placeholder="2005-01-01",
+                    required=True,
+                    cls="mb-3",
+                ),
+                P("行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。", cls="text-xs text-gray-500 mb-4"),
+                LabelInput(
+                    label="Tushare 访问密钥",
                     name="tushare_token",
                     value=state.get("tushare_token", ""),
-                    placeholder="请输入 Tushare Token",
+                    placeholder="",
                     required=True,
                     cls="mb-3",
                 ),
-                P("用途：下载证券日历与行情数据。未配置将无法进行回测与历史数据初始化。", cls="text-xs text-gray-500 mb-4"),
-                LabelInput(
-                    label="首次下载长度（年）",
-                    name="history_years",
-                    type="number",
-                    min="1",
-                    value=years,
-                    required=True,
+                P("访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。", cls="text-xs text-gray-500 mb-4"),
+                Div(
+                    Label("首次下载时长（年）", cls="text-sm font-medium"),
+                    Div(
+                        Input(
+                            type="number",
+                            name="history_years",
+                            min="1",
+                            value=years,
+                            required=True,
+                            cls="uk-input",
+                        ),
+                        cls="mt-1",
+                    ),
+                    P("本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。", cls="text-xs text-gray-500 mt-2"),
+                    cls="mb-4",
                 ),
-                P("用途：决定首次下载范围。过小会影响策略研究样本。", cls="text-xs text-gray-500 mt-2"),
             ),
             cls="mb-4",
         ),
-        P(f"将执行首次数据下载，预计范围约 {years} 年，起始日期 {start}。", cls="text-gray-600 mb-4"),
-        Card(
-            CardBody(
-                Ul(
-                    Li("证券日历"),
-                    Li("全 A 证券列表"),
-                    Li("历史日线行情（含复权因子与涨跌停价格）"),
-                    Li("ST 数据"),
-                    cls="list-disc pl-6 text-sm text-gray-600",
-                ),
-                P("可以点击开始下载，也可以直接点击下一步。两种方式都会触发下载。", cls="text-xs text-gray-500 mt-3"),
-                Div(
-                    Button(
-                        "开始下载",
-                        type="submit",
-                        cls="btn px-6 py-2 rounded mt-4",
-                        style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
-                        hx_post="/init-wizard/download",
-                        hx_target="#wizard-form-container",
-                        hx_swap="innerHTML",
-                        hx_include="[name]",
-                    ),
-                    cls="flex justify-end",
-                ),
-            ),
-            cls="mb-4",
+        # 下载范围描述
+        Div(
+            P(f"当前设置将下载从 {download_start.strftime('%Y年%m月%d日')} 到 {download_end.strftime('%Y年%m月%d日')} 的数据。", cls="text-gray-600 mb-4"),
+            id="download-range-info",
+        ),
+        # 数据种类描述
+        P("将下载以下数据种类：", cls="text-gray-600 mb-2"),
+        Ul(
+            Li("证券日历"),
+            Li("全A 证券列表"),
+            Li("历史日线行情（含复权因子与涨跌停价格）"),
+            Li("ST 数据"),
+            cls="list-disc pl-6 text-sm text-gray-600 mb-4",
         ),
         cls="max-w-3xl mx-auto",
     )
 
 
-def Step7_Complete(state: dict | None = None):
-    """步骤7：完成页面"""
+def Step6_Complete(state: dict | None = None):
+    """步骤6：完成页面"""
     state = state or {}
-    target = "/trade" if state.get("gateway_enabled", False) else "/strategy"
-    text = "实盘" if state.get("gateway_enabled", False) else "策略研究"
 
     return Div(
-        H3("初始化完成", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
-        P(f"系统已完成初始化，正在进入{text}菜单。", cls="text-gray-600 mb-4"),
+        H4("完成", cls="mb-4", style=f"color: {PRIMARY_COLOR};"),
+        P("恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。", cls="text-gray-600 mb-4"),
         Div(
             Button(
-                f"进入{text}",
+                "完成",
                 cls="btn px-6 py-2 rounded",
                 style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
-                hx_get=target,
+                hx_post="/init-wizard/complete",
+                hx_target="#wizard-form-container",
+                hx_swap="innerHTML",
             )
         ),
-        cls="py-4",
+        cls="max-w-3xl mx-auto py-4",
     )
 
 
 # ========== 导航按钮组件 ==========
 
-def WizardButtons(current_step: int, total_steps: int = 7):
+def WizardButtons(current_step: int, total_steps: int = 6):
     """向导导航按钮 - 上一步在左，下一步在右"""
     if current_step >= total_steps:
         return Div(cls="mt-8")
@@ -534,7 +538,8 @@ def WizardButtons(current_step: int, total_steps: int = 7):
         )
 
     if current_step < total_steps:
-        if current_step == 6:
+        if current_step == 5:
+            # 第5步（数据设置）点击下一步触发下载
             right_buttons.append(
                 Button(
                     "下一步",
@@ -592,9 +597,8 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
         {"id": 2, "name": "运行环境", "completed": state_dict.get("init_step", 0) > 2},
         {"id": 3, "name": "管理员密码", "completed": state_dict.get("init_step", 0) > 3},
         {"id": 4, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 4},
-        {"id": 5, "name": "通知告警", "completed": state_dict.get("init_step", 0) > 5},
-        {"id": 6, "name": "数据初始化与下载", "completed": state_dict.get("init_step", 0) > 6},
-        {"id": 7, "name": "完成", "completed": state_dict.get("init_step", 0) >= 7},
+        {"id": 5, "name": "数据源设置及下载", "completed": state_dict.get("init_step", 0) > 5},
+        {"id": 6, "name": "完成", "completed": state_dict.get("init_step", 0) >= 6},
     ]
 
     step_content_map = {
@@ -602,9 +606,8 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
         2: Step2_Runtime(state_dict),
         3: Step3_Admin(state_dict),
         4: Step4_Gateway(state_dict),
-        5: Step5_Notify(state_dict),
-        6: Step6_DataSetup(state_dict),
-        7: Step7_Complete(state_dict),
+        5: Step5_DataSetup(state_dict),
+        6: Step6_Complete(state_dict),
     }
 
     step_content = step_content_map.get(step, Step1_Welcome())
@@ -620,6 +623,7 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                 Div(
                     StepIndicator(step, steps),
                     cls="w-48 flex-shrink-0",
+                    id="step-indicator-container",
                 ),
                 Div(
                     Form(
@@ -714,33 +718,49 @@ async def handle_step(request: Request, step: int):
                     cls="flex-1 pl-8",
                 )
         elif current_step == 4:
+            enabled = "gateway_enabled" in form_dict
+            server = str(form_dict.get("gateway_server", "")).strip()
+            port = int(form_dict.get("gateway_port", 8000))
+            prefix = str(form_dict.get("gateway_prefix", "/")).strip() or "/"
+            api_key = str(form_dict.get("gateway_api_key", "")).strip()
+
+            # 如果启用 gateway，进行连通性校验
+            if enabled:
+                ok, msg = init_wizard.test_gateway_connection(server=server, port=port, prefix=prefix)
+                if not ok:
+                    state = init_wizard.get_state(force_refresh=True)
+                    state_dict = state.to_dict()
+                    state_dict["gateway_enabled"] = enabled
+                    state_dict["gateway_server"] = server
+                    state_dict["gateway_port"] = port
+                    state_dict["gateway_prefix"] = prefix
+                    state_dict["gateway_api_key"] = api_key
+                    return Div(
+                        Form(
+                            Input(type="hidden", name="_current_step", value="4"),
+                            Div(Step4_Gateway(state_dict), id="wizard-content"),
+                            _render_inline_error(f"{msg}"),
+                            WizardButtons(4),
+                            cls="flex-1",
+                        ),
+                        id="wizard-form-container",
+                        cls="flex-1 pl-8",
+                    )
+
             init_wizard.save_gateway_config(
-                enabled="gateway_enabled" in form_dict,
-                server=str(form_dict.get("gateway_server", "")).strip(),
-                port=int(form_dict.get("gateway_port", 8000)),
-                prefix=str(form_dict.get("gateway_prefix", "/")).strip() or "/",
-                api_key=str(form_dict.get("gateway_api_key", "")).strip(),
+                enabled=enabled,
+                server=server,
+                port=port,
+                prefix=prefix,
+                api_key=api_key,
             )
         elif current_step == 5:
-            init_wizard.save_notify_config(
-                dingtalk_access_token=str(
-                    form_dict.get("notify_dingtalk_access_token", "")
-                ).strip(),
-                dingtalk_secret=str(form_dict.get("notify_dingtalk_secret", "")).strip(),
-                dingtalk_keyword=str(
-                    form_dict.get("notify_dingtalk_keyword", "")
-                ).strip(),
-                mail_to=str(form_dict.get("notify_mail_to", "")).strip(),
-                mail_from=str(form_dict.get("notify_mail_from", "")).strip(),
-                mail_server=str(form_dict.get("notify_mail_server", "")).strip(),
-            )
-        elif current_step == 6:
             epoch_str = str(form_dict.get("epoch", "")).strip()
             try:
                 epoch = _parse_epoch_input(epoch_str)
             except ValueError as e:
                 state = init_wizard.get_state(force_refresh=True)
-                step_content = Step6_DataSetup(state.to_dict())
+                step_content = Step5_DataSetup(state.to_dict())
                 return Div(
                     Form(
                         Input(type="hidden", name="_current_step", value=str(step)),
@@ -755,33 +775,53 @@ async def handle_step(request: Request, step: int):
             init_wizard.save_data_init_config(
                 epoch=epoch,
                 tushare_token=str(form_dict.get("tushare_token", "")).strip(),
-                history_years=int(form_dict.get("history_years", 3)),
+                history_years=int(form_dict.get("history_years", 1)),
             )
 
     init_wizard.update_step(step)
     state = init_wizard.get_state(force_refresh=True)
     state_dict = state.to_dict()
 
+    # 构建步骤列表
+    steps = [
+        {"id": 1, "name": "欢迎", "completed": state_dict.get("init_step", 0) > 1},
+        {"id": 2, "name": "运行环境", "completed": state_dict.get("init_step", 0) > 2},
+        {"id": 3, "name": "管理员密码", "completed": state_dict.get("init_step", 0) > 3},
+        {"id": 4, "name": "行情与交易网关", "completed": state_dict.get("init_step", 0) > 4},
+        {"id": 5, "name": "数据源设置及下载", "completed": state_dict.get("init_step", 0) > 5},
+        {"id": 6, "name": "完成", "completed": state_dict.get("init_step", 0) >= 6},
+    ]
+
     step_content_map = {
         1: Step1_Welcome(),
         2: Step2_Runtime(state_dict),
         3: Step3_Admin(state_dict),
         4: Step4_Gateway(state_dict),
-        5: Step5_Notify(state_dict),
-        6: Step6_DataSetup(state_dict),
-        7: Step7_Complete(state_dict),
+        5: Step5_DataSetup(state_dict),
+        6: Step6_Complete(state_dict),
     }
 
     step_content = step_content_map.get(step, Step1_Welcome())
+
+    # 返回包含步骤指示器和表单内容的完整结构
+    # 使用 hx-swap-oob 来更新步骤指示器
     return Div(
+        # 步骤指示器 - 使用 hx-swap-oob 更新左侧
+        Div(
+            StepIndicator(step, steps),
+            cls="w-48 flex-shrink-0",
+            id="step-indicator-container",
+            hx_swap_oob="true",
+        ),
+        # 表单内容
         Form(
             Input(type="hidden", name="_current_step", value=str(step)),
             Div(step_content, id="wizard-content"),
             WizardButtons(step),
             cls="flex-1",
+            id="wizard-form-container",
         ),
-        id="wizard-form-container",
-        cls="flex-1 pl-8",
+        cls="flex",
     )
 
 
@@ -827,7 +867,7 @@ async def _run_data_sync(start_date: datetime.date | None = None):
 
     try:
         state = init_wizard.get_state(force_refresh=True)
-        home = state.app_home or str(getattr(cfg, "home", ""))
+        home = state.app_home
         token = state.tushare_token
         effective_start = start_date or state.history_start_date or state.epoch
 
@@ -957,10 +997,10 @@ async def handle_download(request: Request):
             state = init_wizard.get_state(force_refresh=True)
         except Exception as e:
             state_dict = state.to_dict()
-            step_content = Step6_DataSetup(state_dict)
+            step_content = Step5_DataSetup(state_dict)
             return Div(
                 Form(
-                    Input(type="hidden", name="_current_step", value="6"),
+                    Input(type="hidden", name="_current_step", value="5"),
                     Div(step_content, id="wizard-content"),
                     _render_inline_error(f"下载前参数校验失败：{e}"),
                     Div(cls="mt-8"),
@@ -970,7 +1010,7 @@ async def handle_download(request: Request):
                 cls="flex-1 pl-8",
             )
 
-    init_wizard.update_step(6)
+    init_wizard.update_step(5)
     state = init_wizard.get_state(force_refresh=True)
 
     global _sync_status
@@ -987,10 +1027,10 @@ async def handle_download(request: Request):
     logger.info(f"开始下载历史数据，起始日期: {state.history_start_date}")
 
     state_dict = state.to_dict()
-    step_content = Step6_DataSetup(state_dict)
+    step_content = Step5_DataSetup(state_dict)
     return Div(
         Form(
-            Input(type="hidden", name="_current_step", value="6"),
+            Input(type="hidden", name="_current_step", value="5"),
             Div(step_content, id="wizard-content"),
             Div(cls="mt-8"),
             cls="flex-1",
@@ -1049,17 +1089,6 @@ def SyncProgressDialog():
                     id="sync-status",
                     cls="text-sm text-gray-500 mb-4",
                 ),
-                # 完成按钮（初始隐藏）
-                Button(
-                    "进入系统",
-                    id="complete-btn",
-                    disabled=True,
-                    cls="btn px-6 py-2 rounded",
-                    style="background: #9ca3af; color: white; border: none; cursor: not-allowed;",
-                    hx_post="/init-wizard/complete",
-                    hx_target="#wizard-form-container",
-                    hx_swap="innerHTML",
-                ),
                 cls="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4",
             ),
             cls="fixed inset-0 flex items-center justify-center z-50",
@@ -1070,7 +1099,6 @@ def SyncProgressDialog():
                 const progressBar = document.getElementById('sync-progress-bar');
                 const stageText = document.getElementById('sync-stage');
                 const statusText = document.getElementById('sync-status');
-                const completeBtn = document.getElementById('complete-btn');
 
                 // 创建 EventSource 连接
                 const evtSource = new EventSource('/init-wizard/sync-progress');
@@ -1086,10 +1114,11 @@ def SyncProgressDialog():
 
                         // 检查是否完成
                         if (data.completed) {
-                            completeBtn.disabled = false;
-                            completeBtn.style.background = '#D13527';
-                            completeBtn.style.cursor = 'pointer';
                             evtSource.close();
+                            // 同步完成后自动跳转到完成页面
+                            setTimeout(function() {
+                                window.location.href = '/init-wizard/complete';
+                            }, 1000);
                         }
 
                         // 检查是否有错误
@@ -1097,9 +1126,6 @@ def SyncProgressDialog():
                             statusText.textContent = '同步失败: ' + data.error;
                             statusText.classList.add('text-red-500');
                             stageText.textContent = '同步失败';
-                            completeBtn.disabled = true;
-                            completeBtn.style.background = '#9ca3af';
-                            completeBtn.style.cursor = 'not-allowed';
                             evtSource.close();
                         }
                     } catch (e) {
@@ -1112,9 +1138,6 @@ def SyncProgressDialog():
                     statusText.textContent = '同步连接异常，请稍后重试';
                     statusText.classList.add('text-red-500');
                     stageText.textContent = '同步连接异常';
-                    completeBtn.disabled = true;
-                    completeBtn.style.background = '#9ca3af';
-                    completeBtn.style.cursor = 'not-allowed';
                 };
             })();
         """),

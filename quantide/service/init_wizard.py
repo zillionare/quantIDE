@@ -4,6 +4,7 @@
 """
 
 import datetime
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -318,8 +319,9 @@ class InitWizardService:
             password: 新管理员密码。
         """
         secret = str(password or "").strip()
-        if len(secret) < 6:
-            raise ValueError("管理员密码至少需要 6 位")
+        # 密码长度不再限制，仅做非空检查
+        if not secret:
+            raise ValueError("管理员密码不能为空")
 
         auth = AuthManager.get_instance() or AuthManager()
         if auth.user_repo is None:
@@ -372,6 +374,8 @@ class InitWizardService:
     ) -> tuple[bool, str]:
         """测试网关连通性.
 
+        调用 http://gateway:port/prefix/ping 检查是否能返回200.
+
         Args:
             server: 网关地址。
             port: 网关端口。
@@ -384,23 +388,30 @@ class InitWizardService:
         server = str(server or "").strip()
         if not server:
             return False, "未填写 gateway server"
-        normalized = self._compose_gateway_url(server, int(port), prefix)
 
-        targets = [
-            f"{normalized}/api/health",
-            f"{normalized}/health",
-            normalized,
-        ]
-        for url in targets:
-            try:
-                req = urllib.request.Request(url, method="GET")
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    code = resp.getcode()
-                    if code < 500:
-                        return True, f"连通性测试通过（{url} -> {code}）"
-            except Exception as e:
-                logger.warning(f"网关连通性测试失败: {url}, {e}")
-        return False, "无法连接 gateway，请检查 server/port/prefix 或网络策略"
+        # 构建 ping URL
+        host = str(server).strip()
+        p = str(prefix or "/").strip() or "/"
+        if not p.startswith("/"):
+            p = "/" + p
+        if not p.endswith("/"):
+            p = p + "/"
+        url = f"http://{host}:{int(port)}{p}ping"
+
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                code = resp.getcode()
+                if code == 200:
+                    return True, f"连通性测试通过（{url} -> {code}）"
+                else:
+                    return False, f"网关返回非200状态码: {code}"
+        except urllib.error.HTTPError as e:
+            logger.warning(f"网关连通性测试失败: {url}, HTTP {e.code}")
+            return False, f"无法连接 gateway（HTTP {e.code}），请检查配置或暂时不勾选启用"
+        except Exception as e:
+            logger.warning(f"网关连通性测试失败: {url}, {e}")
+            return False, "无法连接 gateway，请检查 server/port/prefix 或网络策略，或暂时不勾选启用"
 
     def _compose_gateway_url(self, server: str, port: int, prefix: str) -> str:
         host = str(server).strip()
