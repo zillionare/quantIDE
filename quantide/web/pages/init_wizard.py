@@ -310,6 +310,28 @@ def FormLabel(label: str, required: bool = False, tooltip: str | None = None):
     return Div(*children, cls="mb-1")
 
 
+def FormRow(label: str, input_component: Any, required: bool = False, tooltip: str | None = None):
+    """横向排列的表单项（label 和 input 在同一行）
+
+    Args:
+        label: 标签文本
+        input_component: 输入组件
+        required: 是否为必填项
+        tooltip: 可选的提示文本
+    """
+    label_children = [Span(label, style=FONT_STYLES["label"])]
+    if required:
+        label_children.append(RequiredMark())
+    if tooltip:
+        label_children.append(InfoTooltip(tooltip))
+
+    return Div(
+        Div(*label_children, cls="flex items-center gap-1", style="min-width: 100px; flex-shrink: 0;"),
+        Div(input_component, cls="flex-1"),
+        cls="flex items-center gap-4 mb-4",
+    )
+
+
 def FormHint(text: str):
     """表单提示文本"""
     return P(text, style=FONT_STYLES["hint"], cls="mt-1 mb-3")
@@ -317,12 +339,44 @@ def FormHint(text: str):
 
 def SectionTitle(text: str):
     """章节标题"""
-    return H4(text, cls="mb-4", style=f"{FONT_STYLES['title']} color: {PRIMARY_COLOR};")
+    return H3(text, cls="mb-4", style=f"{FONT_STYLES['title']} color: {PRIMARY_COLOR};")
 
 
 def SectionDescription(text: str):
     """章节描述"""
-    return P(text, style=FONT_STYLES["description"], cls="mb-8")
+    return P(text, style=FONT_STYLES["description"], cls="mb-4")
+
+
+WIZARD_STEP_META = {
+    1: {
+        "title": "欢迎使用 Quant IDE!",
+        "description": "QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。",
+    },
+    2: {
+        "title": "运行环境",
+        "description": "配置行情数据存储位置、访问控制、监听端口和路径前缀。配置数据库固定保存在系统配置目录。",
+    },
+    3: {
+        "title": "设置管理员密码",
+        "description": "首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。",
+    },
+    4: {
+        "title": "配置交易/实时行情网关",
+        "description": "配置 gateway 连接信息，用于获取实时行情和执行交易。",
+    },
+    5: {
+        "title": "数据源设置及下载",
+        "description": "配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。将下载以下数据：证券日历、全A证券列表、历史日线行情（含复权因子与涨跌停价格）、ST数据。",
+    },
+    6: {
+        "title": "初始化完成",
+        "description": "恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。",
+    },
+}
+
+
+def _get_step_meta(step: int) -> dict[str, str]:
+    return WIZARD_STEP_META.get(step, WIZARD_STEP_META[1])
 
 
 # ========== 步骤指示器组件 ==========
@@ -345,8 +399,8 @@ def StepIndicator(current_step: int, steps: list[dict]):
 
     # 布局参数
     circle_size = 32  # 圆圈大小
-    step_spacing = 80  # 步骤之间的间距（圆心到圆心）
-    first_step_top = 48  # 第一个步骤距离顶部的距离
+    step_spacing = 70  # 步骤之间的间距（圆心到圆心）
+    first_step_top = 0  # 第一个步骤距离顶部的距离，与右侧 header 顶部对齐
 
     # 构建所有步骤元素
     step_elements = []
@@ -448,8 +502,6 @@ def StepIndicator(current_step: int, steps: list[dict]):
 def Step1_Welcome():
     """步骤1：欢迎页"""
     return Div(
-        SectionTitle("欢迎使用 Quant IDE!"),
-        SectionDescription("QuantIDE 是为量化人打造的集成开发环境 -- 数据、研究、回测、实盘。"),
         P("本向导将引导您完成以下工作：", style=FONT_STYLES["description"], cls="mb-4 mt-6"),
         Ol(
             Li("配置运行时环境，比如数据存放目录。", style=FONT_STYLES["description"]),
@@ -458,6 +510,7 @@ def Step1_Welcome():
             Li("配置数据源并下载历史数据。", style=FONT_STYLES["description"]),
             cls="list-decimal pl-6 space-y-2",
         ),
+        cls="w-full",
     )
 
 
@@ -500,17 +553,8 @@ def Step3_Admin(state: dict | None = None):
     }.get(strength, "#6b7280")
 
     return Div(
-        SectionTitle("设置管理员密码"),
-        SectionDescription("首次初始化时必须设置管理员密码。当前版本固定使用 admin 作为管理员账号。"),
         Card(
             CardBody(
-                # 管理员账号（只读）
-                FormLabel("管理员账号", tooltip="固定使用 admin 作为管理员账号，用于首次登录和系统管理。完成初始化后，请使用 admin 和设置的密码登录。"),
-                Input(
-                    value="admin",
-                    disabled=True,
-                    cls="uk-input mb-4",
-                ),
                 # 管理员密码
                 FormLabel("管理员密码", required=True, tooltip="建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。"),
                 Div(
@@ -578,7 +622,7 @@ def Step3_Admin(state: dict | None = None):
                 strengthDiv.innerHTML = '<span style="color: ' + color + '">' + text + '</span>';
             }
         """),
-        cls="max-w-3xl mx-auto",
+        cls="w-full",
     )
 
 
@@ -587,8 +631,6 @@ def Step2_Runtime(state: dict | None = None):
     values = _runtime_form_state(state)
 
     return Div(
-        SectionTitle("运行环境"),
-        SectionDescription("配置行情数据存储位置、访问控制、监听端口和路径前缀。配置数据库固定保存在系统配置目录。"),
         Card(
             CardBody(
                 # 数据存储位置
@@ -615,25 +657,31 @@ def Step2_Runtime(state: dict | None = None):
                     ),
                 ),
                 # 监听端口
-                FormLabel("监听端口", tooltip="除非端口已被其它应用占用，否则可使用默认值。"),
-                Input(
-                    name=RUNTIME_FORM_FIELDS["port"],
-                    type="number",
-                    value=values[RUNTIME_FORM_FIELDS["port"]],
-                    placeholder="8130",
-                    cls="uk-input mb-4",
+                FormRow(
+                    "监听端口",
+                    Input(
+                        name=RUNTIME_FORM_FIELDS["port"],
+                        type="number",
+                        value=values[RUNTIME_FORM_FIELDS["port"]],
+                        placeholder="8130",
+                        cls="uk-input",
+                    ),
+                    tooltip="除非端口已被其它应用占用，否则可使用默认值。",
                 ),
                 # 路径前缀
-                FormLabel("路径前缀", tooltip="可选。如果不明白含义，可保持默认。"),
-                Input(
-                    name=RUNTIME_FORM_FIELDS["prefix"],
-                    value=values[RUNTIME_FORM_FIELDS["prefix"]],
-                    placeholder="/quantide",
-                    cls="uk-input mb-4",
+                FormRow(
+                    "路径前缀",
+                    Input(
+                        name=RUNTIME_FORM_FIELDS["prefix"],
+                        value=values[RUNTIME_FORM_FIELDS["prefix"]],
+                        placeholder="/quantide",
+                        cls="uk-input",
+                    ),
+                    tooltip="可选。如果不明白含义，可保持默认。",
                 ),
             )
         ),
-        cls="max-w-3xl mx-auto",
+        cls="w-full",
     )
 
 
@@ -643,8 +691,6 @@ def Step4_Gateway(state: dict | None = None):
     enabled = bool(values[GATEWAY_FORM_FIELDS["enabled"]])
 
     return Div(
-        SectionTitle("配置交易/实时行情网关"),
-        SectionDescription("配置 gateway 连接信息，用于获取实时行情和执行交易。"),
         Card(
             CardBody(
                 # 启用 gateway
@@ -663,45 +709,57 @@ def Step4_Gateway(state: dict | None = None):
                     ),
                 ),
                 # gateway 服务器地址
-                FormLabel("服务器地址", tooltip="gateway 服务器的主机名或 IP 地址。"),
-                Input(
-                    name=GATEWAY_FORM_FIELDS["server"],
-                    value=values[GATEWAY_FORM_FIELDS["server"]],
-                    placeholder="localhost",
-                    disabled=not enabled,
-                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
+                FormRow(
+                    "服务器地址",
+                    Input(
+                        name=GATEWAY_FORM_FIELDS["server"],
+                        value=values[GATEWAY_FORM_FIELDS["server"]],
+                        placeholder="localhost",
+                        disabled=not enabled,
+                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                    ),
+                    tooltip="gateway 服务器的主机名或 IP 地址。",
                 ),
                 # gateway 端口
-                FormLabel("端口", tooltip="gateway 服务监听的端口号。"),
-                Input(
-                    name=GATEWAY_FORM_FIELDS["port"],
-                    type="number",
-                    value=values[GATEWAY_FORM_FIELDS["port"]],
-                    placeholder="8000",
-                    disabled=not enabled,
-                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
+                FormRow(
+                    "端口",
+                    Input(
+                        name=GATEWAY_FORM_FIELDS["port"],
+                        type="number",
+                        value=values[GATEWAY_FORM_FIELDS["port"]],
+                        placeholder="8000",
+                        disabled=not enabled,
+                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                    ),
+                    tooltip="gateway 服务监听的端口号。",
                 ),
                 # gateway 访问密钥
-                FormLabel("访问密钥", tooltip="可在 gateway 用户头像菜单中生成和查看密钥。"),
-                Input(
-                    name=GATEWAY_FORM_FIELDS["api_key"],
-                    value=values[GATEWAY_FORM_FIELDS["api_key"]],
-                    placeholder="",
-                    disabled=not enabled,
-                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
+                FormRow(
+                    "访问密钥",
+                    Input(
+                        name=GATEWAY_FORM_FIELDS["api_key"],
+                        value=values[GATEWAY_FORM_FIELDS["api_key"]],
+                        placeholder="",
+                        disabled=not enabled,
+                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                    ),
+                    tooltip="可在 gateway 用户头像菜单中生成和查看密钥。",
                 ),
                 # 路径前缀
-                FormLabel("路径前缀", tooltip="默认值为 /。"),
-                Input(
-                    name=GATEWAY_FORM_FIELDS["prefix"],
-                    value=values[GATEWAY_FORM_FIELDS["prefix"]],
-                    placeholder="/",
-                    disabled=not enabled,
-                    cls=f"uk-input mb-4 {'uk-disabled' if not enabled else ''}",
+                FormRow(
+                    "路径前缀",
+                    Input(
+                        name=GATEWAY_FORM_FIELDS["prefix"],
+                        value=values[GATEWAY_FORM_FIELDS["prefix"]],
+                        placeholder="/",
+                        disabled=not enabled,
+                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                    ),
+                    tooltip="默认值为 /。",
                 ),
             )
         ),
-        cls="max-w-3xl mx-auto",
+        cls="w-full",
     )
 
 
@@ -719,6 +777,16 @@ def _calculate_download_range(years: int) -> tuple[datetime.date, datetime.date]
     return start_date, end_date
 
 
+def _render_download_range_info(years: int) -> Any:
+    """渲染下载范围信息"""
+    download_start, download_end = _calculate_download_range(years)
+    return P(
+        f"当前设置将下载从 {download_start.strftime('%Y年%m月%d日')} 到 {download_end.strftime('%Y年%m月%d日')} 的数据。",
+        style=FONT_STYLES["description"],
+        cls="mb-4 mt-4",
+    )
+
+
 def Step5_DataSetup(state: dict | None = None):
     """步骤5：数据源设置及下载"""
     values = _data_init_form_state(state)
@@ -733,77 +801,73 @@ def Step5_DataSetup(state: dict | None = None):
     download_start, download_end = _calculate_download_range(years)
 
     return Div(
-        SectionTitle("数据源设置及下载"),
-        SectionDescription("配置数据源，触发首次下载。首次下载可以仅下载少量数据，后续系统会以后台任务继续下载，直到数据补齐到您设定的数据起始日。"),
         Card(
             CardBody(
                 # 数据起始日
-                FormLabel("数据起始日", required=True, tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。"),
-                Input(
-                    name=DATA_INIT_FORM_FIELDS["epoch"],
-                    value=epoch,
-                    placeholder="2005-01-01",
+                FormRow(
+                    "数据起始日",
+                    Input(
+                        name=DATA_INIT_FORM_FIELDS["epoch"],
+                        value=epoch,
+                        placeholder="2005-01-01",
+                        required=True,
+                        cls="uk-input",
+                    ),
                     required=True,
-                    cls="uk-input mb-4",
+                    tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。",
                 ),
                 # Tushare 访问密钥
-                FormLabel("Tushare 访问密钥", required=True, tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。"),
-                Input(
-                    name=DATA_INIT_FORM_FIELDS["tushare_token"],
-                    value=values[DATA_INIT_FORM_FIELDS["tushare_token"]],
-                    placeholder="请输入您的 tushare token",
+                FormRow(
+                    "Tushare 访问密钥",
+                    Input(
+                        name=DATA_INIT_FORM_FIELDS["tushare_token"],
+                        value=values[DATA_INIT_FORM_FIELDS["tushare_token"]],
+                        placeholder="请输入您的 tushare token",
+                        required=True,
+                        cls="uk-input",
+                    ),
                     required=True,
-                    cls="uk-input mb-4",
+                    tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。",
                 ),
                 # 首次下载时长
-                FormLabel("首次下载时长（年）", required=True, tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。"),
-                Input(
-                    type="number",
-                    name=DATA_INIT_FORM_FIELDS["history_years"],
-                    min="1",
-                    value=years_raw,
+                FormRow(
+                    "首次下载时长（年）",
+                    Input(
+                        type="number",
+                        name=DATA_INIT_FORM_FIELDS["history_years"],
+                        min="1",
+                        value=years_raw,
+                        required=True,
+                        cls="uk-input",
+                        hx_trigger="change",
+                        hx_post="/init-wizard/update-download-range",
+                        hx_target="#download-range-info",
+                        hx_include="[name='history_years']",
+                    ),
                     required=True,
-                    cls="uk-input mb-4",
+                    tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。",
                 ),
             )
         ),
         # 下载范围描述
         Div(
-            P(f"当前设置将下载从 {download_start.strftime('%Y年%m月%d日')} 到 {download_end.strftime('%Y年%m月%d日')} 的数据。", style=FONT_STYLES["description"], cls="mb-4 mt-4"),
+            _render_download_range_info(years),
             id="download-range-info",
         ),
-        # 数据种类描述
-        P("将下载以下数据种类：", style=FONT_STYLES["description"], cls="mb-2"),
-        Ul(
-            Li("证券日历", style=FONT_STYLES["hint"]),
-            Li("全A 证券列表", style=FONT_STYLES["hint"]),
-            Li("历史日线行情（含复权因子与涨跌停价格）", style=FONT_STYLES["hint"]),
-            Li("ST 数据", style=FONT_STYLES["hint"]),
-            cls="list-disc pl-6 mb-4",
-        ),
-        cls="max-w-3xl mx-auto",
+        cls="w-full",
     )
 
 
 def Step6_Complete(state: dict | None = None):
     """步骤6：完成页面"""
-    state = state or {}
-
     return Div(
-        SectionTitle("初始化完成"),
-        SectionDescription("恭喜！您的系统已经初始化完成。点击下方按钮，立即进入系统。"),
         Div(
-            Button(
-                "进入系统",
-                cls="btn px-6 py-2 rounded",
-                style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
-                hx_post="/init-wizard/complete",
-                hx_target="#wizard-main-container",
-                hx_swap="innerHTML",
-            ),
-            cls="mt-6",
+            "✓",
+            cls="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold mx-auto",
+            style=f"background: rgba(209, 53, 39, 0.12); color: {PRIMARY_COLOR};",
         ),
-        cls="max-w-3xl mx-auto py-4",
+        P("配置已保存，您可以立即进入系统开始使用。", cls="text-center mt-6", style=FONT_STYLES["description"]),
+        cls="w-full py-8",
     )
 
 
@@ -829,13 +893,44 @@ def _build_step_progress(state_dict: dict[str, Any]) -> list[dict[str, int | str
 
 
 WIZARD_PANEL_STYLE = (
-    "box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), "
-    "0 1px 2px rgba(0, 0, 0, 0.06);"
+    # "background: white; border-radius: 12px; min-height: 560px; "
+    # "padding: 36px 44px 28px; display: flex; flex-direction: column; "
+    # "box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);"
 )
 
 WIZARD_STEP_WRAPPER_STYLE = (
-    "padding-top: 0; min-height: 520px; overflow: visible; position: relative;"
+    "width: 88px; min-height: 420px; display: flex; align-items: flex-start; "
+    "justify-content: center; overflow: visible;"
 )
+
+WIZARD_BODY_INNER_STYLE = "width: 100%; margin: 0 auto;"
+
+
+def _render_wizard_header(step: int, error_message: str | None = None):
+    meta = _get_step_meta(step)
+    children: list[Any] = [SectionTitle(meta["title"])]
+    description = meta.get("description")
+    if description:
+        children.append(SectionDescription(description))
+        children.append(Hr(cls="mb-4"))
+    if error_message:
+        children.append(_render_inline_error(error_message))
+    return Div(*children, id="wizard-header-region", cls="wizard-region")
+
+
+def _render_wizard_body(step_content: Any):
+    return Div(
+        Div(step_content, style=WIZARD_BODY_INNER_STYLE, cls="wizard-body-inner"),
+        id="wizard-body-region",
+        cls="wizard-region",
+    )
+
+
+def _render_wizard_footer(step: int, *, show_buttons: bool = True):
+    children: list[Any] = []
+    if show_buttons:
+        children.append(WizardButtons(step))
+    return Div(*children, id="wizard-footer-region", cls="wizard-region")
 
 
 def _render_wizard_form(
@@ -845,17 +940,13 @@ def _render_wizard_form(
     current_step_value: int | None = None,
     error_message: str | None = None,
     show_buttons: bool = True,
-    trailing_children: tuple[Any, ...] = (),
 ):
     children: list[Any] = [
         Input(type="hidden", name="_current_step", value=str(current_step_value or step)),
-        Div(step_content, id="wizard-content"),
+        _render_wizard_header(step, error_message),
+        _render_wizard_body(Div(step_content, id="wizard-content")),
+        _render_wizard_footer(step, show_buttons=show_buttons),
     ]
-    if error_message:
-        children.append(_render_inline_error(error_message))
-    children.extend(trailing_children)
-    if show_buttons:
-        children.append(WizardButtons(step))
     return Form(*children, cls="flex-1", id="wizard-form-container")
 
 
@@ -867,42 +958,46 @@ def _render_wizard_main_content(
     current_step_value: int | None = None,
     error_message: str | None = None,
     show_buttons: bool = True,
-    trailing_children: tuple[Any, ...] = (),
     extra_nodes: tuple[Any, ...] = (),
 ):
-    steps = _build_step_progress(state_dict)
     form = _render_wizard_form(
         step,
         step_content or _build_step_content(step, state_dict),
         current_step_value=current_step_value,
         error_message=error_message,
         show_buttons=show_buttons,
-        trailing_children=trailing_children,
     )
     return Div(
         Div(
-            Div(
-                StepIndicator(step, steps),
-                cls="flex-shrink-0",
-                id="step-indicator-wrapper",
-                style=WIZARD_STEP_WRAPPER_STYLE,
-            ),
-            Div(
-                form,
-                cls="flex-1 ml-12",
-                style=WIZARD_PANEL_STYLE,
-            ),
-            cls="flex items-start w-full",
+            StepIndicator(step, _build_step_progress(state_dict)),
+            cls="flex-shrink-0",
+            id="step-indicator-wrapper",
+            style=WIZARD_STEP_WRAPPER_STYLE,
+        ),
+        Div(
+            form,
+            cls="flex-1",
+            style=WIZARD_PANEL_STYLE,
         ),
         *extra_nodes,
-        cls="w-full",
+        cls="flex items-stretch w-full gap-12",
     )
 
 
 def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
     """向导导航按钮 - 上一步在左，下一步在右"""
     if current_step >= total_steps:
-        return Div(cls="mt-8")
+        return Div(
+            Button(
+                "进入系统",
+                cls="btn px-6 py-2.5 rounded-md font-medium text-sm",
+                style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
+                hx_post="/init-wizard/complete",
+                hx_target="#wizard-main-container",
+                hx_swap="innerHTML",
+            ),
+            cls="flex justify-end",
+        )
 
     left_buttons = []
     right_buttons = []
@@ -957,13 +1052,9 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
             )
 
     return Div(
-        Div(style="height: 1px; background: #e5e7eb; margin-bottom: 24px;"),
-        Div(
-            Div(*left_buttons, cls="flex gap-3"),
-            Div(*right_buttons, cls="flex gap-3"),
-            cls="flex justify-between",
-        ),
-        cls="mt-12",
+        Div(*left_buttons, cls="flex gap-3"),
+        Div(*right_buttons, cls="flex gap-3"),
+        cls="flex justify-between items-center",
     )
 
 
@@ -987,10 +1078,9 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
             Style(
                 """
                 #wizard-form-container {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 48px 56px;
-                    min-height: 520px;
+                    min-height: 420px;
+                    display: flex;
+                    flex-direction: column;
                 }
                 #wizard-form-container .uk-input {
                     border: 1px solid #e5e7eb;
@@ -1021,17 +1111,36 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     background: #D13527;
                     border-color: #D13527;
                 }
+                #wizard-header-region {
+                    flex: 0 0 auto;
+                }
+                #wizard-body-region {
+                    flex: 1 1 auto;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 12px 0;
+                }
+                #wizard-footer-region {
+                    flex: 0 0 auto;
+                    margin-top: auto;
+                    padding-top: 16px;
+                    border-top: 1px solid #e5e7eb;
+                }
                 #wizard-main-container {
                     display: flex;
                     align-items: flex-start;
-                    max-width: 900px;
+                    gap: 40px;
+                    max-width: 720px;
                     margin: 0 auto;
-                    padding: 64px 24px 64px;
+                    padding: 32px 40px;
+                    background: #fefefe;
+                    box-shadow: 0px 2px 3px rgba(0,0,0,0.2);
                 }
                 #step-indicator-wrapper {
-                    padding-top: 0;
-                    min-height: 520px;
-                    overflow: visible;
+                    min-height: 420px;
+                    display: flex;
+                    align-items: flex-start;
                 }
                 """
             ),
@@ -1380,6 +1489,18 @@ async def _run_data_sync(start_date: datetime.date | None = None):
         _sync_status["is_running"] = False
 
 
+@rt("/update-download-range")
+async def handle_update_download_range(request: Request):
+    """更新下载范围显示"""
+    form_data = await request.form()
+    years_raw = str(form_data.get(DATA_INIT_FORM_FIELDS["history_years"], "1")).strip()
+    try:
+        years = _parse_positive_int_input(years_raw, "首次下载时长", 1)
+    except ValueError:
+        years = 1
+    return _render_download_range_info(years)
+
+
 @rt("/download")
 async def handle_download(request: Request):
     """开始下载初始化数据"""
@@ -1409,8 +1530,6 @@ async def handle_download(request: Request):
                 step_content=step_content,
                 current_step_value=5,
                 error_message=f"下载前参数校验失败：{e}",
-                show_buttons=False,
-                trailing_children=(Div(cls="mt-8"),),
             )
 
     init_wizard.update_step(5)
@@ -1436,7 +1555,6 @@ async def handle_download(request: Request):
         step_content=Step5_DataSetup(state_dict),
         current_step_value=5,
         show_buttons=False,
-        trailing_children=(Div(cls="mt-8"),),
         extra_nodes=(SyncProgressDialog(),),
     )
 

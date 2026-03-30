@@ -121,6 +121,16 @@ def test_wizard_buttons_uses_shared_total_steps():
     assert init_wizard_page.WizardButtons.__defaults__ == (WIZARD_TOTAL_STEPS,)
 
 
+def test_render_wizard_main_content_uses_three_region_layout():
+    html = str(init_wizard_page._render_wizard_main_content(2, {"init_step": 2}))
+
+    assert 'id="wizard-header-region"' in html
+    assert 'id="wizard-body-region"' in html
+    assert 'id="wizard-footer-region"' in html
+    assert html.index('id="wizard-header-region"') < html.index('id="wizard-body-region"')
+    assert html.index('id="wizard-body-region"') < html.index('id="wizard-footer-region"')
+
+
 @pytest.mark.asyncio
 async def test_handle_step_keeps_progress_indicator_in_main_container_swap(monkeypatch):
     fake_wizard = FakeInitWizard()
