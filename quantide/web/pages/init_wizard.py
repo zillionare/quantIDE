@@ -331,60 +331,115 @@ def SectionDescription(text: str):
 def StepIndicator(current_step: int, steps: list[dict]):
     """步骤指示器组件（垂直时间线样式）
 
-    参考示例设计，使用贯穿的连接线，两边出头。
+    完全自定义实现，不使用 FastHTML 的 steps 组件。
+    特点：
+    - 当前步骤圆圈与右侧标题顶部对齐
+    - 连接线在圆圈下方（从圆圈底部到下一个圆圈顶部）
+    - 所有步骤固定间距
 
     Args:
         current_step: 当前步骤
         steps: 步骤列表，每个步骤包含 id, name, completed
     """
     total_steps = len(steps)
-    step_items = []
+
+    # 布局参数
+    circle_size = 32  # 圆圈大小
+    step_spacing = 80  # 步骤之间的间距（圆心到圆心）
+    first_step_top = 48  # 第一个步骤距离顶部的距离
+
+    # 构建所有步骤元素
+    step_elements = []
 
     for i, step in enumerate(steps, 1):
         is_active = i == current_step
         is_completed = step.get("completed", False)
 
-        # 确定圆圈样式
-        if is_active:
-            # 当前步骤：实心主色调
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
-        elif is_completed:
-            # 已完成步骤：实心主色调，白色对勾
-            circle_style = f"background: {PRIMARY_COLOR}; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;"
-        else:
-            # 未开始步骤：白色背景，灰色边框
-            circle_style = "background: white; color: #9ca3af; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; border: 2px solid #e5e7eb;"
+        # 计算该步骤圆圈的顶部位置
+        circle_top = first_step_top + (i - 1) * step_spacing
 
-        # 圆圈内容
+        # 圆圈样式
+        if is_active:
+            circle_bg = PRIMARY_COLOR
+            circle_color = "white"
+            circle_border = "none"
+            font_weight = "600"
+        elif is_completed:
+            circle_bg = PRIMARY_COLOR
+            circle_color = "white"
+            circle_border = "none"
+            font_weight = "600"
+        else:
+            circle_bg = "white"
+            circle_color = "#9ca3af"
+            circle_border = "2px solid #e5e7eb"
+            font_weight = "500"
+
         circle_content = "✓" if is_completed else str(i)
 
-        # 添加连接线（除了最后一个）
-        if i < total_steps:
-            connector = Div(
-                style=f"width: 2px; height: 40px; background: {'#e5e7eb' if not is_completed else PRIMARY_COLOR}; margin: 4px 0;"
-            )
-        else:
-            connector = None
-
-        step_items.append(
-            Li(
-                Div(
-                    Span(
-                        circle_content,
-                        style=circle_style,
-                    ),
-                    cls="flex justify-center",
-                ),
-                connector if connector else "",
-                cls="step",
-                title=step["name"],
-            )
+        # 圆圈元素 - 绝对定位
+        circle = Div(
+            circle_content,
+            style=f"""
+                position: absolute;
+                top: {circle_top}px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: {circle_size}px;
+                height: {circle_size}px;
+                border-radius: 50%;
+                background: {circle_bg};
+                color: {circle_color};
+                border: {circle_border};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                font-weight: {font_weight};
+                z-index: 2;
+            """,
+            title=step["name"],
         )
+        step_elements.append(circle)
 
-    return Ul(
-        *step_items,
-        cls="steps-vertical list-none p-0 m-0",
-        style="width: 48px; flex-shrink: 0;",
+        # 连接线（在当前圆圈下方，除了最后一个）
+        if i < total_steps:
+            # 连接线从当前圆圈底部到下一个圆圈顶部
+            line_top = circle_top + circle_size  # 当前圆圈底部
+            line_height = step_spacing - circle_size  # 到下一个圆圈顶部的距离
+
+            # 确定连接线颜色
+            if is_completed:
+                line_color = PRIMARY_COLOR  # 已完成步骤的连接线为红色
+            else:
+                line_color = "#e5e7eb"  # 未完成步骤的连接线为灰色
+
+            line = Div(
+                style=f"""
+                    position: absolute;
+                    left: 50%;
+                    top: {line_top}px;
+                    transform: translateX(-50%);
+                    width: 2px;
+                    height: {line_height}px;
+                    background: {line_color};
+                    z-index: 1;
+                """
+            )
+            step_elements.append(line)
+
+    # 容器高度：最后一个圆圈位置 + 圆圈大小 + 底部留白
+    container_height = first_step_top + (total_steps - 1) * step_spacing + circle_size + 20
+
+    return Div(
+        *step_elements,
+        cls="step-indicator-container",
+        style=f"""
+            position: relative;
+            width: 48px;
+            height: {container_height}px;
+            flex-shrink: 0;
+        """
     )
 
 
@@ -743,7 +798,7 @@ def Step6_Complete(state: dict | None = None):
                 cls="btn px-6 py-2 rounded",
                 style=f"background: {PRIMARY_COLOR}; color: white; border: none;",
                 hx_post="/init-wizard/complete",
-                hx_target="#wizard-form-container",
+                hx_target="#wizard-main-container",
                 hx_swap="innerHTML",
             ),
             cls="mt-6",
@@ -773,6 +828,77 @@ def _build_step_progress(state_dict: dict[str, Any]) -> list[dict[str, int | str
     return build_wizard_steps(current_step)
 
 
+WIZARD_PANEL_STYLE = (
+    "box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), "
+    "0 1px 2px rgba(0, 0, 0, 0.06);"
+)
+
+WIZARD_STEP_WRAPPER_STYLE = (
+    "padding-top: 0; min-height: 520px; overflow: visible; position: relative;"
+)
+
+
+def _render_wizard_form(
+    step: int,
+    step_content: Any,
+    *,
+    current_step_value: int | None = None,
+    error_message: str | None = None,
+    show_buttons: bool = True,
+    trailing_children: tuple[Any, ...] = (),
+):
+    children: list[Any] = [
+        Input(type="hidden", name="_current_step", value=str(current_step_value or step)),
+        Div(step_content, id="wizard-content"),
+    ]
+    if error_message:
+        children.append(_render_inline_error(error_message))
+    children.extend(trailing_children)
+    if show_buttons:
+        children.append(WizardButtons(step))
+    return Form(*children, cls="flex-1", id="wizard-form-container")
+
+
+def _render_wizard_main_content(
+    step: int,
+    state_dict: dict[str, Any],
+    *,
+    step_content: Any | None = None,
+    current_step_value: int | None = None,
+    error_message: str | None = None,
+    show_buttons: bool = True,
+    trailing_children: tuple[Any, ...] = (),
+    extra_nodes: tuple[Any, ...] = (),
+):
+    steps = _build_step_progress(state_dict)
+    form = _render_wizard_form(
+        step,
+        step_content or _build_step_content(step, state_dict),
+        current_step_value=current_step_value,
+        error_message=error_message,
+        show_buttons=show_buttons,
+        trailing_children=trailing_children,
+    )
+    return Div(
+        Div(
+            Div(
+                StepIndicator(step, steps),
+                cls="flex-shrink-0",
+                id="step-indicator-wrapper",
+                style=WIZARD_STEP_WRAPPER_STYLE,
+            ),
+            Div(
+                form,
+                cls="flex-1 ml-12",
+                style=WIZARD_PANEL_STYLE,
+            ),
+            cls="flex items-start w-full",
+        ),
+        *extra_nodes,
+        cls="w-full",
+    )
+
+
 def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
     """向导导航按钮 - 上一步在左，下一步在右"""
     if current_step >= total_steps:
@@ -791,7 +917,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                 cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                 style="background: white; color: #374151; border: 1px solid #d1d5db; transition: all 0.2s;",
                 hx_post=f"/init-wizard/step/{current_step - 1}",
-                hx_target="#wizard-form-container",
+                hx_target="#wizard-main-container",
                 hx_swap="innerHTML",
                 hx_include="[name]",
             )
@@ -809,7 +935,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                     cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
                     hx_post="/init-wizard/download",
-                    hx_target="#wizard-form-container",
+                    hx_target="#wizard-main-container",
                     hx_swap="innerHTML",
                     hx_include="[name]",
                 )
@@ -824,7 +950,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                     cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
                     hx_post=f"/init-wizard/step/{current_step + 1}",
-                    hx_target="#wizard-form-container",
+                    hx_target="#wizard-main-container",
                     hx_swap="innerHTML",
                     hx_include="[name]",
                 )
@@ -855,9 +981,6 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
     else:
         state = init_wizard.get_state()
         state_dict = state.to_dict()
-
-    steps = _build_step_progress(state_dict)
-    step_content = _build_step_content(step, state_dict)
 
     return BaseLayout(
         Div(
@@ -906,30 +1029,13 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
                     padding: 64px 24px 64px;
                 }
                 #step-indicator-wrapper {
-                    padding-top: 8px;
+                    padding-top: 0;
                     min-height: 520px;
+                    overflow: visible;
                 }
                 """
             ),
-            Div(
-                Div(
-                    StepIndicator(step, steps),
-                    cls="flex-shrink-0",
-                    id="step-indicator-wrapper",
-                ),
-                Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value=str(step)),
-                        Div(step_content, id="wizard-content"),
-                        WizardButtons(step),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 ml-12",
-                    style="box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);",
-                ),
-                id="wizard-main-container",
-            ),
+            Div(_render_wizard_main_content(step, state_dict), id="wizard-main-container"),
         ),
         page_title="系统初始化 - Quantide",
     )
@@ -992,16 +1098,14 @@ async def handle_step(request: Request, step: int):
                     prefix=str(state_dict[RUNTIME_FORM_FIELDS["prefix"]]).strip(),
                 )
             except Exception as e:
-                return Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value="2"),
-                        Div(Step2_Runtime(state_dict), id="wizard-content"),
-                        _render_inline_error(str(e)),
-                        WizardButtons(2),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 pl-8",
+                state = init_wizard.get_state(force_refresh=True)
+                state_dict = state.to_dict()
+                return _render_wizard_main_content(
+                    2,
+                    state_dict,
+                    step_content=Step2_Runtime(state_dict),
+                    current_step_value=2,
+                    error_message=str(e),
                 )
         elif current_step == 3:
             password = str(form_dict.get(ADMIN_FORM_FIELDS["password"], "")).strip()
@@ -1011,30 +1115,22 @@ async def handle_step(request: Request, step: int):
             state_dict[ADMIN_FORM_FIELDS["password"]] = password
             state_dict[ADMIN_FORM_FIELDS["confirm"]] = confirm
             if password != confirm:
-                return Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value="3"),
-                        Div(Step3_Admin(state_dict), id="wizard-content"),
-                        _render_inline_error("两次输入的管理员密码不一致"),
-                        WizardButtons(3),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 pl-8",
+                return _render_wizard_main_content(
+                    3,
+                    state_dict,
+                    step_content=Step3_Admin(state_dict),
+                    current_step_value=3,
+                    error_message="两次输入的管理员密码不一致",
                 )
             try:
                 init_wizard.save_admin_password(password)
             except Exception as e:
-                return Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value="3"),
-                        Div(Step3_Admin(state_dict), id="wizard-content"),
-                        _render_inline_error(str(e)),
-                        WizardButtons(3),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 pl-8",
+                return _render_wizard_main_content(
+                    3,
+                    state_dict,
+                    step_content=Step3_Admin(state_dict),
+                    current_step_value=3,
+                    error_message=str(e),
                 )
         elif current_step == 4:
             state = init_wizard.get_state(force_refresh=True)
@@ -1056,16 +1152,12 @@ async def handle_step(request: Request, step: int):
                     8000,
                 )
             except ValueError as e:
-                return Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value="4"),
-                        Div(Step4_Gateway(state_dict), id="wizard-content"),
-                        _render_inline_error(str(e)),
-                        WizardButtons(4),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 pl-8",
+                return _render_wizard_main_content(
+                    4,
+                    state_dict,
+                    step_content=Step4_Gateway(state_dict),
+                    current_step_value=4,
+                    error_message=str(e),
                 )
 
             # 如果启用 gateway，进行连通性校验
@@ -1077,16 +1169,12 @@ async def handle_step(request: Request, step: int):
                     state_dict[GATEWAY_FORM_FIELDS["port"]] = port
                     state_dict[GATEWAY_FORM_FIELDS["prefix"]] = prefix
                     state_dict[GATEWAY_FORM_FIELDS["api_key"]] = api_key
-                    return Div(
-                        Form(
-                            Input(type="hidden", name="_current_step", value="4"),
-                            Div(Step4_Gateway(state_dict), id="wizard-content"),
-                            _render_inline_error(f"{msg}"),
-                            WizardButtons(4),
-                            cls="flex-1",
-                        ),
-                        id="wizard-form-container",
-                        cls="flex-1 pl-8",
+                    return _render_wizard_main_content(
+                        4,
+                        state_dict,
+                        step_content=Step4_Gateway(state_dict),
+                        current_step_value=4,
+                        error_message=f"{msg}",
                     )
 
             init_wizard.save_gateway_config(
@@ -1109,16 +1197,12 @@ async def handle_step(request: Request, step: int):
                 )
             except ValueError as e:
                 step_content = Step5_DataSetup(state_dict)
-                return Div(
-                    Form(
-                        Input(type="hidden", name="_current_step", value=str(step)),
-                        Div(step_content, id="wizard-content"),
-                        _render_inline_error(str(e)),
-                        WizardButtons(step),
-                        cls="flex-1",
-                    ),
-                    id="wizard-form-container",
-                    cls="flex-1 pl-8",
+                return _render_wizard_main_content(
+                    step,
+                    state_dict,
+                    step_content=step_content,
+                    current_step_value=step,
+                    error_message=str(e),
                 )
             init_wizard.save_data_init_config(
                 epoch=epoch,
@@ -1129,29 +1213,7 @@ async def handle_step(request: Request, step: int):
     init_wizard.update_step(step)
     state = init_wizard.get_state(force_refresh=True)
     state_dict = state.to_dict()
-    steps = _build_step_progress(state_dict)
-    step_content = _build_step_content(step, state_dict)
-
-    # 返回包含步骤指示器和表单内容的完整结构
-    # 使用 hx-swap-oob 来更新步骤指示器
-    return Div(
-        # 步骤指示器 - 使用 hx-swap-oob 更新左侧
-        Div(
-            StepIndicator(step, steps),
-            cls="w-48 flex-shrink-0",
-            id="step-indicator-container",
-            hx_swap_oob="true",
-        ),
-        # 表单内容
-        Form(
-            Input(type="hidden", name="_current_step", value=str(step)),
-            Div(step_content, id="wizard-content"),
-            WizardButtons(step),
-            cls="flex-1",
-            id="wizard-form-container",
-        ),
-        cls="flex",
-    )
+    return _render_wizard_main_content(step, state_dict, current_step_value=step)
 
 
 @rt("/gateway-test")
@@ -1341,16 +1403,14 @@ async def handle_download(request: Request):
             state = init_wizard.get_state(force_refresh=True)
         except Exception as e:
             step_content = Step5_DataSetup(state_dict)
-            return Div(
-                Form(
-                    Input(type="hidden", name="_current_step", value="5"),
-                    Div(step_content, id="wizard-content"),
-                    _render_inline_error(f"下载前参数校验失败：{e}"),
-                    Div(cls="mt-8"),
-                    cls="flex-1",
-                ),
-                id="wizard-form-container",
-                cls="flex-1 pl-8",
+            return _render_wizard_main_content(
+                5,
+                state_dict,
+                step_content=step_content,
+                current_step_value=5,
+                error_message=f"下载前参数校验失败：{e}",
+                show_buttons=False,
+                trailing_children=(Div(cls="mt-8"),),
             )
 
     init_wizard.update_step(5)
@@ -1370,17 +1430,14 @@ async def handle_download(request: Request):
     logger.info(f"开始下载历史数据，起始日期: {state.history_start_date}")
 
     state_dict = state.to_dict()
-    step_content = Step5_DataSetup(state_dict)
-    return Div(
-        Form(
-            Input(type="hidden", name="_current_step", value="5"),
-            Div(step_content, id="wizard-content"),
-            Div(cls="mt-8"),
-            cls="flex-1",
-        ),
-        SyncProgressDialog(),
-        id="wizard-form-container",
-        cls="flex-1 pl-8",
+    return _render_wizard_main_content(
+        5,
+        state_dict,
+        step_content=Step5_DataSetup(state_dict),
+        current_step_value=5,
+        show_buttons=False,
+        trailing_children=(Div(cls="mt-8"),),
+        extra_nodes=(SyncProgressDialog(),),
     )
 
 

@@ -122,6 +122,28 @@ def test_wizard_buttons_uses_shared_total_steps():
 
 
 @pytest.mark.asyncio
+async def test_handle_step_keeps_progress_indicator_in_main_container_swap(monkeypatch):
+    fake_wizard = FakeInitWizard()
+    monkeypatch.setattr(init_wizard_page, "init_wizard", fake_wizard)
+
+    response = await init_wizard_page.handle_step(
+        FakeRequest(
+            {
+                "_current_step": "1",
+                "nav": "next",
+            }
+        ),
+        2,
+    )
+
+    html = str(response)
+
+    assert 'id="step-indicator-wrapper"' in html
+    assert 'hx-swap-oob' not in html
+    assert 'id="wizard-main-container"' not in html
+
+
+@pytest.mark.asyncio
 async def test_handle_step_runtime_config_uses_app_field_names(monkeypatch):
     fake_wizard = FakeInitWizard()
     monkeypatch.setattr(init_wizard_page, "init_wizard", fake_wizard)
