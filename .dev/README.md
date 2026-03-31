@@ -1,17 +1,7 @@
 # Development Notes
 
-This directory contains development-stage notes and draft documentation that are not yet suitable as release-facing user documentation.
-
-Current intent:
-- keep evolving architecture notes here during refactoring
-- avoid exposing unstable design notes in top-level README.md or docs/
-- move finalized release documentation back to public locations only when it matches the codebase
-
-Current primary document:
-- `release_architecture_decision_v1.md` is the authoritative architecture decision record for the ongoing release-state refactor
-- the same document also contains the current 5-phase execution tracker and status markers
-
-Current active phase artifact:
-- `broker_abstraction_convergence_v1.md` is the current working document for Phase 2
-
-Older draft documents in this directory remain useful as historical context, but should not override the decision record above.
+* specs开发需求。以数字开头的文档通常是正式（或者接近正式）定稿的文档。编号越小，文档越稳定。比如00-xx 就比01-xx 更稳定。
+* archived 是历史上形成的文档，基本上已过时，保留的目标是为了供用户参考
+* rules 是 AI 需要遵守的规范
+* skills 是 AI 技能集，用以完成特定任务。
+* whiteboard 供 AI 输出文档使用（比如用于任务规划、进度跟踪等），最终它们将成为历史文件，放入 archived。
