@@ -5,3 +5,4 @@
 * rules 是 AI 需要遵守的规范
 * skills 是 AI 技能集，用以完成特定任务。
 * whiteboard 供 AI 输出文档使用（比如用于任务规划、进度跟踪等），最终它们将成为历史文件，放入 archived。
+* memory下仿 openclaw，存放长期记忆（MEMORY.md），以及每日对话（随时记录）
