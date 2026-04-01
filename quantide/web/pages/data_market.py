@@ -38,7 +38,7 @@ def _TabNav(active_tab: str):
         ("update", "手动补全"),
         ("browse", "浏览"),
     ]
-    
+
     tab_items = []
     for tab_id, label in tabs:
         is_active = active_tab == tab_id
@@ -47,9 +47,9 @@ def _TabNav(active_tab: str):
             cls = f"{base_cls} text-red-600 border-b-2 border-red-600"
         else:
             cls = f"{base_cls} text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300"
-        
+
         tab_items.append(A(label, href=f"/data/market?tab={tab_id}", cls=cls))
-        
+
     return Div(
         Div(*tab_items, cls="flex space-x-2"),
         cls="border-b border-gray-200 mb-6"
@@ -67,13 +67,13 @@ def _OverviewTab():
             size_str = f"{size_bytes / (1024*1024*1024):.2f} GB"
         else:
             size_str = f"{size_bytes / (1024*1024):.2f} MB"
-            
+
         # 检查是否过期 (简单逻辑：如果结束日期早于上个交易日)
         is_stale = False
         last_trade = calendar.last_trade_date()
         if end_date and last_trade and end_date < last_trade:
             is_stale = True
-            
+
     except Exception as e:
         return Div(Card(CardBody(P(f"获取行情信息失败: {e}", cls="text-red-500"))))
 
@@ -201,7 +201,7 @@ def _BrowseTab(req):
     asset = req.query_params.get("asset", "")
     start = req.query_params.get("start", "")
     end = req.query_params.get("end", "")
-    
+
     # 默认显示最新 100 条
     df = None
     if asset:
@@ -214,12 +214,12 @@ def _BrowseTab(req):
                 df = df.sort("date", descending=True).head(100)
         except Exception as e:
             logger.error(f"查询行情失败: {e}")
-            
+
     table_content = P("输入证券代码并点击搜索查看数据...", cls="text-gray-400 text-center py-12")
     if df is not None and not df.is_empty():
         headers = ["日期", "代码", "开盘", "最高", "最低", "收盘", "成交量", "成交额", "复权", "ST"]
         header_row = Tr(*[Th(h) for h in headers])
-        
+
         rows = []
         for row in df.to_dicts():
             rows.append(Tr(
@@ -259,7 +259,7 @@ def _BrowseTab(req):
 @rt("/")
 async def index(req):
     active_tab = _get_active_tab(req)
-    
+
     if active_tab == "verify":
         content = _VerifyTab()
     elif active_tab == "update":
@@ -268,10 +268,10 @@ async def index(req):
         content = _BrowseTab(req)
     else:
         content = _OverviewTab()
-        
+
     layout = MainLayout()
     layout.set_sidebar_active("/data/market")
-    
+
     page_content = Div(
         Div(
             Div(
@@ -285,7 +285,7 @@ async def index(req):
         content,
         cls="p-8"
     )
-    
+
     layout.main_block = page_content
     return layout.render()
 
@@ -295,7 +295,7 @@ async def do_verify(form: dict):
     assets = form.get("assets", "").split(",")
     start_year = int(form.get("start_year", 2024))
     end_year = int(form.get("end_year", 2024))
-    
+
     return Div(
         Div(
             UkIcon("check-circle", cls="text-green-500 mr-2"),
@@ -317,13 +317,13 @@ async def _run_market_sync(start_date, end_date):
 
     try:
         stock_sync = StockSyncService(stock_list, daily_bars.store, calendar)
-        
+
         def _on_progress(payload):
             if not isinstance(payload, dict): return
             if payload.get("error"):
                 _sync_status["error"] = str(payload["error"])
                 return
-            
+
             completed = payload.get("completed", 0)
             total = payload.get("total", 0)
             if total > 0:
@@ -338,7 +338,7 @@ async def _run_market_sync(start_date, end_date):
             _sync_status["completed"] = True
         finally:
             msg_hub.unsubscribe("fetch_data_progress", _on_progress)
-            
+
     except Exception as e:
         _sync_status["error"] = str(e)
     finally:
@@ -349,7 +349,7 @@ async def do_update(req):
     form = await req.form()
     start_date_str = form.get("start_date")
     end_date_str = form.get("end_date")
-    
+
     try:
         s_dt = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
         e_dt = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
@@ -357,7 +357,7 @@ async def do_update(req):
         return Div("日期格式不正确", cls="text-red-500")
 
     asyncio.create_task(_run_market_sync(s_dt, e_dt))
-    
+
     # 返回进度对话框 (简化版)
     return Div(
         Div(
