@@ -1,78 +1,96 @@
 """功能可用性检查中间件."""
 
+from __future__ import annotations
+
 from functools import wraps
 
-from fasthtml.common import Div, H3, P, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import HTMLResponse, JSONResponse
 
 from quantide.service.init_wizard import init_wizard
+
+
+FEATURE_ROUTE_PREFIXES = {
+    "/trade/simulation": "simulation",
+    "/trade/live": "live_trading",
+}
+
+
+def _match_feature_for_path(path: str) -> str | None:
+    for prefix, feature in FEATURE_ROUTE_PREFIXES.items():
+        if path == prefix or path.startswith(f"{prefix}/"):
+            return feature
+    return None
+
+
+def _is_htmx_request(headers) -> bool:
+    return str(headers.get("HX-Request", "")).lower() == "true"
+
+
+def _disabled_fragment_html(feature_name: str) -> str:
+    return f"""
+    <div class="max-w-xl mx-auto mt-10 p-6 bg-white rounded-lg shadow border border-gray-200 text-center">
+        <h3 class="text-lg font-semibold text-red-700 mb-3">🔒 {feature_name}功能已禁用</h3>
+        <p class="text-gray-700 mb-2">您当前未配置 gateway，因此无法使用{feature_name}功能。</p>
+        <p class="text-gray-600 mb-4">如需启用，请重新进入初始化向导完成 gateway 配置。</p>
+        <a href="/init-wizard?force=true" class="btn btn-primary" style="background: #D13527; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; display: inline-block;">前往初始化向导</a>
+    </div>
+    """
+
+
+def _disabled_page_html(feature_name: str) -> str:
+    fragment = _disabled_fragment_html(feature_name)
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>功能禁用 - Quantide</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #f5f5f5;
+                padding: 40px;
+            }}
+            .btn:hover {{ background: #b52d20; }}
+        </style>
+    </head>
+    <body>
+        {fragment}
+    </body>
+    </html>
+    """
+
+
+def _feature_disabled_response(feature_name: str, *, htmx: bool = False):
+    if htmx:
+        return HTMLResponse(content=_disabled_fragment_html(feature_name), status_code=403)
+    return HTMLResponse(content=_disabled_page_html(feature_name), status_code=403)
 
 
 class FeatureCheckMiddleware(BaseHTTPMiddleware):
     """功能可用性检查中间件
 
-    当前版本默认放行，功能开关由运行时配置控制。
+    根据初始化后的功能状态收紧交易入口。
     """
 
     async def dispatch(self, request, call_next):
         """处理请求"""
+        feature_key = _match_feature_for_path(request.url.path)
+        if feature_key is not None:
+            feature = get_feature_status().get(feature_key, {})
+            if not feature.get("available", False):
+                feature_name = str(feature.get("name") or feature_key)
+                if request.method == "GET":
+                    return _feature_disabled_response(
+                        feature_name,
+                        htmx=_is_htmx_request(request.headers),
+                    )
+                return JSONResponse(
+                    {"error": f"{feature_name}功能已禁用，请先在初始化向导中配置 gateway"},
+                    status_code=403,
+                )
         response = await call_next(request)
         return response
-
-    def _render_disabled_page(self, feature_name: str):
-        """渲染功能禁用提示页面"""
-        from quantide.web.theme import AppTheme
-
-        content = Div(
-            H3(f"🔒 {feature_name}功能已禁用", cls="text-center mb-4"),
-            P(
-                f"您当前未配置 gateway，因此无法使用{feature_name}功能。",
-                cls="text-center text-gray-600 mb-4"
-            ),
-            P(
-                "如需使用此功能，请前往初始化向导配置 gateway。",
-                cls="text-center text-gray-600 mb-6"
-            ),
-            A(
-                "前往设置",
-                href="/settings",
-                cls="btn btn-primary",
-                style="background: #D13527;"
-            ),
-            cls="max-w-md mx-auto mt-10 p-6 text-center"
-        )
-
-        # 返回简单的 HTML 页面
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>功能禁用 - Quantide</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                       background: #f5f5f5; padding: 40px; }}
-                .container {{ max-width: 500px; margin: 0 auto; background: white; 
-                            padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
-                h3 {{ color: #D13527; margin-bottom: 20px; }}
-                .btn {{ display: inline-block; padding: 10px 24px; background: #D13527; 
-                       color: white; text-decoration: none; border-radius: 4px; }}
-                .btn:hover {{ background: #b52d20; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h3>🔒 {feature_name}功能已禁用</h3>
-                <p>您当前未配置 gateway，因此无法使用{feature_name}功能。</p>
-                <p>如需使用此功能，请前往初始化向导配置 gateway。</p>
-                <br>
-                <a href="/settings" class="btn">前往设置</a>
-                <a href="/" class="btn" style="background: #666; margin-left: 10px;">返回首页</a>
-            </div>
-        </body>
-        </html>
-        """
-        from starlette.responses import HTMLResponse
-        return HTMLResponse(content=html_content, status_code=403)
 
 
 def require_qmt_configured(func):
@@ -86,9 +104,15 @@ def require_qmt_configured(func):
     Returns:
         如果未配置 gateway，返回提示页面；否则执行原函数
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
+        feature = get_feature_status().get("live_trading", {})
+        if not feature.get("available", False):
+            feature_name = str(feature.get("name") or "实盘交易")
+            return _feature_disabled_response(feature_name)
         return func(*args, **kwargs)
+
     return wrapper
 
 

@@ -275,6 +275,11 @@ class InitWizardService:
         """
         state = self.get_state()
         normalized_server = str(server or "").strip()
+        normalized_api_key = str(api_key or "").strip()
+        if enabled and not normalized_server:
+            raise ValueError("启用 gateway 时必须填写服务器地址")
+        if enabled and not normalized_api_key:
+            raise ValueError("启用 gateway 时必须填写访问密钥")
         parsed = urllib.parse.urlparse(normalized_server)
         if parsed.scheme and parsed.hostname:
             state.gateway_scheme = parsed.scheme
@@ -287,7 +292,7 @@ class InitWizardService:
         state.gateway_enabled = bool(enabled)
         state.gateway_port = int(port)
         state.gateway_base_url = prefix.strip() or "/"
-        state.gateway_api_key = api_key.strip()
+        state.gateway_api_key = normalized_api_key
         self.save_state(state)
         logger.info("网关配置已保存")
 
@@ -369,9 +374,12 @@ class InitWizardService:
             history_years: 历史下载年数。
         """
         years = max(1, int(history_years))
+        normalized_token = str(tushare_token or "").strip()
+        if not normalized_token:
+            raise ValueError("必须填写 Tushare Token")
         state = self.get_state()
         state.epoch = epoch
-        state.tushare_token = tushare_token.strip()
+        state.tushare_token = normalized_token
         state.history_years = years
         state.history_start_date = self._compute_history_start_date(epoch, years)
         self.save_state(state)
@@ -461,15 +469,7 @@ class InitWizardService:
         Returns:
             str: 目标路径。
         """
-        runtime = get_runtime_config()
-        state = self.get_state()
-        if state.can_use_backtest() and state.can_use_live_trading():
-            return "/trade"
-        if state.can_use_backtest():
-            return "/strategy"
-        if runtime.gateway_enabled and runtime.gateway_base_url:
-            return "/auth/login"
-        return "/auth/login"
+        return "/"
 
     def get_progress(self) -> dict[str, Any]:
         """获取初始化进度信息

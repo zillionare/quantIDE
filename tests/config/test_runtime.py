@@ -2,6 +2,7 @@ import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import quantide.data as data_module
 import quantide.config.runtime as runtime_module
 from quantide.config.runtime import (
     get_runtime_config,
@@ -258,3 +259,32 @@ def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
         "load app_state failed, fallback to cfg4py: table missing",
         "load app_state failed, fallback to cfg4py: table missing",
     ]
+
+
+def test_init_data_skips_reinitializing_fixed_sqlite_db(monkeypatch, tmp_path: Path):
+    init_calls: list[str] = []
+    initialized_paths: set[str] = set()
+
+    monkeypatch.setattr(data_module.calendar, "load", lambda path: None)
+    monkeypatch.setattr(data_module.stock_list, "load", lambda path: None)
+    monkeypatch.setattr(data_module.daily_bars, "connect", lambda path, calendar_path: None)
+    monkeypatch.setattr(data_module.index_bars, "connect", lambda path, calendar_obj: None)
+
+    def fake_is_initialized_for(path):
+        return str(Path(path).expanduser()) in initialized_paths
+
+    def fake_init(path):
+        normalized = str(Path(path).expanduser())
+        initialized_paths.add(normalized)
+        init_calls.append(normalized)
+
+    monkeypatch.setattr(data_module.db, "is_initialized_for", fake_is_initialized_for)
+    monkeypatch.setattr(data_module.db, "init", fake_init)
+
+    db_path = tmp_path / "config" / "quantide.db"
+    home_path = tmp_path / "market-home"
+
+    data_module.init_data(home_path, init_db=True, db_path=db_path)
+    data_module.init_data(home_path, init_db=True, db_path=db_path)
+
+    assert init_calls == [str(db_path.expanduser())]

@@ -243,9 +243,13 @@ class SQLiteDB:
         self.db_path: str = ""
         self._initialized = False
 
+    def is_initialized_for(self, db_path: str | Path) -> bool:
+        next_path = str(Path(db_path).expanduser())
+        return self._initialized and self.db_path == next_path and next_path != ":memory:"
+
     def init(self, db_path: str | Path):
         next_path = str(Path(db_path).expanduser())
-        if self._initialized and self.db_path == next_path and next_path != ":memory:":
+        if self.is_initialized_for(next_path):
             return
 
         # 强制重置连接，特别是对于 :memory: 或者路径改变的情况

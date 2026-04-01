@@ -101,7 +101,7 @@ def test_feature_status_and_redirect_follow_gateway_state(db):
     assert status["backtest"] is True
     assert status["simulation"] is False
     assert status["live_trading"] is False
-    assert service.get_completion_redirect() == "/strategy"
+    assert service.get_completion_redirect() == "/"
 
     service.save_gateway_config(
         enabled=True,
@@ -115,7 +115,7 @@ def test_feature_status_and_redirect_follow_gateway_state(db):
     status = service.get_feature_status()
     assert status["simulation"] is True
     assert status["live_trading"] is True
-    assert service.get_completion_redirect() == "/trade"
+    assert service.get_completion_redirect() == "/"
 
 
 def test_gateway_connection_handles_invalid_url_input(db):
@@ -151,7 +151,44 @@ def test_save_gateway_config_uses_slash_default_and_redirect_by_server(db):
 
     state = service.get_state(force_refresh=True)
     assert state.gateway_base_url == "/"
-    assert service.get_completion_redirect() == "/auth/login"
+    assert service.get_completion_redirect() == "/"
+
+
+def test_start_initialization_resets_step_but_preserves_saved_values(db):
+    service = InitWizardService()
+    service.save_state(
+        AppState(
+            init_completed=True,
+            init_step=5,
+            app_home="/persisted/home",
+            gateway_server="persisted-host",
+            gateway_port=9000,
+            gateway_base_url="/gateway",
+            gateway_api_key="persisted-key",
+            tushare_token="ts-token",
+        )
+    )
+
+    state = service.start_initialization(reset_step=True)
+
+    assert state.init_step == 1
+    assert state.app_home == "/persisted/home"
+    assert state.gateway_server == "persisted-host"
+    assert state.gateway_api_key == "persisted-key"
+    assert state.tushare_token == "ts-token"
+
+
+def test_save_gateway_config_requires_api_key_when_enabled(db):
+    service = InitWizardService()
+
+    with pytest.raises(ValueError, match="访问密钥"):
+        service.save_gateway_config(
+            enabled=True,
+            server="127.0.0.1",
+            port=8000,
+            prefix="/",
+            api_key="   ",
+        )
 
 
 def test_save_admin_password_updates_existing_admin(db, monkeypatch):
@@ -246,3 +283,14 @@ def test_save_runtime_config_defaults_blank_home_and_expands_user(db):
 
     state = service.get_state(force_refresh=True)
     assert state.app_home == str(Path(DEFAULT_DATA_HOME).expanduser())
+
+
+def test_save_data_init_config_requires_tushare_token(db):
+    service = InitWizardService()
+
+    with pytest.raises(ValueError, match="Tushare Token"):
+        service.save_data_init_config(
+            epoch=datetime.date(2024, 1, 1),
+            tushare_token="   ",
+            history_years=3,
+        )

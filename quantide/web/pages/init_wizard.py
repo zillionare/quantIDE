@@ -41,6 +41,40 @@ _sync_status = {
     "error": None,
 }
 
+_download_error_message: str | None = None
+_reconfigure_mode_active = False
+
+
+def _set_download_error(message: str | None) -> None:
+    global _download_error_message
+    text = str(message or "").strip()
+    _download_error_message = text or None
+
+
+def _get_download_error(step: int, explicit_error: str | None = None) -> str | None:
+    if explicit_error:
+        return explicit_error
+    if step == 5:
+        return _download_error_message
+    return None
+
+
+def _set_reconfigure_mode(active: bool) -> None:
+    global _reconfigure_mode_active
+    _reconfigure_mode_active = bool(active)
+
+
+def _request_in_force_mode(request: Request) -> bool:
+    query_params = getattr(request, "query_params", {}) or {}
+    return str(query_params.get("force", "false")).lower() == "true"
+
+
+def _with_force_query(path: str) -> str:
+    if not _reconfigure_mode_active:
+        return path
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}force=true"
+
 
 def _update_sync_status(
     progress: int,
@@ -840,7 +874,7 @@ def Step5_DataSetup(state: dict | None = None):
                         required=True,
                         cls="uk-input",
                         hx_trigger="change",
-                        hx_post="/init-wizard/update-download-range",
+                        hx_post=_with_force_query("/init-wizard/update-download-range"),
                         hx_target="#download-range-info",
                         hx_include="[name='history_years']",
                     ),
@@ -960,11 +994,12 @@ def _render_wizard_main_content(
     show_buttons: bool = True,
     extra_nodes: tuple[Any, ...] = (),
 ):
+    resolved_error_message = _get_download_error(step, error_message)
     form = _render_wizard_form(
         step,
         step_content or _build_step_content(step, state_dict),
         current_step_value=current_step_value,
-        error_message=error_message,
+        error_message=resolved_error_message,
         show_buttons=show_buttons,
     )
     return Div(
@@ -992,7 +1027,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                 "进入系统",
                 cls="btn px-6 py-2.5 rounded-md font-medium text-sm",
                 style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
-                hx_post="/init-wizard/complete",
+                hx_post=_with_force_query("/init-wizard/complete"),
                 hx_target="#wizard-main-container",
                 hx_swap="innerHTML",
             ),
@@ -1011,7 +1046,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                 value="prev",
                 cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                 style="background: white; color: #374151; border: 1px solid #d1d5db; transition: all 0.2s;",
-                hx_post=f"/init-wizard/step/{current_step - 1}",
+                hx_post=_with_force_query(f"/init-wizard/step/{current_step - 1}"),
                 hx_target="#wizard-main-container",
                 hx_swap="innerHTML",
                 hx_include="[name]",
@@ -1029,7 +1064,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                     value="next",
                     cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
-                    hx_post="/init-wizard/download",
+                    hx_post=_with_force_query("/init-wizard/download"),
                     hx_target="#wizard-main-container",
                     hx_swap="innerHTML",
                     hx_include="[name]",
@@ -1044,7 +1079,7 @@ def WizardButtons(current_step: int, total_steps: int = WIZARD_TOTAL_STEPS):
                     value="next",
                     cls="btn px-5 py-2.5 rounded-md font-medium text-sm",
                     style=f"background: {PRIMARY_COLOR}; color: white; border: none; box-shadow: 0 1px 2px rgba(209, 53, 39, 0.3); transition: all 0.2s;",
-                    hx_post=f"/init-wizard/step/{current_step + 1}",
+                    hx_post=_with_force_query(f"/init-wizard/step/{current_step + 1}"),
                     hx_target="#wizard-main-container",
                     hx_swap="innerHTML",
                     hx_include="[name]",
@@ -1156,7 +1191,8 @@ def InitWizardPage(step: int = 1, form_data: dict | None = None):
 @rt("/")
 async def get(request: Request):
     """初始化向导主页"""
-    force = request.query_params.get("force", "false").lower() == "true"
+    force = _request_in_force_mode(request)
+    _set_reconfigure_mode(force)
 
     if not force:
         try:
@@ -1178,6 +1214,7 @@ async def get(request: Request):
 @rt("/step/{step}")
 async def handle_step(request: Request, step: int):
     """处理步骤导航"""
+    _set_reconfigure_mode(_request_in_force_mode(request))
     form_data = await request.form()
     form_dict = dict(form_data)
     nav = str(form_dict.get("nav", "next")).lower()
@@ -1269,6 +1306,23 @@ async def handle_step(request: Request, step: int):
                     error_message=str(e),
                 )
 
+            if enabled and not server:
+                return _render_wizard_main_content(
+                    4,
+                    state_dict,
+                    step_content=Step4_Gateway(state_dict),
+                    current_step_value=4,
+                    error_message="启用 gateway 时必须填写服务器地址",
+                )
+            if enabled and not api_key:
+                return _render_wizard_main_content(
+                    4,
+                    state_dict,
+                    step_content=Step4_Gateway(state_dict),
+                    current_step_value=4,
+                    error_message="启用 gateway 时必须填写访问密钥",
+                )
+
             # 如果启用 gateway，进行连通性校验
             if enabled:
                 ok, msg = init_wizard.test_gateway_connection(server=server, port=port, prefix=prefix)
@@ -1286,17 +1340,27 @@ async def handle_step(request: Request, step: int):
                         error_message=f"{msg}",
                     )
 
-            init_wizard.save_gateway_config(
-                enabled=enabled,
-                server=server,
-                port=port,
-                prefix=prefix,
-                api_key=api_key,
-            )
+            try:
+                init_wizard.save_gateway_config(
+                    enabled=enabled,
+                    server=server,
+                    port=port,
+                    prefix=prefix,
+                    api_key=api_key,
+                )
+            except Exception as e:
+                return _render_wizard_main_content(
+                    4,
+                    state_dict,
+                    step_content=Step4_Gateway(state_dict),
+                    current_step_value=4,
+                    error_message=str(e),
+                )
         elif current_step == 5:
             state = init_wizard.get_state(force_refresh=True)
             state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, DATA_INIT_FIELD_ALIASES))
             epoch_str = str(state_dict[DATA_INIT_FORM_FIELDS["epoch"]]).strip()
+            token = str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip()
             try:
                 epoch = _parse_epoch_input(epoch_str)
                 history_years = _parse_positive_int_input(
@@ -1307,17 +1371,36 @@ async def handle_step(request: Request, step: int):
             except ValueError as e:
                 step_content = Step5_DataSetup(state_dict)
                 return _render_wizard_main_content(
-                    step,
+                    5,
                     state_dict,
                     step_content=step_content,
-                    current_step_value=step,
+                    current_step_value=5,
                     error_message=str(e),
                 )
-            init_wizard.save_data_init_config(
-                epoch=epoch,
-                tushare_token=str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip(),
-                history_years=history_years,
-            )
+            if not token:
+                step_content = Step5_DataSetup(state_dict)
+                return _render_wizard_main_content(
+                    5,
+                    state_dict,
+                    step_content=step_content,
+                    current_step_value=5,
+                    error_message="必须填写 Tushare Token",
+                )
+            try:
+                init_wizard.save_data_init_config(
+                    epoch=epoch,
+                    tushare_token=token,
+                    history_years=history_years,
+                )
+            except Exception as e:
+                step_content = Step5_DataSetup(state_dict)
+                return _render_wizard_main_content(
+                    5,
+                    state_dict,
+                    step_content=step_content,
+                    current_step_value=5,
+                    error_message=str(e),
+                )
 
     init_wizard.update_step(step)
     state = init_wizard.get_state(force_refresh=True)
@@ -1328,6 +1411,7 @@ async def handle_step(request: Request, step: int):
 @rt("/gateway-test")
 async def gateway_test(request: Request):
     """网关连通性测试"""
+    _set_reconfigure_mode(_request_in_force_mode(request))
     form_data = await request.form()
     form_dict = dict(form_data)
     values = _merge_state(
@@ -1378,6 +1462,7 @@ async def _run_data_sync(start_date: datetime.date | None = None):
     _sync_status["is_running"] = True
     _sync_status["completed"] = False
     _sync_status["error"] = None
+    _set_download_error(None)
 
     try:
         state = init_wizard.get_state(force_refresh=True)
@@ -1425,11 +1510,13 @@ async def _run_data_sync(start_date: datetime.date | None = None):
             if not isinstance(payload, dict):
                 return
             if payload.get("error"):
+                error_text = str(payload["error"])
+                _set_download_error(f"下载失败：{error_text}")
                 _update_sync_status(
                     _sync_status["progress"],
                     "同步失败",
-                    f"同步失败: {payload['error']}",
-                    error=str(payload["error"]),
+                    f"同步失败: {error_text}",
+                    error=error_text,
                 )
                 return
             if "msg" in payload and "completed" not in payload:
@@ -1475,10 +1562,12 @@ async def _run_data_sync(start_date: datetime.date | None = None):
 
         _update_sync_status(98, "数据下载完成", "数据下载完成，正在收尾...")
         init_wizard.complete_initialization()
+        _set_download_error(None)
         _update_sync_status(100, "初始化数据下载完成", "初始化数据下载完成", completed=True)
         logger.info("数据同步全部完成")
     except Exception as e:
         logger.error(f"数据同步过程中发生错误: {e}")
+        _set_download_error(f"下载失败：{e}")
         _update_sync_status(
             _sync_status["progress"],
             "同步失败",
@@ -1492,6 +1581,7 @@ async def _run_data_sync(start_date: datetime.date | None = None):
 @rt("/update-download-range")
 async def handle_update_download_range(request: Request):
     """更新下载范围显示"""
+    _set_reconfigure_mode(_request_in_force_mode(request))
     form_data = await request.form()
     years_raw = str(form_data.get(DATA_INIT_FORM_FIELDS["history_years"], "1")).strip()
     try:
@@ -1504,6 +1594,7 @@ async def handle_update_download_range(request: Request):
 @rt("/download")
 async def handle_download(request: Request):
     """开始下载初始化数据"""
+    _set_reconfigure_mode(_request_in_force_mode(request))
     form_data = await request.form()
     form_dict = dict(form_data)
     state = init_wizard.get_state(force_refresh=True)
@@ -1534,6 +1625,7 @@ async def handle_download(request: Request):
 
     init_wizard.update_step(5)
     state = init_wizard.get_state(force_refresh=True)
+    _set_download_error(None)
 
     global _sync_status
     _sync_status = {
@@ -1565,6 +1657,7 @@ async def handle_complete():
     try:
         init_wizard.complete_initialization()
         target = init_wizard.get_completion_redirect()
+        _set_reconfigure_mode(False)
         return Div(
             Script(f"window.location.href = '{target}'"),
             P("正在跳转...", cls="text-center p-4"),
@@ -1607,6 +1700,13 @@ def SyncProgressDialog():
                     id="sync-status",
                     cls="text-sm text-gray-500 mb-4",
                 ),
+                Button(
+                    "返回表单",
+                    type="button",
+                    id="sync-return-button",
+                    cls="btn px-4 py-2 rounded-md font-medium text-sm",
+                    style="display: none; background: white; color: #374151; border: 1px solid #d1d5db;",
+                ),
                 cls="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4",
             ),
             cls="fixed inset-0 flex items-center justify-center z-50",
@@ -1617,6 +1717,32 @@ def SyncProgressDialog():
                 const progressBar = document.getElementById('sync-progress-bar');
                 const stageText = document.getElementById('sync-stage');
                 const statusText = document.getElementById('sync-status');
+                const returnButton = document.getElementById('sync-return-button');
+
+                function renderWizardError(message) {
+                    const headerRegion = document.getElementById('wizard-header-region');
+                    if (!headerRegion) {
+                        return;
+                    }
+                    let errorNode = document.getElementById('wizard-download-error');
+                    if (!errorNode) {
+                        errorNode = document.createElement('div');
+                        errorNode.id = 'wizard-download-error';
+                        errorNode.className = 'mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700';
+                        headerRegion.appendChild(errorNode);
+                    }
+                    errorNode.textContent = message;
+                }
+
+                function showReturnButton() {
+                    if (!returnButton) {
+                        return;
+                    }
+                    returnButton.style.display = 'inline-flex';
+                    returnButton.onclick = function() {
+                        document.querySelector('.sync-dialog-container')?.remove();
+                    };
+                }
 
                 // 创建 EventSource 连接
                 const evtSource = new EventSource('/init-wizard/sync-progress');
@@ -1644,6 +1770,8 @@ def SyncProgressDialog():
                             statusText.textContent = '同步失败: ' + data.error;
                             statusText.classList.add('text-red-500');
                             stageText.textContent = '同步失败';
+                            renderWizardError('下载失败：' + data.error);
+                            showReturnButton();
                             evtSource.close();
                         }
                     } catch (e) {
@@ -1656,6 +1784,8 @@ def SyncProgressDialog():
                     statusText.textContent = '同步连接异常，请稍后重试';
                     statusText.classList.add('text-red-500');
                     stageText.textContent = '同步连接异常';
+                    renderWizardError('下载失败：同步连接异常，请稍后重试');
+                    showReturnButton();
                 };
             })();
         """),
@@ -1701,4 +1831,6 @@ async def sync_progress(request: Request):
 async def reset_initialization():
     """重置初始化状态（调试用）"""
     init_wizard.reset_initialization()
+    _set_download_error(None)
+    _set_reconfigure_mode(False)
     return RedirectResponse("/init-wizard")
