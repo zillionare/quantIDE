@@ -199,6 +199,36 @@ def create_app(
                 lambda req: RedirectResponse("/auth/login", status_code=303),
                 methods=["GET"],
             ),
+            Route(
+                "/system",
+                lambda req: RedirectResponse("/data/market", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/system/",
+                lambda req: RedirectResponse("/data/market", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/live",
+                lambda req: RedirectResponse("/trade/live", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/live/",
+                lambda req: RedirectResponse("/trade/live", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/papertrade",
+                lambda req: RedirectResponse("/trade/simulation", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/papertrade/",
+                lambda req: RedirectResponse("/trade/simulation", status_code=303),
+                methods=["GET"],
+            ),
             Mount("/home", home_app),
             Mount("/trade/simulation", trade_app),
             Mount("/trade/live", live_app),

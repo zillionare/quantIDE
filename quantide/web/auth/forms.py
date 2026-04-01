@@ -604,15 +604,15 @@ def create_profile_form(user, success=None, error=None, action="/auth/profile"):
     """Create profile edit form for logged-in users"""
     return Container(
         DivFullySpaced(
-            H1("Profile Settings"),
-            A("← Back to Dashboard", href="/", cls=ButtonT.secondary),
+            H1("个人设置"),
+            A("返回首页", href="/", cls=ButtonT.secondary),
         ),
         Grid(
             Card(
-                CardHeader(H3("Account Information")),
+                CardHeader(H3("账户信息")),
                 CardBody(
                     (
-                        Alert("Profile updated successfully!", cls=AlertT.success)
+                        Alert("个人设置已更新。", cls=AlertT.success)
                         if success
                         else None
                     ),
@@ -620,13 +620,13 @@ def create_profile_form(user, success=None, error=None, action="/auth/profile"):
                     Form(
                         Grid(
                             LabelInput(
-                                "Username",
+                                "用户名",
                                 value=user.username,
                                 disabled=True,
                                 cls="bg-muted",
                             ),
                             LabelInput(
-                                "Email",
+                                "邮箱",
                                 name="email",
                                 type="email",
                                 value=user.email,
@@ -635,34 +635,38 @@ def create_profile_form(user, success=None, error=None, action="/auth/profile"):
                             cols=1,
                             cols_md=2,
                         ),
-                        Hr(cls="my-6"),
-                        H4("Change Password", cls="text-lg font-semibold mb-4"),
-                        LabelInput(
-                            "Current Password",
-                            name="current_password",
-                            type="password",
-                            placeholder="Enter current password to change",
-                        ),
-                        Grid(
+                        Div(
+                            Hr(cls="my-6"),
+                            H4("重设密码", cls="text-lg font-semibold mb-2"),
+                            P("如需修改登录密码，请先输入当前密码。", cls="mb-4 text-sm text-muted-foreground"),
                             LabelInput(
-                                "New Password",
-                                name="new_password",
+                                "当前密码",
+                                name="current_password",
                                 type="password",
-                                placeholder="Enter new password (8+ chars)",
-                                minlength=8,
+                                placeholder="请输入当前密码",
                             ),
-                            LabelInput(
-                                "Confirm New Password",
-                                name="confirm_password",
-                                type="password",
-                                placeholder="Confirm new password",
-                                minlength=8,
+                            Grid(
+                                LabelInput(
+                                    "新密码",
+                                    name="new_password",
+                                    type="password",
+                                    placeholder="请输入不少于 8 位的新密码",
+                                    minlength=8,
+                                ),
+                                LabelInput(
+                                    "确认新密码",
+                                    name="confirm_password",
+                                    type="password",
+                                    placeholder="请再次输入新密码",
+                                    minlength=8,
+                                ),
+                                cols=1,
+                                cols_md=2,
                             ),
-                            cols=1,
-                            cols_md=2,
+                            id="password-settings",
                         ),
                         DivRAligned(
-                            Button("Save Changes", type="submit", cls=ButtonT.primary),
+                            Button("保存更改", type="submit", cls=ButtonT.primary),
                             cls="mt-6",
                         ),
                         method="post",
@@ -671,19 +675,19 @@ def create_profile_form(user, success=None, error=None, action="/auth/profile"):
                 ),
             ),
             Card(
-                CardHeader(H3("Account Details")),
+                CardHeader(H3("账号详情")),
                 CardBody(
                     Div(
-                        InfoRow("Username", user.username),
-                        InfoRow("Role", user.role.title()),
-                        InfoRow("Status", "Active" if user.active else "Inactive"),
+                        InfoRow("用户名", user.username),
+                        InfoRow("角色", user.role.title()),
+                        InfoRow("状态", "启用" if user.active else "停用"),
                         InfoRow(
-                            "Member Since",
-                            user.created_at[:10] if user.created_at else "Unknown",
+                            "创建时间",
+                            user.created_at[:10] if user.created_at else "未知",
                         ),
                         InfoRow(
-                            "Last Login",
-                            user.last_login[:10] if user.last_login else "Never",
+                            "最近登录",
+                            user.last_login[:10] if user.last_login else "尚未登录",
                         ),
                         cls="space-y-3",
                     )

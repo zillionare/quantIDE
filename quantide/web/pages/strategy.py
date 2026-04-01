@@ -650,7 +650,7 @@ def _build_runtime_rows():
                         type="button",
                         hx_post="/strategy/runtime/stop",
                         hx_target="#runtime-monitor",
-                        hx_swap="outerHTML",
+                        hx_swap="innerHTML",
                         hx_vals=json.dumps({"runtime_id": item["runtime_id"]}),
                     ),
                     cls="px-4 py-2",
@@ -663,7 +663,7 @@ def _build_runtime_rows():
                         type="button",
                         hx_post="/strategy/runtime/start",
                         hx_target="#runtime-monitor",
-                        hx_swap="outerHTML",
+                        hx_swap="innerHTML",
                         hx_vals=json.dumps({"runtime_id": item["runtime_id"]}),
                     ),
                     cls="px-4 py-2",
@@ -692,7 +692,7 @@ def _build_runtime_rows():
     ]
 
 
-def _runtime_table_card():
+def _runtime_table_content():
     table = Table(
         Thead(
             Tr(
@@ -712,24 +712,30 @@ def _runtime_table_card():
         Tbody(*_build_runtime_rows(), cls="text-sm"),
         cls="w-full",
     )
-    return Div(
+    return (
         Div(
             H2("运行时监控", cls="text-lg font-semibold text-gray-900"),
             Span("live/paper 常驻，backtest 按需创建", cls="text-xs text-gray-500"),
             cls="p-6 border-b border-gray-200 flex items-center justify-between",
         ),
         Div(table, cls="overflow-x-auto"),
+    )
+
+
+def _runtime_table_card():
+    return Div(
+        *_runtime_table_content(),
         id="runtime-monitor",
         hx_get="/strategy/runtime/table",
-        hx_trigger="load, every 5s",
-        hx_swap="outerHTML",
+        hx_trigger="every 5s [document.visibilityState === 'visible' && document.hasFocus()]",
+        hx_swap="innerHTML",
         cls="bg-white rounded-lg shadow",
     )
 
 
 @rt("/runtime/table")
 def runtime_table(req):
-    return _runtime_table_card()
+    return _runtime_table_content()
 
 
 @rt("/runtime/stop", methods=["POST"])
@@ -741,7 +747,7 @@ async def runtime_stop(req):
             strategy_runtime_manager.stop_strategy_runtime(runtime_id)
         except Exception:
             pass
-    return _runtime_table_card()
+    return _runtime_table_content()
 
 
 @rt("/runtime/start", methods=["POST"])
@@ -753,7 +759,7 @@ async def runtime_start(req):
             strategy_runtime_manager.start_strategy_runtime(runtime_id)
         except Exception:
             pass
-    return _runtime_table_card()
+    return _runtime_table_content()
 
 @rt("/")
 def index(req, session):

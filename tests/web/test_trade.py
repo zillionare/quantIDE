@@ -204,6 +204,57 @@ class TestLoginRoutes:
         assert response.status_code == 200
         assert "首页" in response.text
 
+    def test_authenticated_header_shows_avatar_menu_actions(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "匡醍量化" in response.text
+        assert "策略" in response.text
+        assert "系统维护" in response.text
+        assert "实盘" in response.text
+        assert "仿真" in response.text
+        assert "重设密码" in response.text
+        assert "/auth/profile#password-settings" in response.text
+        assert "/auth/logout" in response.text
+
+    def test_profile_page_contains_password_reset_section(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/auth/profile", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "个人设置" in response.text
+        assert "重设密码" in response.text
+        assert "当前密码" in response.text
+
+    def test_auth_logout_redirects_to_login(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/auth/logout", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/auth/login"
+
     def test_create_simulation_account_modal(self, test_client):
         """测试创建仿真账户对话框"""
         response = test_client.get("/trade/simulation/create")

@@ -370,7 +370,7 @@ class AuthRoutes:
             user = req.scope["user"]  # Added by beforeware
             success = req.query_params.get("success")
             error = req.query_params.get("error")
-            return Title("Profile"), create_profile_form(
+            return Title("个人设置"), create_profile_form(
                 user=user, success=success, error=error, action=f"{prefix}/profile"
             )
 
@@ -393,7 +393,7 @@ class AuthRoutes:
                 if current_password or new_password:
                     if not current_password:
                         return RedirectResponse(
-                            f"{prefix}/profile?error=Current password required",
+                            f"{prefix}/profile?error=当前密码不能为空",
                             status_code=303,
                         )
 
@@ -401,19 +401,19 @@ class AuthRoutes:
                         current_password, user.password
                     ):
                         return RedirectResponse(
-                            f"{prefix}/profile?error=Invalid current password",
+                            f"{prefix}/profile?error=当前密码不正确",
                             status_code=303,
                         )
 
                     if new_password != confirm_password:
                         return RedirectResponse(
-                            f"{prefix}/profile?error=New passwords do not match",
+                            f"{prefix}/profile?error=两次输入的新密码不一致",
                             status_code=303,
                         )
 
                     if len(new_password) < 8:
                         return RedirectResponse(
-                            f"{prefix}/profile?error=Password must be at least 8 characters",
+                            f"{prefix}/profile?error=新密码长度至少为 8 位",
                             status_code=303,
                         )
 
@@ -425,7 +425,7 @@ class AuthRoutes:
             except Exception as e:
                 print(f"Profile update error: {e}")
                 return RedirectResponse(
-                    f"{prefix}/profile?error=Update failed", status_code=303
+                    f"{prefix}/profile?error=保存失败", status_code=303
                 )
 
         self.routes["profile_page"] = profile_page
