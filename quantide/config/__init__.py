@@ -7,15 +7,70 @@ Contributors:
 
 """
 import datetime
+import copy
 from importlib.metadata import version
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
-import cfg4py
 import pytz
 from loguru import logger
 
-from .runtime import get_runtime_config
-from .schema import Config
+
+def _build_default_config() -> SimpleNamespace:
+    return SimpleNamespace(
+        TIMEZONE=pytz.timezone("Asia/Shanghai"),
+        server=SimpleNamespace(
+            key="quantide",
+            host="0.0.0.0",
+            port=8130,
+            prefix="/quantide",
+        ),
+        users=[
+            {"name": "admin", "password": "admin-password"},
+            {"name": "trader", "password": "trader-password"},
+        ],
+        apikeys=SimpleNamespace(
+            timeout=300,
+            clients=[{"client": "client1", "key": "key1"}],
+        ),
+        livequote=SimpleNamespace(mode="gateway"),
+        gateway=SimpleNamespace(
+            base_url="http://127.0.0.1:8000",
+            username="admin",
+            password="1234",
+            timeout=10,
+        ),
+        runtime=SimpleNamespace(
+            mode="live",
+            market_adapter="",
+            broker_adapter="",
+        ),
+        brokers=[
+            {"kind": "backtest", "id": "backtest", "default": True},
+            {"kind": "simulation", "id": "sim1"},
+            {"kind": "simulation", "id": "sim2"},
+        ],
+        notify=SimpleNamespace(
+            dingtalk=SimpleNamespace(
+                access_token="dingtalk-access-token",
+                secret="dingtalk-secret",
+                keyword="dingtalk-keyword",
+            ),
+            mail=SimpleNamespace(
+                mail_to=["nonexist@quantide.cn"],
+                mail_from="nonexist@quantide.cn",
+                mail_server="smtp.exmail.qq.com",
+            ),
+        ),
+        data=SimpleNamespace(source="tushare"),
+        home=str(Path("~/.quantide").expanduser()),
+        tushare_token="",
+        epoch=datetime.date(2005, 1, 1),
+    )
+
+
+cfg = SimpleNamespace()
 
 
 def get_config_dir() -> str:
@@ -25,27 +80,23 @@ def get_config_dir() -> str:
 
 
 def endpoint():
+    from .runtime import get_runtime_config
+
     major, minor, *_ = version("quantide").split(".")
     prefix = get_runtime_config().app_prefix.rstrip("/")
     return f"{prefix}/v{major}.{minor}"
 
 
-def init_config(config_dir: str | Path | None = None):
-    config_dir = config_dir or get_config_dir()
-    cfg4py.init(str(config_dir))
-
-    cfg_ = cfg4py.get_instance()
-    if not hasattr(cfg_, "epoch"):
-        cfg_.epoch = datetime.date(2005, 1, 1)  # type: ignore
-    cfg_.TIMEZONE = pytz.timezone("Asia/Shanghai")
-
-    # 展开 home 路径中的 ~
-    if hasattr(cfg_, "home") and isinstance(cfg_.home, str):
-        cfg_.home = str(Path(cfg_.home).expanduser())
+def init_config() -> Any:
+    defaults = copy.deepcopy(_build_default_config())
+    cfg.__dict__.clear()
+    cfg.__dict__.update(defaults.__dict__)
+    cfg.home = str(Path(str(cfg.home)).expanduser())
+    return cfg
 
 
-cfg: Config = cfg4py.get_instance()
+init_config()
 
 
 
-__all__ = ["cfg", "endpoint", "init_config"]
+__all__ = ["cfg", "endpoint", "get_config_dir", "init_config"]

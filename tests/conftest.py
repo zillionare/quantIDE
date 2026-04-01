@@ -4,21 +4,21 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import cfg4py
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
+from quantide.config import cfg as runtime_cfg
+from quantide.config import init_config
 from quantide.data.sqlite import db as _db
 
 
 @pytest.fixture(scope="session")
 def cfg():
     """Initialize cfg before running tests."""
-    tests = Path(__file__).parent
-    cfg = cfg4py.init(str(tests / "assets"))
-    cfg.epoch = datetime.date(2024, 1, 1)
-    yield cfg
+    init_config()
+    runtime_cfg.epoch = datetime.date(2024, 1, 1)
+    yield runtime_cfg
 
 
 @pytest.fixture(scope="session")

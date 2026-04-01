@@ -6,7 +6,6 @@ from typing import Awaitable, List
 
 import aiosmtplib
 import aiosmtplib.errors
-import cfg4py
 from loguru import logger
 from tenacity import (
     retry,
@@ -31,7 +30,7 @@ def mail_notify(
 ) -> Awaitable:
     """发送邮件通知。
 
-    发送者、接收者及邮件服务器等配置请通过cfg4py配置
+    发送者、接收者及邮件服务器等配置请通过运行时配置提供。
 
     ```
     notify:

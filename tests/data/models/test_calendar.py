@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest import mock
 
 import arrow
-import cfg4py
 import pandas as pd
 import pytest
 import pytz

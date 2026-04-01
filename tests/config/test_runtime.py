@@ -62,9 +62,10 @@ def test_runtime_config_falls_back_to_cfg(monkeypatch):
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
         apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
+        data=SimpleNamespace(source="tushare"),
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(runtime_module, "cfg", fake_cfg)
 
     runtime = get_runtime_config()
     assert runtime.app_home == "~/quantide-home"
@@ -91,9 +92,10 @@ def test_runtime_config_prefers_app_state(db, monkeypatch, tmp_path: Path):
         livequote=SimpleNamespace(mode="none"),
         runtime=SimpleNamespace(mode="backtest", market_adapter="", broker_adapter=""),
         apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
+        data=SimpleNamespace(source="tushare"),
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(runtime_module, "cfg", fake_cfg)
 
     db["app_state"].upsert(
         AppState(
@@ -140,9 +142,10 @@ def test_runtime_config_allows_db_to_disable_gateway(db, monkeypatch):
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
         apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
+        data=SimpleNamespace(source="tushare"),
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(runtime_module, "cfg", fake_cfg)
 
     db["app_state"].upsert(
         AppState(
@@ -171,9 +174,10 @@ def test_runtime_helpers_follow_db_state(db, monkeypatch, tmp_path: Path):
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
         apikeys=SimpleNamespace(clients=[]),
+        data=SimpleNamespace(source="tushare"),
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(runtime_module, "cfg", fake_cfg)
 
     db["app_state"].upsert(
         AppState(
@@ -197,6 +201,7 @@ def test_runtime_notify_and_token_helpers_follow_db_state(db, monkeypatch):
         livequote=SimpleNamespace(mode="gateway"),
         runtime=SimpleNamespace(mode="live", market_adapter="", broker_adapter=""),
         apikeys=SimpleNamespace(clients=[]),
+        data=SimpleNamespace(source="tushare"),
         notify=SimpleNamespace(
             dingtalk=SimpleNamespace(access_token="cfg-token", secret="cfg-secret", keyword="cfg-keyword"),
             mail=SimpleNamespace(mail_to=["cfg@example.com"], mail_from="cfg-from@example.com", mail_server="smtp.cfg.example.com"),
@@ -204,7 +209,7 @@ def test_runtime_notify_and_token_helpers_follow_db_state(db, monkeypatch):
         tushare_token="cfg-ts-token",
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(runtime_module, "cfg", fake_cfg)
 
     db["app_state"].upsert(
         AppState(
@@ -237,7 +242,7 @@ def test_load_app_state_logs_repeated_failure_once(monkeypatch):
 
     assert runtime_module._load_app_state() is None
     assert runtime_module._load_app_state() is None
-    assert messages == ["load app_state failed, fallback to cfg4py: table missing"]
+    assert messages == ["load app_state failed, fallback to default config: table missing"]
 
 
 def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
@@ -262,8 +267,8 @@ def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
     assert runtime_module._load_app_state() == {"id": 1}
     assert runtime_module._load_app_state() is None
     assert messages == [
-        "load app_state failed, fallback to cfg4py: table missing",
-        "load app_state failed, fallback to cfg4py: table missing",
+        "load app_state failed, fallback to default config: table missing",
+        "load app_state failed, fallback to default config: table missing",
     ]
 
 

@@ -42,7 +42,7 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
         tushare_token="ts-cfg-token",
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr("quantide.config.runtime.cfg", fake_cfg)
 
     service = InitWizardService()
     state = service.get_state(force_refresh=True)

@@ -1,7 +1,7 @@
 """运行时配置访问。
 
-提供数据库优先、cfg4py 兜底的统一读取入口，避免业务运行时直接分散依赖
-cfg4py。当前仅覆盖 Phase 4 的核心运行时路径。
+提供数据库优先、内置默认配置兜底的统一读取入口，避免业务运行时直接
+分散依赖配置来源。
 """
 
 from __future__ import annotations
@@ -11,16 +11,17 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
-import cfg4py
 import pytz
 from loguru import logger
+
+from quantide.config import cfg
 
 
 _LAST_APP_STATE_LOAD_ERROR: tuple[type[BaseException], str] | None = None
 
 
 def _cfg_value(path: str, default: Any = None) -> Any:
-    current = cfg4py.get_instance()
+    current = cfg
     for name in path.split("."):
         current = getattr(current, name, None)
         if current is None:
@@ -69,7 +70,7 @@ def _load_app_state() -> Any | None:
     except Exception as exc:
         error_key = (type(exc), str(exc))
         if error_key != _LAST_APP_STATE_LOAD_ERROR:
-            logger.debug(f"load app_state failed, fallback to cfg4py: {exc}")
+            logger.debug(f"load app_state failed, fallback to default config: {exc}")
             _LAST_APP_STATE_LOAD_ERROR = error_key
         return None
 
@@ -202,7 +203,7 @@ def get_runtime_config() -> RuntimeConfig:
         getattr(state, "epoch", None) or _cfg_value("epoch", None),
         datetime.date(2005, 1, 1),
     )
-    timezone = getattr(cfg4py.get_instance(), "TIMEZONE", pytz.timezone("Asia/Shanghai"))
+    timezone = getattr(cfg, "TIMEZONE", pytz.timezone("Asia/Shanghai"))
 
     return RuntimeConfig(
         app_home=app_home,
