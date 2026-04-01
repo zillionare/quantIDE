@@ -10,7 +10,6 @@ import pytz
 from freezegun import freeze_time
 
 
-from tests import asset_dir, bars_ext, calendar
 from quantide.data import daily_bars
 from quantide.data import stock_list
 from quantide.config import cfg
@@ -19,15 +18,25 @@ from quantide.config import cfg
 @pytest.fixture
 def setup(asset_dir: Path):
     cfg.epoch = datetime.date(2024, 1, 1)  # type: ignore
+    cfg.TIMEZONE = pytz.timezone("Asia/Shanghai")  # type: ignore[attr-defined]
     stock_list.load(asset_dir / "stock_list.parquet")
     daily_bars.connect(
-        asset_dir / "2024_bars_ext_cols.parquet", asset_dir / "calendar.parquet"
+        asset_dir / "2024_bars_ext_cols.parquet", asset_dir / "baseline_calendar.parquet"
     )
 
 
 @patch("quantide.data.models.stocks.logger")
-@patch("quantide.data.models.stocks.fetch_stock_list")
-def test_load(mock_fetch, mock_logger):
+@patch("quantide.data.models.stocks.get_data_fetcher")
+def test_load(mock_get_data_fetcher, mock_logger):
+    mock_get_data_fetcher.return_value.fetch_stock_list.return_value = pd.DataFrame(
+        {
+            "asset": ["000001.SZ"],
+            "name": ["平安银行"],
+            "pinyin": ["PAYH"],
+            "list_date": [datetime.date(1991, 4, 3)],
+            "delist_date": [pd.NaT],
+        }
+    )
     with patch.object(stock_list, "save") as mock_save:
         stock_list.load("")
 
@@ -140,8 +149,10 @@ def test_stocks_listed(setup):
     assert "000007.SZ" in all_stocks
 
 
-def test_update(setup):
+@patch("quantide.data.models.stocks.get_data_fetcher")
+def test_update(mock_get_data_fetcher, setup):
     start = datetime.datetime.now(cfg.TIMEZONE)
+    mock_get_data_fetcher.return_value.fetch_stock_list.return_value = stock_list.data.to_pandas()
     stock_list.update()
     end = datetime.datetime.now(cfg.TIMEZONE)
 

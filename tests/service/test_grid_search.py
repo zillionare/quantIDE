@@ -98,7 +98,7 @@ def grid_search_env(asset_dir):
         "amount": 10000.0,
         "adjust": 1.0,
         "turnover": 0.1,
-        "st": False,
+        "is_st": False,
         "up_limit": 11.0,
         "down_limit": 9.0
     })

@@ -21,6 +21,24 @@ from quantide.data.models.calendar import Calendar
 from quantide.data.protocols import ErrorHandler, FetchDataCallback
 
 
+def _as_datetime_bound(value: datetime.date | datetime.datetime) -> pl.Expr:
+    if isinstance(value, datetime.datetime):
+        return pl.lit(value)
+    return pl.lit(
+        datetime.datetime.combine(value, datetime.time.min),
+        dtype=pl.Datetime("ms"),
+    )
+
+
+def _as_date_bound(value: datetime.date | datetime.datetime) -> pl.Expr:
+    if isinstance(value, datetime.datetime):
+        value = value.date()
+    return pl.lit(
+        datetime.datetime.combine(value, datetime.time.min),
+        dtype=pl.Date,
+    )
+
+
 class ParquetStorage:
     """基于Parquet文件的统一数据存储类。
 
@@ -668,10 +686,10 @@ class ParquetStorage:
             filters.append(pl.col("asset").is_in(assets))
 
         if start is not None:
-            filters.append(pl.col("date") >= start)
+            filters.append(pl.col("date") >= _as_datetime_bound(start))
 
         if end is not None:
-            filters.append(pl.col("date") <= end)
+            filters.append(pl.col("date") <= _as_datetime_bound(end))
 
         if filters:
             lf = lf.filter(pl.all_horizontal(filters))
@@ -696,7 +714,7 @@ class ParquetStorage:
         if self._partition_by is None:
             lf = self._scan_store(keep_partition_col=False)
             if lf is not None:
-                lf = lf.filter(pl.col("date") == date)
+                lf = lf.filter(pl.col("date") == _as_datetime_bound(date))
         else:
             lf = self._read_partition(
                 start=self._to_partition_key(date),
@@ -704,7 +722,7 @@ class ParquetStorage:
                 keep_partition_col=False,
             )
             if lf is not None:
-                lf = lf.filter(pl.col("date") == date)
+                lf = lf.filter(pl.col("date") == _as_datetime_bound(date))
 
         if lf is None:
             if eager_mode:

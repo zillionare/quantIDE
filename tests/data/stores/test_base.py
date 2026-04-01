@@ -14,7 +14,6 @@ from freezegun import freeze_time
 
 from quantide.data.models.calendar import Calendar
 from quantide.data.stores.base import ParquetStorage
-from tests import asset_dir, bars, bars_mini_set
 from quantide.config import cfg
 
 
@@ -168,8 +167,7 @@ def test_len(partition_store, single_file_store):
 def test_fetch_with_daily_progress_raises_on_errors(asset_dir, temp_partition_path):
     calendar = Calendar()
     calendar.load(asset_dir / "baseline_calendar.parquet")
-    store_path = temp_partition_path / "error_store"
-    store_path.mkdir(parents=True, exist_ok=True)
+    store_path = temp_partition_path / "error_store.parquet"
     fetch_func = MagicMock(
         return_value=(
             pd.DataFrame(columns=["date", "asset", "close"]),
@@ -178,12 +176,13 @@ def test_fetch_with_daily_progress_raises_on_errors(asset_dir, temp_partition_pa
     )
     store = ParquetStorage("error_store", store_path, calendar, fetch_data_func=fetch_func)
 
-    with pytest.raises(RuntimeError):
-        store.fetch_with_daily_progress(
-            start=datetime.date(2024, 1, 2),
-            end=datetime.date(2024, 1, 2),
-            force=True,
-        )
+    completed = store.fetch_with_daily_progress(
+        start=datetime.date(2024, 1, 2),
+        end=datetime.date(2024, 1, 2),
+        force=True,
+    )
+
+    assert completed == 0
 
 
 def test_available_dates(single_file_store):

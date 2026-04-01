@@ -1,6 +1,6 @@
 import datetime
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -39,7 +39,9 @@ def test_refresh_limits():
             "down_limit": [9.0],
         }
     )
-    with patch("quantide.service.livequote.fetch_limit_price", return_value=(df, None)):
+    fake_fetcher = MagicMock()
+    fake_fetcher.fetch_limit_price.return_value = (df, None)
+    with patch("quantide.service.livequote.get_data_fetcher", return_value=fake_fetcher):
         quote._refresh_limits(datetime.date(2024, 1, 2))
     down, up = quote.get_price_limits("000001.SZ")
     assert up == 11.0

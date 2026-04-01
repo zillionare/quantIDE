@@ -20,14 +20,10 @@ from quantide.core.init_wizard_steps import (
 from quantide.config.paths import get_app_db_path, normalize_data_home
 from quantide.config.runtime import (
     get_runtime_config,
-    get_runtime_dingtalk_access_token,
-    get_runtime_dingtalk_keyword,
-    get_runtime_dingtalk_secret,
-    get_runtime_mail_receivers,
-    get_runtime_mail_sender,
-    get_runtime_mail_server,
+    get_runtime_data_source,
     get_runtime_tushare_token,
 )
+from quantide.data.fetchers.registry import register_builtin_fetchers
 from quantide.data.models.app_state import AppState
 from quantide.data.sqlite import db
 from quantide.web.auth.manager import AuthManager
@@ -86,12 +82,7 @@ class InitWizardService:
         state.runtime_market_adapter = runtime.runtime_market_adapter
         state.runtime_broker_adapter = runtime.runtime_broker_adapter
         state.gateway_api_key = runtime.gateway_api_key
-        state.notify_dingtalk_access_token = get_runtime_dingtalk_access_token()
-        state.notify_dingtalk_secret = get_runtime_dingtalk_secret()
-        state.notify_dingtalk_keyword = get_runtime_dingtalk_keyword()
-        state.notify_mail_to = ",".join(get_runtime_mail_receivers())
-        state.notify_mail_from = get_runtime_mail_sender()
-        state.notify_mail_server = get_runtime_mail_server()
+        state.data_source = runtime.data_source
         state.tushare_token = get_runtime_tushare_token()
         state.epoch = runtime.epoch
         state.history_years = 3
@@ -296,35 +287,6 @@ class InitWizardService:
         self.save_state(state)
         logger.info("网关配置已保存")
 
-    def save_notify_config(
-        self,
-        dingtalk_access_token: str,
-        dingtalk_secret: str,
-        dingtalk_keyword: str,
-        mail_to: str,
-        mail_from: str,
-        mail_server: str,
-    ) -> None:
-        """保存通知配置.
-
-        Args:
-            dingtalk_access_token: 钉钉 token。
-            dingtalk_secret: 钉钉 secret。
-            dingtalk_keyword: 钉钉 keyword。
-            mail_to: 邮件收件人。
-            mail_from: 邮件发件人。
-            mail_server: 邮件服务器。
-        """
-        state = self.get_state()
-        state.notify_dingtalk_access_token = dingtalk_access_token.strip()
-        state.notify_dingtalk_secret = dingtalk_secret.strip()
-        state.notify_dingtalk_keyword = dingtalk_keyword.strip()
-        state.notify_mail_to = mail_to.strip()
-        state.notify_mail_from = mail_from.strip()
-        state.notify_mail_server = mail_server.strip()
-        self.save_state(state)
-        logger.info("通知配置已保存")
-
     def save_admin_password(self, password: str) -> None:
         """保存管理员密码。
 
@@ -365,20 +327,27 @@ class InitWizardService:
         epoch: datetime.date,
         tushare_token: str,
         history_years: int,
+        data_source: str = "tushare",
     ) -> None:
         """保存数据初始化配置.
 
         Args:
             epoch: 数据起点日期。
+            data_source: 当前数据源。
             tushare_token: tushare token。
             history_years: 历史下载年数。
         """
         years = max(1, int(history_years))
+        normalized_source = str(data_source or get_runtime_data_source() or "tushare").strip().lower() or "tushare"
         normalized_token = str(tushare_token or "").strip()
-        if not normalized_token:
+        registry = register_builtin_fetchers()
+        if normalized_source not in registry.list_names():
+            raise ValueError(f"不支持的数据源: {normalized_source}")
+        if normalized_source == "tushare" and not normalized_token:
             raise ValueError("必须填写 Tushare Token")
         state = self.get_state()
         state.epoch = epoch
+        state.data_source = normalized_source
         state.tushare_token = normalized_token
         state.history_years = years
         state.history_start_date = self._compute_history_start_date(epoch, years)

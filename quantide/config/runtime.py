@@ -127,6 +127,7 @@ class RuntimeConfig:
     runtime_market_adapter: str
     runtime_broker_adapter: str
     livequote_mode: str
+    data_source: str
     epoch: datetime.date
     timezone: datetime.tzinfo
 
@@ -194,6 +195,9 @@ def get_runtime_config() -> RuntimeConfig:
     livequote_mode = str(
         getattr(state, "livequote_mode", "") or _cfg_value("livequote.mode", "none") or "none"
     ).strip().lower()
+    data_source = str(
+        getattr(state, "data_source", "") or _cfg_value("data.source", "tushare") or "tushare"
+    ).strip().lower() or "tushare"
     epoch = _as_date(
         getattr(state, "epoch", None) or _cfg_value("epoch", None),
         datetime.date(2005, 1, 1),
@@ -218,6 +222,7 @@ def get_runtime_config() -> RuntimeConfig:
         runtime_market_adapter=runtime_market_adapter,
         runtime_broker_adapter=runtime_broker_adapter,
         livequote_mode=livequote_mode,
+        data_source=data_source,
         epoch=epoch,
         timezone=timezone,
     )
@@ -236,6 +241,11 @@ def get_runtime_timezone() -> datetime.tzinfo:
 def get_runtime_epoch() -> datetime.date:
     """获取运行时数据起点日期。"""
     return get_runtime_config().epoch
+
+
+def get_runtime_data_source() -> str:
+    """获取当前绑定的数据源名称。"""
+    return get_runtime_config().data_source
 
 
 def get_runtime_tushare_token() -> str:
@@ -317,6 +327,7 @@ __all__ = [
     "get_runtime_home",
     "get_runtime_timezone",
     "get_runtime_epoch",
+    "get_runtime_data_source",
     "get_runtime_tushare_token",
     "get_runtime_dingtalk_access_token",
     "get_runtime_dingtalk_secret",

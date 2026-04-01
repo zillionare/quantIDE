@@ -8,7 +8,6 @@ import datetime
 import json
 from typing import Any
 
-import tushare as ts
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
@@ -153,6 +152,7 @@ GATEWAY_FORM_FIELDS = {
 
 DATA_INIT_FORM_FIELDS = {
     "epoch": "epoch",
+    "data_source": "data_source",
     "tushare_token": "tushare_token",
     "history_years": "history_years",
 }
@@ -177,6 +177,7 @@ GATEWAY_FIELD_ALIASES = {
 
 DATA_INIT_FIELD_ALIASES = {
     DATA_INIT_FORM_FIELDS["epoch"]: (DATA_INIT_FORM_FIELDS["epoch"],),
+    DATA_INIT_FORM_FIELDS["data_source"]: (DATA_INIT_FORM_FIELDS["data_source"],),
     DATA_INIT_FORM_FIELDS["tushare_token"]: (DATA_INIT_FORM_FIELDS["tushare_token"],),
     DATA_INIT_FORM_FIELDS["history_years"]: (DATA_INIT_FORM_FIELDS["history_years"],),
 }
@@ -198,6 +199,7 @@ GATEWAY_DEFAULTS = {
 
 DATA_INIT_DEFAULTS = {
     DATA_INIT_FORM_FIELDS["epoch"]: "2005-01-01",
+    DATA_INIT_FORM_FIELDS["data_source"]: "tushare",
     DATA_INIT_FORM_FIELDS["tushare_token"]: "",
     DATA_INIT_FORM_FIELDS["history_years"]: 1,
 }
@@ -825,6 +827,7 @@ def Step5_DataSetup(state: dict | None = None):
     """步骤5：数据源设置及下载"""
     values = _data_init_form_state(state)
     epoch = values[DATA_INIT_FORM_FIELDS["epoch"]]
+    data_source = str(values[DATA_INIT_FORM_FIELDS["data_source"]] or "tushare").strip().lower() or "tushare"
     years_raw = values[DATA_INIT_FORM_FIELDS["history_years"]]
     try:
         years = _parse_positive_int_input(years_raw, "首次下载时长", 1)
@@ -837,6 +840,16 @@ def Step5_DataSetup(state: dict | None = None):
     return Div(
         Card(
             CardBody(
+                FormRow(
+                    "当前数据源",
+                    Select(
+                        Option("Tushare", value="tushare", selected=data_source == "tushare"),
+                        name=DATA_INIT_FORM_FIELDS["data_source"],
+                        cls="uk-select",
+                    ),
+                    required=True,
+                    tooltip="当前版本先接入 Tushare，后续可以在同一标准接口下扩展更多数据源。",
+                ),
                 # 数据起始日
                 FormRow(
                     "数据起始日",
@@ -1360,6 +1373,7 @@ async def handle_step(request: Request, step: int):
             state = init_wizard.get_state(force_refresh=True)
             state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, DATA_INIT_FIELD_ALIASES))
             epoch_str = str(state_dict[DATA_INIT_FORM_FIELDS["epoch"]]).strip()
+            data_source = str(state_dict[DATA_INIT_FORM_FIELDS["data_source"]]).strip().lower() or "tushare"
             token = str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip()
             try:
                 epoch = _parse_epoch_input(epoch_str)
@@ -1377,7 +1391,7 @@ async def handle_step(request: Request, step: int):
                     current_step_value=5,
                     error_message=str(e),
                 )
-            if not token:
+            if data_source == "tushare" and not token:
                 step_content = Step5_DataSetup(state_dict)
                 return _render_wizard_main_content(
                     5,
@@ -1389,6 +1403,7 @@ async def handle_step(request: Request, step: int):
             try:
                 init_wizard.save_data_init_config(
                     epoch=epoch,
+                    data_source=data_source,
                     tushare_token=token,
                     history_years=history_years,
                 )
@@ -1467,14 +1482,12 @@ async def _run_data_sync(start_date: datetime.date | None = None):
     try:
         state = init_wizard.get_state(force_refresh=True)
         home = state.app_home
-        token = state.tushare_token
         effective_start = start_date or state.history_start_date or state.epoch
 
         _update_sync_status(5, "正在初始化数据层", "正在初始化数据层...")
         from quantide.data import init_data
 
         init_data(home, init_db=True)
-        ts.set_token(token)
 
         stock_sync = StockSyncService(stock_list, daily_bars.store, calendar)
 
@@ -1600,15 +1613,17 @@ async def handle_download(request: Request):
     state = init_wizard.get_state(force_refresh=True)
     state_dict = _merge_state(state.to_dict(), _extract_form_updates(form_dict, DATA_INIT_FIELD_ALIASES))
     epoch_str = str(state_dict[DATA_INIT_FORM_FIELDS["epoch"]]).strip()
+    data_source = str(state_dict[DATA_INIT_FORM_FIELDS["data_source"]]).strip().lower() or state.data_source
     token_str = str(state_dict[DATA_INIT_FORM_FIELDS["tushare_token"]]).strip()
     years_raw = str(state_dict[DATA_INIT_FORM_FIELDS["history_years"]]).strip()
-    if epoch_str or token_str or years_raw:
+    if epoch_str or data_source or token_str or years_raw:
         try:
             epoch = _parse_epoch_input(epoch_str) if epoch_str else state.epoch
             years = _parse_positive_int_input(years_raw, "首次下载时长", state.history_years)
             token = token_str or state.tushare_token
             init_wizard.save_data_init_config(
                 epoch=epoch,
+                data_source=data_source,
                 tushare_token=token,
                 history_years=years,
             )

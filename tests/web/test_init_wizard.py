@@ -105,19 +105,22 @@ class FakeInitWizard:
     def save_data_init_config(
         self,
         epoch: datetime.date,
+        data_source: str,
         tushare_token: str,
         history_years: int,
     ):
         self.data_calls.append(
             {
                 "epoch": epoch,
+                "data_source": data_source,
                 "tushare_token": tushare_token,
                 "history_years": history_years,
             }
         )
-        if not str(tushare_token).strip():
+        if data_source == "tushare" and not str(tushare_token).strip():
             raise ValueError("必须填写 Tushare Token")
         self.state.epoch = epoch
+        self.state.data_source = data_source
         self.state.tushare_token = tushare_token
         self.state.history_years = history_years
 
@@ -381,6 +384,7 @@ async def test_handle_step_data_setup_uses_canonical_field_names(monkeypatch):
                 "_current_step": "5",
                 "nav": "next",
                 "epoch": "2024-01-01",
+                "data_source": "tushare",
                 "tushare_token": "ts-token",
                 "history_years": "3",
             }
@@ -391,6 +395,7 @@ async def test_handle_step_data_setup_uses_canonical_field_names(monkeypatch):
     assert fake_wizard.data_calls == [
         {
             "epoch": datetime.date(2024, 1, 1),
+            "data_source": "tushare",
             "tushare_token": "ts-token",
             "history_years": 3,
         }
@@ -409,6 +414,7 @@ async def test_handle_step_data_setup_requires_tushare_token(monkeypatch):
                 "_current_step": "5",
                 "nav": "next",
                 "epoch": "2024-01-01",
+                "data_source": "tushare",
                 "tushare_token": "   ",
                 "history_years": "3",
             }
@@ -426,11 +432,11 @@ async def test_handle_step_data_setup_requires_tushare_token(monkeypatch):
 async def test_run_data_sync_failure_persists_error_to_step_five_header(monkeypatch):
     fake_wizard = FakeInitWizard()
     fake_wizard.state.app_home = "/tmp/market-data"
+    fake_wizard.state.data_source = "tushare"
     fake_wizard.state.tushare_token = "ts-token"
     fake_wizard.state.epoch = datetime.date(2024, 1, 1)
     fake_wizard.state.history_start_date = datetime.date(2023, 1, 1)
     monkeypatch.setattr(init_wizard_page, "init_wizard", fake_wizard)
-    monkeypatch.setattr(init_wizard_page.ts, "set_token", lambda token: None)
     monkeypatch.setattr(init_wizard_page.calendar, "update", lambda: None)
     monkeypatch.setattr(init_wizard_page, "daily_bars", SimpleNamespace(store=object()))
     monkeypatch.setattr("quantide.data.init_data", lambda home, init_db=True: None)
@@ -484,6 +490,7 @@ async def test_handle_download_clears_stale_header_error_before_retry(monkeypatc
         FakeRequest(
             {
                 "epoch": "2024-01-01",
+                "data_source": "tushare",
                 "tushare_token": "ts-token",
                 "history_years": "3",
             }

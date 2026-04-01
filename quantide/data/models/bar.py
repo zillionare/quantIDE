@@ -18,7 +18,7 @@ class Bar:
     amount: float
     turnover: float
     adjust: float
-    st: bool
+    is_st: bool
     up_limit: float
     down_limit: float
 
@@ -36,7 +36,7 @@ class Bar:
             "amount",
             "turnover",
             "adjust",
-            "st",
+            "is_st",
             "up_limit",
             "down_limit",
         ]

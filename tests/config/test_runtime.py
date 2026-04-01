@@ -6,6 +6,7 @@ import quantide.data as data_module
 import quantide.config.runtime as runtime_module
 from quantide.config.runtime import (
     get_runtime_config,
+    get_runtime_data_source,
     get_runtime_dingtalk_access_token,
     get_runtime_dingtalk_secret,
     get_runtime_epoch,
@@ -72,6 +73,7 @@ def test_runtime_config_falls_back_to_cfg(monkeypatch):
     assert runtime.gateway_username == "admin"
     assert runtime.livequote_mode == "gateway"
     assert runtime.runtime_mode == "live"
+    assert runtime.data_source == "tushare"
     assert runtime.epoch == datetime.date(2015, 1, 1)
 
 
@@ -107,6 +109,7 @@ def test_runtime_config_prefers_app_state(db, monkeypatch, tmp_path: Path):
             gateway_timeout=30,
             livequote_mode="gateway",
             runtime_mode="live",
+            data_source="tushare",
         ).to_dict(),
         pk="id",
     )
@@ -120,6 +123,7 @@ def test_runtime_config_prefers_app_state(db, monkeypatch, tmp_path: Path):
     assert runtime.gateway_timeout == 30
     assert runtime.livequote_mode == "gateway"
     assert runtime.runtime_mode == "live"
+    assert runtime.data_source == "tushare"
 
 
 def test_runtime_config_allows_db_to_disable_gateway(db, monkeypatch):
@@ -209,11 +213,13 @@ def test_runtime_notify_and_token_helpers_follow_db_state(db, monkeypatch):
             notify_mail_to="a@example.com,b@example.com",
             notify_mail_from="db-from@example.com",
             notify_mail_server="smtp.db.example.com",
+            data_source="tushare",
             tushare_token="db-ts-token",
         ).to_dict(),
         pk="id",
     )
 
+    assert get_runtime_data_source() == "tushare"
     assert get_runtime_dingtalk_access_token() == "db-token"
     assert get_runtime_dingtalk_secret() == "db-secret"
     assert get_runtime_mail_receivers() == ["a@example.com", "b@example.com"]

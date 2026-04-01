@@ -39,18 +39,6 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
             broker_adapter="demo-broker",
         ),
         apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
-        notify=SimpleNamespace(
-            dingtalk=SimpleNamespace(
-                access_token="dt-token",
-                secret="dt-secret",
-                keyword="dt-keyword",
-            ),
-            mail=SimpleNamespace(
-                mail_to="to@example.com",
-                mail_from="from@example.com",
-                mail_server="smtp.example.com",
-            ),
-        ),
         tushare_token="ts-cfg-token",
         epoch=datetime.date(2015, 1, 1),
     )
@@ -73,15 +61,12 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
     assert state.runtime_mode == "live"
     assert state.runtime_market_adapter == "demo-market"
     assert state.runtime_broker_adapter == "demo-broker"
-    assert state.notify_dingtalk_access_token == "dt-token"
-    assert state.notify_dingtalk_secret == "dt-secret"
-    assert state.notify_dingtalk_keyword == "dt-keyword"
-    assert state.notify_mail_to == "to@example.com"
-    assert state.notify_mail_from == "from@example.com"
-    assert state.notify_mail_server == "smtp.example.com"
+    assert state.data_source == "tushare"
     assert state.tushare_token == "ts-cfg-token"
     assert state.epoch == datetime.date(2015, 1, 1)
     assert state.history_start_date >= datetime.date(2015, 1, 1)
+    assert state.notify_dingtalk_access_token == ""
+    assert state.notify_mail_to == ""
 
 
 def test_feature_status_and_redirect_follow_gateway_state(db):
@@ -291,6 +276,19 @@ def test_save_data_init_config_requires_tushare_token(db):
     with pytest.raises(ValueError, match="Tushare Token"):
         service.save_data_init_config(
             epoch=datetime.date(2024, 1, 1),
+            data_source="tushare",
             tushare_token="   ",
+            history_years=3,
+        )
+
+
+def test_save_data_init_config_rejects_unknown_data_source(db):
+    service = InitWizardService()
+
+    with pytest.raises(ValueError, match="不支持的数据源"):
+        service.save_data_init_config(
+            epoch=datetime.date(2024, 1, 1),
+            data_source="unknown",
+            tushare_token="token",
             history_years=3,
         )

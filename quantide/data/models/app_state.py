@@ -93,7 +93,7 @@ class AppState(Entity):
     runtime_broker_adapter: str = ""
     """运行时交易适配器"""
 
-    # ========== 通知配置 ==========
+    # ========== 通知配置（运行时使用，不由 init wizard 管理） ==========
     notify_dingtalk_access_token: str = ""
     """钉钉 access_token"""
 
@@ -115,6 +115,9 @@ class AppState(Entity):
     # ========== 数据初始化 ==========
     epoch: datetime.date = field(default_factory=lambda: datetime.date(2005, 1, 1))
     """数据起始日期"""
+
+    data_source: str = "tushare"
+    """当前标准数据源适配器名称"""
 
     tushare_token: str = ""
     """Tushare API Token"""

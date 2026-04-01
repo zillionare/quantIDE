@@ -232,7 +232,7 @@ def _BrowseTab(req):
                 Td(f"{row['volume']:.0f}"),
                 Td(f"{row['amount']:.0f}"),
                 Td(f"{row['adjust']:.4f}"),
-                Td(Input(type="checkbox", checked=row.get("st", False), disabled=True, cls="checkbox checkbox-sm")),
+                Td(Input(type="checkbox", checked=row.get("is_st", False), disabled=True, cls="checkbox checkbox-sm")),
             ))
         table_content = Table(Thead(header_row), Tbody(*rows), cls="uk-table uk-table-divider uk-table-small text-sm")
     elif asset:

@@ -20,7 +20,7 @@ from numpy import ndarray
 from quantide.config.runtime import get_runtime_epoch, get_runtime_timezone
 from quantide.core.enums import FrameType
 from quantide.core.singleton import singleton
-from quantide.data.fetchers.tushare import fetch_calendar
+from quantide.data.fetchers.registry import get_data_fetcher
 
 Frame = datetime.datetime | datetime.date
 
@@ -138,7 +138,7 @@ class Calendar:
         except Exception as e:
             logger.warning("Calendar 读取日历数据失败，重新从服务器获取")
             logger.exception(e)
-            df = fetch_calendar(get_runtime_epoch())
+            df = get_data_fetcher().fetch_calendar(get_runtime_epoch())
             self._data = pa.Table.from_pandas(df)
             self.save(df)
 
@@ -151,7 +151,7 @@ class Calendar:
     def update(self) -> None:
         """更新日历数据并重建帧"""
 
-        df = fetch_calendar(self.epoch)
+        df = get_data_fetcher().fetch_calendar(self.epoch)
         self._data = pa.Table.from_pandas(df)
         self.save(df)
         self.day_frames, self.week_frames, self.month_frames = self._build_frames_arrow(
