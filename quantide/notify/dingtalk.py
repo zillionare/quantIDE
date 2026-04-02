@@ -9,13 +9,12 @@ import time
 import urllib.parse
 from typing import Awaitable, Union
 
-import cfg4py
 import httpx
 from loguru import logger
 
-from quantide.config.runtime import (
-    get_runtime_dingtalk_access_token,
-    get_runtime_dingtalk_secret,
+from quantide.config.settings import (
+    get_dingtalk_access_token,
+    get_dingtalk_secret,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,7 @@ class DingTalkMessage:
     @classmethod
     def _get_access_token(cls):
         """获取钉钉机器人的access_token"""
-        token = get_runtime_dingtalk_access_token()
+        token = get_dingtalk_access_token()
         if token:
             return token
         logger.error(
@@ -52,7 +51,7 @@ class DingTalkMessage:
     @classmethod
     def _get_secret(cls):
         """获取钉钉机器人的secret"""
-        return get_runtime_dingtalk_secret() or None
+        return get_dingtalk_secret() or None
 
     @classmethod
     def _get_url(cls):

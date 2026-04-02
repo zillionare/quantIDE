@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -12,10 +13,13 @@ import pyarrow as pa
 import pytest
 from freezegun import freeze_time
 
+from quantide.config.settings import DEFAULT_TIMEZONE
 from quantide.data.models.calendar import Calendar
 from quantide.data.stores.base import ParquetStorage
 from tests import asset_dir, bars, bars_mini_set
-from quantide.config import cfg
+
+
+cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE)
 
 
 @pytest.fixture

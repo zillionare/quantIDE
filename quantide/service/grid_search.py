@@ -7,8 +7,7 @@ from typing import Any, Dict, List, Type
 import pandas as pd
 from loguru import logger
 
-from quantide.config import init_config
-from quantide.config.runtime import get_runtime_home
+from quantide.config.settings import get_data_home
 from quantide.core.enums import FrameType
 from quantide.core.strategy import BaseStrategy
 from quantide.data import init_data
@@ -27,10 +26,8 @@ def _run_task(
 ) -> Dict[str, Any]:
     """Worker function for running backtest in a separate process."""
     # Initialize config and data for this process
-    init_config()
-
     # Use provided home_dir or default from config
-    data_home = home_dir or get_runtime_home()
+    data_home = home_dir or get_data_home()
     # Only init db if db_path is NOT provided or if it's not :memory:
     # Actually, if db_path is provided (like :memory:), we should skip default quantide.db init
     # because runner.run will init db with db_path.

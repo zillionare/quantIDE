@@ -1,10 +1,11 @@
 import asyncio
 import datetime
+from types import SimpleNamespace
 
 import polars as pl
 import pytest
 
-from quantide.config import cfg
+from quantide.config.settings import DEFAULT_TIMEZONE
 from quantide.core.enums import OrderSide, OrderStatus
 from quantide.core.errors import (
     BadPercent,
@@ -21,6 +22,9 @@ from quantide.core.errors import (
 )
 from quantide.data.sqlite import Position, db
 from quantide.service.backtest_broker import BacktestBroker
+
+
+cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE)
 
 
 def make_dt(d: datetime.date, hour: int, minute: int = 0) -> datetime.datetime:

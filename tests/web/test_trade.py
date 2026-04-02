@@ -21,13 +21,10 @@ from quantide.service.sim_broker import SimulationBroker
 
 
 @pytest.fixture(scope="module")
-def test_app(cfg):
+def test_app():
     """创建测试应用"""
-    from quantide.config import init_config
     from quantide.core.scheduler import scheduler
     from quantide.service.livequote import live_quote
-
-    init_config()
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         test_db_path = f.name

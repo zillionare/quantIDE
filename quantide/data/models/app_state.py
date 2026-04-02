@@ -209,6 +209,12 @@ class AppState(Entity):
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered_data)
 
+    def to_settings(self, timezone: datetime.tzinfo | None = None) -> "Settings":
+        """转换为运行时设置视图。"""
+        from quantide.config.settings import DEFAULT_TIMEZONE, Settings
+
+        return Settings.from_state(self, timezone=timezone or DEFAULT_TIMEZONE)
+
     @property
     def is_fully_initialized(self) -> bool:
         """检查是否完全初始化

@@ -22,44 +22,39 @@ def reset_service_state(db):
 
 
 def test_get_state_loads_defaults_from_config(db, monkeypatch):
-    fake_cfg = SimpleNamespace(
-        TIMEZONE=datetime.timezone.utc,
-        home="~/quantide-home",
-        server=SimpleNamespace(host="127.0.0.1", port=9100, prefix="/quantide"),
-        gateway=SimpleNamespace(
-            base_url="http://127.0.0.1:8000",
-            username="gateway-user",
-            password="gateway-pass",
-            timeout=15,
-        ),
-        livequote=SimpleNamespace(mode="gateway"),
-        runtime=SimpleNamespace(
-            mode="live",
-            market_adapter="demo-market",
-            broker_adapter="demo-broker",
-        ),
-        apikeys=SimpleNamespace(clients=[{"key": "demo-key"}]),
-        notify=SimpleNamespace(
-            dingtalk=SimpleNamespace(
-                access_token="dt-token",
-                secret="dt-secret",
-                keyword="dt-keyword",
-            ),
-            mail=SimpleNamespace(
-                mail_to="to@example.com",
-                mail_from="from@example.com",
-                mail_server="smtp.example.com",
-            ),
-        ),
-        tushare_token="ts-cfg-token",
+    fake_settings = SimpleNamespace(
+        app_home=str(Path("~/quantide-home").expanduser()),
+        app_host="127.0.0.1",
+        app_port=9100,
+        app_prefix="/quantide",
+        gateway_enabled=True,
+        gateway_base_url="http://127.0.0.1:8000",
+        gateway_api_key="demo-key",
+        gateway_username="gateway-user",
+        gateway_password="gateway-pass",
+        gateway_timeout=15,
+        gateway_scheme="http",
+        gateway_server="127.0.0.1",
+        gateway_port=8000,
+        livequote_mode="gateway",
+        runtime_mode="live",
+        runtime_market_adapter="demo-market",
+        runtime_broker_adapter="demo-broker",
         epoch=datetime.date(2015, 1, 1),
     )
-    monkeypatch.setattr("cfg4py.get_instance", lambda: fake_cfg)
+    monkeypatch.setattr(init_wizard_module, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(init_wizard_module, "get_dingtalk_access_token", lambda: "dt-token")
+    monkeypatch.setattr(init_wizard_module, "get_dingtalk_secret", lambda: "dt-secret")
+    monkeypatch.setattr(init_wizard_module, "get_dingtalk_keyword", lambda: "dt-keyword")
+    monkeypatch.setattr(init_wizard_module, "get_mail_receivers", lambda: ["to@example.com"])
+    monkeypatch.setattr(init_wizard_module, "get_mail_sender", lambda: "from@example.com")
+    monkeypatch.setattr(init_wizard_module, "get_mail_server", lambda: "smtp.example.com")
+    monkeypatch.setattr(init_wizard_module, "get_tushare_token", lambda: "ts-cfg-token")
 
     service = InitWizardService()
     state = service.get_state(force_refresh=True)
 
-    assert state.app_home == "~/quantide-home"
+    assert state.app_home == str(Path("~/quantide-home").expanduser())
     assert state.app_host == "127.0.0.1"
     assert state.app_port == 9100
     assert state.app_prefix == "/quantide"

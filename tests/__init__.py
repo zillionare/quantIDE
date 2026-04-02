@@ -6,15 +6,25 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import cfg4py
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 from numpy.lib.stride_tricks import as_strided
 
-from quantide.config import get_config_dir
-from quantide.data.sqlite import db
+from .conftest import (
+    adjust_factor,
+    asset_dir,
+    bars,
+    bars_ext,
+    bars_mini_set,
+    calendar,
+    calendar_data,
+    cfg,
+    limit_price,
+    st,
+    year_2024_trade_dates,
+)
 
 
 

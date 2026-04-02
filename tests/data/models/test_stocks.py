@@ -1,6 +1,7 @@
 import datetime
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import patch
 
@@ -13,7 +14,10 @@ from freezegun import freeze_time
 from tests import asset_dir, bars_ext, calendar
 from quantide.data import daily_bars
 from quantide.data import stock_list
-from quantide.config import cfg
+from quantide.config.settings import DEFAULT_TIMEZONE
+
+
+cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE, epoch=datetime.date(2024, 1, 1))
 
 
 @pytest.fixture

@@ -75,7 +75,7 @@ def test_runtime_bootstrap_paper_uses_mock_gateway_market_data(monkeypatch):
         livequote_mode="none",
     )
 
-    monkeypatch.setattr(runtime_modes, "get_runtime_config", lambda: runtime_cfg)
+    monkeypatch.setattr(runtime_modes, "get_settings", lambda: runtime_cfg)
     monkeypatch.setattr(runtime_modes.scheduler, "start", lambda: None)
     monkeypatch.setattr(runtime_modes.GatewayClient, "from_config", staticmethod(lambda: object()))
     monkeypatch.setattr(runtime_modes, "GatewayMarketDataAdapter", DummyGatewayMarketData)

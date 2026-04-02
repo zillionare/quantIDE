@@ -1,18 +1,21 @@
 import datetime
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import arrow
-import cfg4py
 import pandas as pd
 import pytest
 from freezegun import freeze_time
 
-from quantide.config import cfg, get_config_dir
+from quantide.config.settings import DEFAULT_TIMEZONE
 from quantide.core.enums import FrameType
 from quantide.data.models.calendar import Calendar
 from tests import asset_dir
+
+
+cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE)
 
 
 @pytest.fixture

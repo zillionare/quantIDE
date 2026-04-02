@@ -6,7 +6,7 @@ import urllib.request
 from http.cookiejar import CookieJar
 from typing import Any
 
-from quantide.config.runtime import get_runtime_config
+from quantide.config.settings import get_settings
 
 
 class GatewayClient:
@@ -40,7 +40,7 @@ class GatewayClient:
     @classmethod
     def from_config(cls) -> "GatewayClient":
         """从配置创建客户端."""
-        runtime = get_runtime_config()
+        runtime = get_settings()
         return cls(
             base_url=runtime.gateway_base_url,
             username=runtime.gateway_username,

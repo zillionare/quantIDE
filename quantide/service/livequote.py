@@ -10,7 +10,7 @@ import polars as pl
 import websockets
 from loguru import logger
 
-from quantide.config.runtime import get_runtime_config
+from quantide.config.settings import get_settings
 from quantide.core.enums import Topics
 from quantide.core.message import msg_hub
 from quantide.core.scheduler import scheduler
@@ -73,7 +73,7 @@ class LiveQuote:
                 await asyncio.sleep(2)
 
     def _build_ws_url(self) -> str:
-        base_url = get_runtime_config().gateway_base_url.rstrip("/")
+        base_url = get_settings().gateway_base_url.rstrip("/")
         if base_url.startswith("https://"):
             return "wss://" + base_url[len("https://") :] + "/ws/quotes"
         if base_url.startswith("http://"):

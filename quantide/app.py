@@ -20,9 +20,8 @@ from starlette.responses import RedirectResponse
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 
-from quantide.config import init_config
 from quantide.config.paths import get_app_db_path, get_pid_file_path
-from quantide.config.runtime import get_runtime_home
+from quantide.config.settings import get_data_home
 from quantide.core.errors import BaseTradeError
 from quantide.core.runtime import RuntimeBootstrap
 from quantide.data import init_data
@@ -126,7 +125,6 @@ def _initialize_app_database() -> Path:
 
 
 def init():
-    init_config()
     db_path = _initialize_app_database()
 
     # 检查是否已有实例在运行
@@ -136,7 +134,7 @@ def init():
     reg = BrokerRegistry()
     try:
         if init_wizard.is_initialized():
-            init_data(get_runtime_home(), init_db=False)
+            init_data(get_data_home(), init_db=False)
             runtime = RuntimeBootstrap().bootstrap()
             reg = runtime.registry
             strategy_runtime_manager.bootstrap_from_runtime(runtime)

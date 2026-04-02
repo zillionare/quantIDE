@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from quantide.config.runtime import get_runtime_config
+from quantide.config.settings import get_settings
 from quantide.core.enums import BrokerKind
 from quantide.core.ports import MarketDataPort
 from quantide.core.runtime.adapter_registry import AdapterRegistry
@@ -113,7 +113,7 @@ class RuntimeBootstrap:
 
     def _resolve_mode(self) -> RuntimeMode:
         """解析运行模式."""
-        runtime = get_runtime_config()
+        runtime = get_settings()
         raw = runtime.runtime_mode
         if raw in {"live", "paper", "backtest"}:
             return raw  # type: ignore
@@ -123,7 +123,7 @@ class RuntimeBootstrap:
 
     def _build_market_data(self, adapters: AdapterRegistry) -> MarketDataPort:
         """构建行情适配器."""
-        runtime = get_runtime_config()
+        runtime = get_settings()
         adapter_name = runtime.runtime_market_adapter
         mode_name = runtime.livequote_mode
         use_gateway = runtime.gateway_enabled and (
@@ -186,7 +186,7 @@ class RuntimeBootstrap:
 
     def _register_gateway_broker_adapter(self, adapters: AdapterRegistry) -> None:
         """注册 gateway 交易适配器."""
-        runtime = get_runtime_config()
+        runtime = get_settings()
         broker_name = runtime.runtime_broker_adapter
         mode_name = runtime.livequote_mode
         use_gateway = runtime.gateway_enabled and (

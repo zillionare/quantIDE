@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 from loguru import logger
 
-from quantide.config.runtime import get_runtime_timezone
+from quantide.config.settings import get_timezone
 from quantide.core.singleton import singleton
 
 
@@ -16,7 +16,7 @@ class SchedulerManager:
         if self._scheduler is not None:
             return
 
-        tz = timezone or get_runtime_timezone()
+        tz = timezone or get_timezone()
         # 默认使用 BackgroundScheduler，因项目多为同步/混合调用
         self._scheduler = BackgroundScheduler(timezone=tz)
         logger.info(f"Scheduler initialized with timezone: {tz}")

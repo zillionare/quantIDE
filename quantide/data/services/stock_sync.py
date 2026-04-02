@@ -10,7 +10,7 @@ import pandas as pd
 import polars as pl
 from loguru import logger
 
-from quantide.config.runtime import get_runtime_epoch
+from quantide.config.settings import get_epoch
 from quantide.data.fetchers.tushare import fetch_stock_list
 from quantide.data.models.calendar import calendar
 from quantide.data.models.calendar import Calendar
@@ -32,7 +32,7 @@ class StockSyncService:
         self.stock_list = stock_list
         self.daily_store = daily_store
         self.calendar = calendar
-        self._epoch = get_runtime_epoch()
+        self._epoch = get_epoch()
 
     def sync_stock_list(self) -> int:
         """同步股票列表

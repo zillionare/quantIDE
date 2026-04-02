@@ -3,19 +3,13 @@ import datetime
 from fasthtml.common import fast_app
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from quantide.config.runtime import get_runtime_config
+from quantide.config.settings import get_settings
 from quantide.core.enums import FrameType
 from quantide.core.errors import TradeError, TradeErrors
 from quantide.data.sqlite import Asset, db
 from quantide.service.discovery import strategy_loader
 from quantide.service.grid_search import GridSearch
 from quantide.service.runner import BacktestRunner
-
-# 确保配置和数据已初始化 (方便单独运行 broker app)
-# try:
-#     init_config(get_config_dir())
-# except Exception as e:
-#     print(f"Warning: Failed to auto-initialize data in broker.py: {e}")
 
 app, rt = fast_app()
 
@@ -71,7 +65,7 @@ def _require_broker(req):
 
 
 def _backtest_requires_bid_time(bid_time: datetime.datetime | None) -> bool:
-    return bid_time is None and get_runtime_config().runtime_mode == "backtest"
+    return bid_time is None and get_settings().runtime_mode == "backtest"
 
 
 @rt("/status")

@@ -6,7 +6,6 @@ from typing import Awaitable, List
 
 import aiosmtplib
 import aiosmtplib.errors
-import cfg4py
 from loguru import logger
 from tenacity import (
     retry,
@@ -15,10 +14,10 @@ from tenacity import (
     wait_exponential,
 )
 
-from quantide.config.runtime import (
-    get_runtime_mail_receivers,
-    get_runtime_mail_sender,
-    get_runtime_mail_server,
+from quantide.config.settings import (
+    get_mail_receivers,
+    get_mail_sender,
+    get_mail_server,
 )
 
 
@@ -31,7 +30,7 @@ def mail_notify(
 ) -> Awaitable:
     """发送邮件通知。
 
-    发送者、接收者及邮件服务器等配置请通过cfg4py配置
+    发送者、接收者及邮件服务器等配置请通过系统设置配置
 
     ```
     notify:
@@ -71,15 +70,15 @@ def mail_notify(
             msg = compose(subject, plain_txt=body)
 
     if not receivers:
-        receivers = get_runtime_mail_receivers()
+        receivers = get_mail_receivers()
 
     password = os.environ.get("QUANTIDE_MAIL_PASSWORD")
     return send_mail(
-        get_runtime_mail_sender(),
+        get_mail_sender(),
         receivers,
         password,
         msg,
-        host=get_runtime_mail_server(),
+        host=get_mail_server(),
     )
 
 

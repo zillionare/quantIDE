@@ -16,7 +16,6 @@ from starlette.responses import StreamingResponse
 
 from quantide.config.paths import DEFAULT_DATA_HOME
 from quantide.core.init_wizard_steps import WIZARD_TOTAL_STEPS, build_wizard_steps
-from quantide.config.runtime import get_runtime_home
 from quantide.core.message import msg_hub
 from quantide.data.models.calendar import calendar
 from quantide.data.models.daily_bars import daily_bars

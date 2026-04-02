@@ -17,7 +17,7 @@ from arrow import Arrow
 from loguru import logger
 from numpy import ndarray
 
-from quantide.config.runtime import get_runtime_epoch, get_runtime_timezone
+from quantide.config.settings import get_epoch, get_timezone
 from quantide.core.enums import FrameType
 from quantide.core.singleton import singleton
 from quantide.data.fetchers.tushare import fetch_calendar
@@ -76,7 +76,7 @@ class Calendar:
     def epoch(self) -> datetime.date:
         """日历的起始日期"""
         if self._data is None or len(self._data) == 0:
-            return get_runtime_epoch()
+            return get_epoch()
         dates = self._data.column("date")
         return dates[0].as_py()
 
@@ -91,7 +91,7 @@ class Calendar:
         Returns:
             最近一个交易日日期。
         """
-        now = datetime.datetime.now(tz=get_runtime_timezone())
+        now = datetime.datetime.now(tz=get_timezone())
         return self.floor(now, FrameType.DAY)
 
     @property
@@ -138,7 +138,7 @@ class Calendar:
         except Exception as e:
             logger.warning("Calendar 读取日历数据失败，重新从服务器获取")
             logger.exception(e)
-            df = fetch_calendar(get_runtime_epoch())
+            df = fetch_calendar(get_epoch())
             self._data = pa.Table.from_pandas(df)
             self.save(df)
 
@@ -213,7 +213,7 @@ class Calendar:
             int(s[6:8]),
             int(s[8:10]),
             int(s[10:12]),
-            tzinfo=get_runtime_timezone(),
+            tzinfo=get_timezone(),
         )
 
     def time2int(self, tm: datetime.datetime) -> int:
@@ -609,7 +609,7 @@ class Calendar:
         Returns:
             [description]
         """
-        tm = tm or datetime.datetime.now(tz=get_runtime_timezone())
+        tm = tm or datetime.datetime.now(tz=get_timezone())
 
         if not self.is_trade_day(tm):
             return False
@@ -627,7 +627,7 @@ class Calendar:
             [description]
         """
         if tm is None:
-            tm = datetime.datetime.now(tz=get_runtime_timezone())
+            tm = datetime.datetime.now(tz=get_timezone())
 
         if not self.is_trade_day(tm):
             return False
@@ -644,7 +644,7 @@ class Calendar:
         Args:
             tm : Defaults to None，使用系统时间
         """
-        tm = tm or datetime.datetime.now(tz=get_runtime_timezone())
+        tm = tm or datetime.datetime.now(tz=get_timezone())
 
         if not self.is_trade_day(tm):
             return False
@@ -738,7 +738,7 @@ class Calendar:
 
         if type(moment) == datetime.date:
             if moment == datetime.date.today():
-                moment = datetime.datetime.now(tz=get_runtime_timezone())
+                moment = datetime.datetime.now(tz=get_timezone())
             else:
                 moment = self.replace_time(moment, 15, 0)
 
@@ -796,7 +796,7 @@ class Calendar:
                 day.day,
                 hour=15,
                 minute=0,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} not supported")
@@ -862,7 +862,7 @@ class Calendar:
                 floor_day.day,
                 hour=9,
                 minute=31,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         elif frame_type == FrameType.MIN5:
             return datetime.datetime(
@@ -871,7 +871,7 @@ class Calendar:
                 floor_day.day,
                 hour=9,
                 minute=35,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         elif frame_type == FrameType.MIN15:
             return datetime.datetime(
@@ -880,7 +880,7 @@ class Calendar:
                 floor_day.day,
                 hour=9,
                 minute=45,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         elif frame_type == FrameType.MIN30:
             return datetime.datetime(
@@ -888,7 +888,7 @@ class Calendar:
                 floor_day.month,
                 floor_day.day,
                 hour=10,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         elif frame_type == FrameType.MIN60:
             return datetime.datetime(
@@ -897,7 +897,7 @@ class Calendar:
                 floor_day.day,
                 hour=10,
                 minute=30,
-                tzinfo=get_runtime_timezone(),
+                tzinfo=get_timezone(),
             )
         else:  # pragma: no cover
             raise ValueError(f"{frame_type} not supported")
@@ -910,8 +910,8 @@ class Calendar:
         调用本函数前，请先通过`floor`或者`ceiling`将时间帧对齐到`frame_type`的边界值
 
         Example:
-            >>> start = datetime.datetime(2020, 1, 13, 10, 0, tzinfo=get_runtime_timezone())
-            >>> end = datetime.datetime(2020, 1, 13, 13, 30, tzinfo=get_runtime_timezone())
+            >>> start = datetime.datetime(2020, 1, 13, 10, 0, tzinfo=get_timezone())
+            >>> end = datetime.datetime(2020, 1, 13, 13, 30, tzinfo=get_timezone())
             >>> tf.get_frames(start, end, FrameType.MIN30)
             [datetime.datetime(2020,1,13,10,0), datetime.datetime(2020,1,13,10,30), datetime.datetime(2020,1,13,11,0), datetime.datetime(2020,1,13,11,30), datetime.datetime(2020,1,13,13,30)]
 
@@ -934,10 +934,10 @@ class Calendar:
         调用前请将`end`对齐到`frame_type`的边界
 
         Examples:
-            >>> end = datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_runtime_timezone())
+            >>> end = datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_timezone())
             >>> tf.get_frames_by_count(end, 2, FrameType.MIN30)
-            [datetime.datetime(2020, 1, 6, 14, 0, tzinfo=get_runtime_timezone()),
-             datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_runtime_timezone())]
+            [datetime.datetime(2020, 1, 6, 14, 0, tzinfo=get_timezone()),
+             datetime.datetime(2020, 1, 6, 14, 30, tzinfo=get_timezone())]
 
         Args:
             end:

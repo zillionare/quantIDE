@@ -18,15 +18,15 @@ from quantide.core.init_wizard_steps import (
     build_wizard_steps,
 )
 from quantide.config.paths import get_app_db_path, normalize_data_home
-from quantide.config.runtime import (
-    get_runtime_config,
-    get_runtime_dingtalk_access_token,
-    get_runtime_dingtalk_keyword,
-    get_runtime_dingtalk_secret,
-    get_runtime_mail_receivers,
-    get_runtime_mail_sender,
-    get_runtime_mail_server,
-    get_runtime_tushare_token,
+from quantide.config.settings import (
+    get_dingtalk_access_token,
+    get_dingtalk_keyword,
+    get_dingtalk_secret,
+    get_mail_receivers,
+    get_mail_sender,
+    get_mail_server,
+    get_settings,
+    get_tushare_token,
 )
 from quantide.data.models.app_state import AppState
 from quantide.data.sqlite import db
@@ -64,36 +64,36 @@ class InitWizardService:
             AppState: 默认初始化状态。
         """
         state = AppState()
-        runtime = get_runtime_config()
+        settings = get_settings()
 
-        state.app_home = runtime.app_home
-        state.app_host = runtime.app_host
-        state.app_port = runtime.app_port
-        state.app_prefix = runtime.app_prefix
+        state.app_home = settings.app_home
+        state.app_host = settings.app_host
+        state.app_port = settings.app_port
+        state.app_prefix = settings.app_prefix
 
-        base_url = runtime.gateway_base_url.strip()
+        base_url = settings.gateway_base_url.strip()
         parsed = urllib.parse.urlparse(base_url)
         state.gateway_base_url = parsed.path or "/"
-        state.gateway_scheme = parsed.scheme or runtime.gateway_scheme or "http"
+        state.gateway_scheme = parsed.scheme or settings.gateway_scheme or "http"
         state.gateway_server = parsed.hostname or ""
-        state.gateway_port = parsed.port or runtime.gateway_port
+        state.gateway_port = parsed.port or settings.gateway_port
         state.gateway_enabled = bool(parsed.hostname)
-        state.gateway_username = runtime.gateway_username
-        state.gateway_password = runtime.gateway_password
-        state.gateway_timeout = int(runtime.gateway_timeout)
-        state.livequote_mode = runtime.livequote_mode
-        state.runtime_mode = runtime.runtime_mode
-        state.runtime_market_adapter = runtime.runtime_market_adapter
-        state.runtime_broker_adapter = runtime.runtime_broker_adapter
-        state.gateway_api_key = runtime.gateway_api_key
-        state.notify_dingtalk_access_token = get_runtime_dingtalk_access_token()
-        state.notify_dingtalk_secret = get_runtime_dingtalk_secret()
-        state.notify_dingtalk_keyword = get_runtime_dingtalk_keyword()
-        state.notify_mail_to = ",".join(get_runtime_mail_receivers())
-        state.notify_mail_from = get_runtime_mail_sender()
-        state.notify_mail_server = get_runtime_mail_server()
-        state.tushare_token = get_runtime_tushare_token()
-        state.epoch = runtime.epoch
+        state.gateway_username = settings.gateway_username
+        state.gateway_password = settings.gateway_password
+        state.gateway_timeout = int(settings.gateway_timeout)
+        state.livequote_mode = settings.livequote_mode
+        state.runtime_mode = settings.runtime_mode
+        state.runtime_market_adapter = settings.runtime_market_adapter
+        state.runtime_broker_adapter = settings.runtime_broker_adapter
+        state.gateway_api_key = settings.gateway_api_key
+        state.notify_dingtalk_access_token = get_dingtalk_access_token()
+        state.notify_dingtalk_secret = get_dingtalk_secret()
+        state.notify_dingtalk_keyword = get_dingtalk_keyword()
+        state.notify_mail_to = ",".join(get_mail_receivers())
+        state.notify_mail_from = get_mail_sender()
+        state.notify_mail_server = get_mail_server()
+        state.tushare_token = get_tushare_token()
+        state.epoch = settings.epoch
         state.history_years = 3
         state.history_start_date = self._compute_history_start_date(
             epoch=state.epoch,
@@ -461,13 +461,13 @@ class InitWizardService:
         Returns:
             str: 目标路径。
         """
-        runtime = get_runtime_config()
+        settings = get_settings()
         state = self.get_state()
         if state.can_use_backtest() and state.can_use_live_trading():
             return "/trade"
         if state.can_use_backtest():
             return "/strategy"
-        if runtime.gateway_enabled and runtime.gateway_base_url:
+        if settings.gateway_enabled and settings.gateway_base_url:
             return "/auth/login"
         return "/auth/login"
 
