@@ -5,6 +5,7 @@ import quantide.config.settings as settings_module
 from quantide.config.settings import (
     DEFAULT_TIMEZONE,
     get_data_home,
+    get_data_source,
     get_dingtalk_access_token,
     get_dingtalk_secret,
     get_epoch,
@@ -59,6 +60,7 @@ def test_get_settings_uses_defaults_when_db_is_unavailable(monkeypatch):
     assert settings.gateway_base_url == ""
     assert settings.livequote_mode == "gateway"
     assert settings.runtime_mode == "live"
+    assert settings.data_source == "tushare"
     assert settings.epoch == datetime.date(2005, 1, 1)
     assert settings.timezone == DEFAULT_TIMEZONE
 
@@ -78,6 +80,7 @@ def test_get_settings_prefers_app_state(db, tmp_path: Path):
             gateway_timeout=30,
             livequote_mode="gateway",
             runtime_mode="live",
+            data_source="tushare",
         ).to_dict(),
         pk="id",
     )
@@ -91,6 +94,7 @@ def test_get_settings_prefers_app_state(db, tmp_path: Path):
     assert settings.gateway_timeout == 30
     assert settings.livequote_mode == "gateway"
     assert settings.runtime_mode == "live"
+    assert settings.data_source == "tushare"
 
 
 def test_get_settings_allows_db_to_disable_gateway(db):
@@ -102,6 +106,7 @@ def test_get_settings_allows_db_to_disable_gateway(db):
             gateway_base_url="/qmt",
             livequote_mode="none",
             runtime_mode="backtest",
+            data_source="tushare",
         ).to_dict(),
         pk="id",
     )
@@ -134,11 +139,13 @@ def test_notify_and_token_helpers_follow_db_state(db):
             notify_mail_to="a@example.com,b@example.com",
             notify_mail_from="db-from@example.com",
             notify_mail_server="smtp.db.example.com",
+            data_source="tushare",
             tushare_token="db-ts-token",
         ).to_dict(),
         pk="id",
     )
 
+    assert get_data_source() == "tushare"
     assert get_dingtalk_access_token() == "db-token"
     assert get_dingtalk_secret() == "db-secret"
     assert get_mail_receivers() == ["a@example.com", "b@example.com"]
@@ -187,7 +194,7 @@ def test_load_app_state_resets_failure_marker_after_success(monkeypatch):
 
 
 def test_app_state_can_project_to_settings(tmp_path: Path):
-    state = AppState(app_home=str(tmp_path), app_prefix="/demo")
+    state = AppState(app_home=str(tmp_path), app_prefix="/demo", data_source="tushare")
 
     settings = state.to_settings()
 

@@ -14,7 +14,7 @@ from quantide.config.settings import get_settings
 from quantide.core.enums import Topics
 from quantide.core.message import msg_hub
 from quantide.core.scheduler import scheduler
-from quantide.data.fetchers.tushare import fetch_limit_price
+from quantide.data.fetchers.registry import get_data_fetcher
 
 
 class LiveQuote:
@@ -149,7 +149,7 @@ class LiveQuote:
     def _refresh_limits(self, dt: datetime.date | None = None):
         dt = dt or datetime.date.today()
         try:
-            df, _ = fetch_limit_price(dt)
+            df, _ = get_data_fetcher().fetch_limit_price(dt)
         except Exception as e:
             logger.warning(f"refresh limits failed: {e}")
             return

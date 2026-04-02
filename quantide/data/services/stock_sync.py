@@ -6,12 +6,11 @@
 import datetime
 from collections.abc import Callable
 
-import pandas as pd
-import polars as pl
 from loguru import logger
 
 from quantide.config.settings import get_epoch
-from quantide.data.fetchers.tushare import fetch_stock_list
+from quantide.core.ports import DataFetcherPort
+from quantide.data.fetchers.registry import get_data_fetcher
 from quantide.data.models.calendar import calendar
 from quantide.data.models.calendar import Calendar
 from quantide.data.models.stocks import StockList
@@ -21,17 +20,25 @@ from quantide.data.stores.bars import DailyBarsStore
 class StockSyncService:
     """股票数据同步服务"""
 
-    def __init__(self, stock_list: StockList, daily_store: DailyBarsStore, calendar: Calendar):
+    def __init__(
+        self,
+        stock_list: StockList,
+        daily_store: DailyBarsStore,
+        calendar: Calendar,
+        fetcher: DataFetcherPort | None = None,
+    ):
         """初始化股票同步服务
 
         Args:
             stock_list: 股票列表对象
             daily_store: 日线数据存储
             calendar: 交易日历
+            fetcher: 标准数据源适配器
         """
         self.stock_list = stock_list
         self.daily_store = daily_store
         self.calendar = calendar
+        self.fetcher = fetcher or get_data_fetcher()
         self._epoch = get_epoch()
 
     def sync_stock_list(self) -> int:
@@ -42,13 +49,13 @@ class StockSyncService:
         """
         logger.info("开始同步股票列表...")
 
-        df = fetch_stock_list()
+        df = self.fetcher.fetch_stock_list()
         if df is None or df.empty:
             logger.warning("未获取到股票列表数据")
             return 0
 
         # 保存到 parquet 文件
-        self.stock_list.update()
+        self.stock_list.update(df)
         count = len(df)
 
         logger.info(f"股票列表同步完成，共 {count} 只")
@@ -86,7 +93,9 @@ class StockSyncService:
         # 使用逐日同步方法，提供详细进度
         try:
             count = self.daily_store.fetch_with_daily_progress(
-                start, end, progress_callback=progress_callback
+                start,
+                end,
+                progress_callback=progress_callback,
             )
             logger.info(f"日线行情同步完成，共 {count} 个交易日")
             return count

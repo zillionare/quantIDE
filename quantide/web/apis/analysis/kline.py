@@ -33,7 +33,7 @@ def bars_to_list(df) -> list[dict]:
             "high": float(row["high"]),
             "low": float(row["low"]),
             "close": float(row["close"]),
-            "volume": int(row["volume"]),
+            "volume": float(row["volume"]),
             "amount": float(row["amount"]),
         })
     return result
@@ -52,7 +52,7 @@ def add_ma_to_list(df, ma_periods: list[int]) -> list[dict]:
             "high": float(row["high"]),
             "low": float(row["low"]),
             "close": float(row["close"]),
-            "volume": int(row["volume"]),
+            "volume": float(row["volume"]),
             "amount": float(row["amount"]),
         }
 
@@ -90,7 +90,7 @@ def _get_stock_bars(
             "high": pl.Float64,
             "low": pl.Float64,
             "close": pl.Float64,
-            "volume": pl.Int64,
+            "volume": pl.Float64,
             "amount": pl.Float64,
         })
 
@@ -126,7 +126,7 @@ def _get_index_bars(
             "high": pl.Float64,
             "low": pl.Float64,
             "close": pl.Float64,
-            "volume": pl.Int64,
+            "volume": pl.Float64,
             "amount": pl.Float64,
         })
 

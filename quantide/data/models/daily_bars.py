@@ -36,6 +36,29 @@ class DailyBars(Bars):
         if name in ("start", "end", "total_dates", "size", "last_update_time"):
             return getattr(self.store, name)
 
+    def _normalize_bar_schema(
+        self, frame: pl.DataFrame | pl.LazyFrame
+    ) -> pl.DataFrame | pl.LazyFrame:
+        if isinstance(frame, pl.LazyFrame):
+            columns = set(frame.collect_schema().names())
+        else:
+            columns = set(frame.columns)
+
+        if "st" in columns and "is_st" not in columns:
+            frame = frame.rename({"st": "is_st"})
+            columns.remove("st")
+            columns.add("is_st")
+
+        exprs: list[pl.Expr] = []
+        if "volume" in columns:
+            exprs.append(pl.col("volume").cast(pl.Float64).alias("volume"))
+        if "is_st" in columns:
+            exprs.append(pl.col("is_st").fill_null(False).cast(pl.Boolean).alias("is_st"))
+
+        if exprs:
+            frame = frame.with_columns(exprs)
+        return frame
+
     def get_bars_in_range(
         self,
         start: datetime.date | datetime.datetime,
@@ -52,9 +75,12 @@ class DailyBars(Bars):
             end: 结束日期/时间，默认为 None，表示获取缓存中最后一个交易日
         """
         if adjust not in ("qfq", "hfq"):
-            return self.store.get(assets, start, end, eager_mode=eager_mode)
+            raw = self.store.get(assets, start, end, eager_mode=eager_mode)
+            return self._normalize_bar_schema(raw)
 
-        lf = self.store.get(assets, start, end, eager_mode=False)
+        lf = self._normalize_bar_schema(
+            self.store.get(assets, start, end, eager_mode=False)
+        )
         if adjust == "qfq":
             return qfq_adjustment(lf, eager_mode=eager_mode)
         else:

@@ -34,6 +34,7 @@ class BarsFeed(Protocol):
     - open, high, low, close: 价格
     - volume, amount: 成交量和成交额
     - adjust: 复权因子
+    - is_st: ST 标记
     - up_limit, down_limit: 涨跌停价
     """
 
@@ -261,12 +262,20 @@ class BarsFeedImpl:
 
         required_cols = [
             "asset", "frame", "open", "high", "low", "close",
-            "volume", "amount", "adjust", "up_limit", "down_limit"
+            "volume", "amount", "adjust", "is_st", "up_limit", "down_limit"
         ]
+
+        if "st" in df.columns and "is_st" not in df.columns:
+            df = df.rename({"st": "is_st"})
 
         for col in required_cols:
             if col not in df.columns:
                 df = df.with_columns(pl.lit(None).alias(col))
+
+        df = df.with_columns(
+            pl.col("volume").cast(pl.Float64).alias("volume"),
+            pl.col("is_st").fill_null(False).cast(pl.Boolean).alias("is_st"),
+        )
 
         return df.select(required_cols)
 
@@ -280,9 +289,10 @@ class BarsFeedImpl:
                 "high": pl.Float64,
                 "low": pl.Float64,
                 "close": pl.Float64,
-                "volume": pl.Int64,
+                "volume": pl.Float64,
                 "amount": pl.Float64,
                 "adjust": pl.Float64,
+                "is_st": pl.Boolean,
                 "up_limit": pl.Float64,
                 "down_limit": pl.Float64,
             }

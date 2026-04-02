@@ -8,7 +8,6 @@ import pytest
 from freezegun import freeze_time
 
 from quantide.data.models.daily_bars import daily_bars as bars
-from tests import asset_dir
 
 
 def test_connect(asset_dir):
@@ -30,6 +29,9 @@ def test_get_bars_in_range(asset_dir):
     actual = bars.get_bars_in_range(start, end, adjust=None)
     assert actual["date"].min().date() == datetime.date(2024, 10, 8)
     assert actual["date"].max().date() == datetime.date(2024, 12, 31)
+    assert "is_st" in actual.columns
+    assert "st" not in actual.columns
+    assert actual.schema["volume"] == pl.Float64
 
     expected_start = datetime.date(2024, 10, 10)
     np.testing.assert_array_almost_equal(
@@ -101,8 +103,10 @@ def test_get_bars(asset_dir):
     end = datetime.date(2024, 10, 10)
     actual = bars.get_bars(3, end, adjust=None, eager_mode=False)
     assert isinstance(actual, pl.LazyFrame)
-    assert len(actual.collect()) == 16025
-    assert len(actual.collect().columns) == 12
+    collected = actual.collect()
+    assert len(collected) == 16025
+    assert len(collected.columns) == 12
+    assert "is_st" in collected.columns
 
 
 def test_property(asset_dir):

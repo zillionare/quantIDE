@@ -8,7 +8,7 @@ from loguru import logger
 
 from quantide.config.settings import get_timezone
 from quantide.core.singleton import singleton
-from quantide.data.fetchers import fetch_stock_list
+from quantide.data.fetchers.registry import get_data_fetcher
 
 
 @singleton
@@ -57,7 +57,9 @@ class StockList:
             logger.warning("加载股票列表失败,{}", self.path)
 
         logger.info("正在从接口获取股票列表...")
-        df = fetch_stock_list()
+        df = get_data_fetcher().fetch_stock_list()
+        if df is None or df.empty:
+            raise ValueError("未获取到股票列表数据")
         self.save(df)
 
     def save(self, df: pd.DataFrame) -> None:
@@ -67,9 +69,12 @@ class StockList:
         df.to_parquet(self.path, index=False)
         self._last_update_time = datetime.datetime.now(get_timezone())
 
-    def update(self) -> None:
+    def update(self, df: pd.DataFrame | None = None) -> None:
         """更新股票列表"""
-        df = fetch_stock_list()
+        df = df if df is not None else get_data_fetcher().fetch_stock_list()
+        if df is None or df.empty:
+            logger.warning("未获取到股票列表数据")
+            return
         self.save(df)
 
     def days_since_ipo(self, asset: str, date: datetime.date | None = None) -> int:
@@ -153,7 +158,7 @@ class StockList:
 
         record = daily_bars.get_bars_in_range(date, date, asset)
         if len(record):
-            return record.item(0, "st") == True
+            return record.item(0, "is_st") == True
 
         # 找不到记录则认为不是 st
         return False
@@ -170,14 +175,18 @@ class StockList:
         from quantide.data.models.daily_bars import daily_bars
 
         if not exclude_st:
-            filters = [pl.col("delist_date").is_null() | (pl.col("delist_date") > date)]
-            filters.append(pl.col("list_date") <= date)
+            date_text = date.isoformat()
+            filters = [
+                pl.col("delist_date").is_null()
+                | (pl.col("delist_date").dt.strftime("%F") > date_text)
+            ]
+            filters.append(pl.col("list_date").dt.strftime("%F") <= date_text)
 
             result = self.data.filter(pl.all_horizontal(filters))["asset"].to_list()
             return result
 
         lf = daily_bars.get_bars_in_range(date, date, eager_mode=False)
-        return lf.filter(~pl.col("st")).collect()["asset"].to_list()
+        return lf.filter(~pl.col("is_st")).collect()["asset"].to_list()
 
     def sample(
         self, date: datetime.date, size: int, exclude_st: bool = True, seed: int = 42

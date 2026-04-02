@@ -7,12 +7,12 @@ from unittest import mock
 import arrow
 import pandas as pd
 import pytest
+import pytz
 from freezegun import freeze_time
 
 from quantide.config.settings import DEFAULT_TIMEZONE
 from quantide.core.enums import FrameType
 from quantide.data.models.calendar import Calendar
-from tests import asset_dir
 
 
 cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE)
@@ -20,6 +20,7 @@ cfg = SimpleNamespace(TIMEZONE=DEFAULT_TIMEZONE)
 
 @pytest.fixture
 def tf(asset_dir):
+    cfg.TIMEZONE = pytz.timezone("Asia/Shanghai")  # type: ignore[attr-defined]
     tf = Calendar()
     tf.load(asset_dir / "baseline_calendar.parquet")
     return tf
@@ -850,7 +851,10 @@ def test_update(tmp_path):
     # fetch_calendar 会返回 df2, 04那天为非交易日
     df2 = pd.DataFrame({"date": dates2, "is_open": [1, 1, 0, 1], "prev": prev2})
 
-    with mock.patch("quantide.data.models.calendar.fetch_calendar", side_effect=[df2]):
+    fake_fetcher = mock.Mock()
+    fake_fetcher.fetch_calendar.return_value = df2
+
+    with mock.patch("quantide.data.models.calendar.get_data_fetcher", return_value=fake_fetcher):
         tf.load(path)
         assert tf.epoch == dates1[0]
 

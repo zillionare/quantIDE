@@ -207,7 +207,7 @@ def test_trades_crud(setup):
 
     # 测试空表查询（或者不命中）,返回None
     assert db.get_order_by_foid("Not Exist") is None
-    assert db.trades_all() is None
+    assert db.trades_all().is_empty()
 
     order = Order(
         portfolio_id="test_portfolio",
@@ -965,7 +965,7 @@ def test_query_trade_variations(setup):
     q1 = "q1"
 
     # trades_all when empty
-    assert db.trades_all() is None
+    assert db.trades_all().is_empty()
 
     db.insert_order(
         Order(

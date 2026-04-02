@@ -7,9 +7,9 @@ from fasthtml.common import *
 
 
 # 主色调
-PRIMARY_COLOR = "#D13527"
+PRIMARY_COLOR = "#e41815"
 SECONDARY_COLOR = "#f3f4f6"
-TEXT_COLOR = "#374151"
+TEXT_COLOR = "#2c3030"
 BORDER_COLOR = "#d1d5db"
 
 
@@ -31,9 +31,13 @@ class AppTheme:
             # 自定义主题 CSS
             Style(f"""
                 :root {{
-                    --p: 4 90% 58%;  /* primary color in HSL: #D13527 approx */
-                    --pf: 4 90% 48%; /* primary focus */
+                    --p: 1 83% 49%;
+                    --pf: 1 83% 42%;
                     --pc: 0 0% 100%; /* primary content */
+                }}
+                body {{
+                    background-color: #f5f5f5;
+                    color: {TEXT_COLOR};
                 }}
                 .btn-primary {{
                     background-color: {PRIMARY_COLOR} !important;
@@ -47,6 +51,11 @@ class AppTheme:
                 }}
                 .border-primary {{
                     border-color: {PRIMARY_COLOR} !important;
+                }}
+                .quantide-surface {{
+                    background: #ffffff;
+                    border: 1px solid rgba(44, 48, 48, 0.08);
+                    box-shadow: 0 18px 45px rgba(44, 48, 48, 0.08);
                 }}
             """),
             # HTMX

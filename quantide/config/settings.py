@@ -129,6 +129,7 @@ class Settings:
     runtime_market_adapter: str
     runtime_broker_adapter: str
     livequote_mode: str
+    data_source: str
     epoch: datetime.date
     timezone: datetime.tzinfo
 
@@ -176,7 +177,13 @@ class Settings:
             runtime_broker_adapter=str(
                 getattr(state, "runtime_broker_adapter", "") or ""
             ).strip().lower(),
-            livequote_mode=str(getattr(state, "livequote_mode", "") or "none").strip().lower(),
+            livequote_mode=str(
+                getattr(state, "livequote_mode", "") or "none"
+            ).strip().lower(),
+            data_source=str(getattr(state, "data_source", "") or "tushare")
+            .strip()
+            .lower()
+            or "tushare",
             epoch=_as_date(getattr(state, "epoch", None), datetime.date(2005, 1, 1)),
             timezone=timezone,
         )
@@ -200,6 +207,11 @@ def get_timezone() -> datetime.tzinfo:
 def get_epoch() -> datetime.date:
     """Return the effective data epoch."""
     return get_settings().epoch
+
+
+def get_data_source() -> str:
+    """Return the configured data source name."""
+    return get_settings().data_source
 
 
 def _state_or_default() -> Any:
@@ -267,6 +279,7 @@ __all__ = [
     "get_data_home",
     "get_timezone",
     "get_epoch",
+    "get_data_source",
     "get_tushare_token",
     "get_dingtalk_access_token",
     "get_dingtalk_secret",

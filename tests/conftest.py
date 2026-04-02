@@ -59,6 +59,9 @@ def asset_dir():
         src = Path(__file__).parent / "assets"
         dst = Path(tmpdir) / "assets"
         shutil.copytree(src, dst)
+        stock_list_src = Path(__file__).resolve().parent.parent / "data" / "stock_list.parquet"
+        if stock_list_src.exists():
+            shutil.copy2(stock_list_src, dst / "stock_list.parquet")
 
         yield dst
         try:

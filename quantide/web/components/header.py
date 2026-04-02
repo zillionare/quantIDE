@@ -1,6 +1,8 @@
 from fasthtml.common import *
 from monsterui.all import *
 
+from quantide.web.theme import PRIMARY_COLOR
+
 
 def header_component(
     logo: str,
@@ -9,29 +11,21 @@ def header_component(
     user: str | None = None,
     accounts: list[dict] | None = None,
     active_account: dict | None = None,
-    active_title: str = "首页",
+    active_title: str = "",
+    unread_count: int = 0,
 ):
-    """构建主导航栏。
-
-    Args:
-        logo: Logo 地址
-        brand: 品牌名称
-        nav_items: 顶部导航
-        user: 用户名
-        accounts: 账号列表
-        active_account: 当前选中账号
-        active_title: 当前选中的导航标题
-    """
+    """构建主导航栏。"""
     nav_links = []
     for title, url in (nav_items or []):
         is_active = title == active_title
-        active_cls = "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-        inactive_cls = "text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+        active_cls = "border-b-2 border-white bg-white/12 text-white"
+        inactive_cls = "text-white/80 hover:bg-white/10 hover:text-white"
         nav_links.append(
             A(
                 title,
                 href=url,
-                cls="px-4 py-2 font-medium " + (active_cls if is_active else inactive_cls),
+                cls="inline-flex items-center rounded-t-xl px-4 py-5 text-sm font-medium transition "
+                + (active_cls if is_active else inactive_cls),
             )
         )
 
@@ -48,105 +42,110 @@ def header_component(
         current_status = "已连接" if current.get("status", False) else "未连接"
         current_star = "★" if current.get("is_live") else ""
 
+    account_summary = "未选择交易账号"
+    if current:
+        account_summary = f"{current_star}{current.get('name', '未知账号')}"
+        if current_label:
+            account_summary += f" · {current_label}"
+        if current_status:
+            account_summary += f" · {current_status}"
+
+    def menu_action(label: str, href: str, icon_name: str):
+        return A(
+            Div(
+                UkIcon(icon_name, size=16, cls="text-primary"),
+                Span(label, cls="text-sm font-medium"),
+                cls="flex items-center gap-3",
+            ),
+            href=href,
+            cls="flex items-center rounded-xl px-3 py-3 text-[#2c3030] transition hover:bg-[#fff3f2] hover:text-primary",
+        )
+
+    unread_badge = None
+    if unread_count > 0:
+        unread_badge = Span(
+            "99+" if unread_count > 99 else str(unread_count),
+            cls="absolute -right-1 -top-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-white px-1 text-[11px] font-semibold leading-4 text-primary shadow-sm",
+        )
+
     return Header(
         Div(
             Div(
                 Div(
-                    cls="h-8 w-8 rounded bg-center bg-cover",
+                    cls="h-10 w-10 rounded-xl bg-white/95 bg-center bg-contain bg-no-repeat shadow-sm",
                     style=f"background-image: url('{logo}')",
                     role="img",
                     aria_label=brand,
                 ),
-                Span(brand, cls="text-xl font-bold text-gray-900 dark:text-white"),
-                cls="flex items-center space-x-3",
+                Span(brand, cls="text-lg font-semibold tracking-[0.08em] text-white"),
+                cls="flex items-center gap-3",
             ),
+            Div(cls="flex-1"),
             Div(
-                Nav(*nav_links, cls="flex items-center space-x-1"),
-                Div(cls="h-6 w-px bg-gray-300 dark:bg-gray-600"),
+                Nav(*nav_links, cls="hidden items-center self-stretch lg:flex"),
                 Button(
-                    UkIcon("bell", size=24, cls="text-gray-600 dark:text-gray-400"),
-                    Span(cls="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"),
-                    cls="relative p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
+                    UkIcon("bell", size=18, cls="text-white"),
+                    unread_badge,
+                    cls="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/10 text-white transition hover:bg-white/18",
                     type="button",
-                ),
-                Button(
-                    UkIcon("search", size=24, cls="text-gray-600 dark:text-gray-400"),
-                    cls="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
-                    type="button",
+                    aria_label="消息中心",
                 ),
                 Div(
                     Div(
                         Button(
                             Div(
-                                Span(initial, cls="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium"),
-                                UkIcon("chevron-down", size=16, cls="text-gray-500"),
-                                cls="flex items-center space-x-2",
+                                Span(user_name, cls="max-w-28 truncate text-sm font-medium text-white"),
+                                Div(
+                                    Span(
+                                        initial,
+                                        cls="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-semibold uppercase text-primary shadow-sm",
+                                    ),
+                                    Div(
+                                        UkIcon("chevron-down", size=10, cls="text-primary"),
+                                        cls="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-sm",
+                                    ),
+                                    cls="relative",
+                                ),
+                                cls="flex items-center gap-3",
                             ),
-                            cls="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700",
-                            onclick="toggleUserMenu()",
+                            cls="flex items-center rounded-full border border-white/12 bg-white/10 px-3 py-1.5 text-left transition hover:bg-white/18",
+                            onclick="toggleUserMenu(event)",
                             type="button",
+                            id="user-menu-button",
+                            aria_haspopup="menu",
+                            aria_expanded="false",
                         ),
                         Div(
                             Div(
-                                Div("当前账号", cls="text-xs text-gray-500 mb-2"),
-                                Div(
-                                    Div(
-                                        Span(current_star, cls="text-yellow-500"),
-                                        Span(
-                                            f"{current.get('name', '暂无账号')}({current_label})"
-                                            if current
-                                            else "暂无账号",
-                                            cls="text-sm font-medium text-gray-900 dark:text-white",
-                                        ),
-                                        cls="flex items-center space-x-2",
-                                    ),
-                                    Span(current_status, cls="text-xs text-green-500"),
-                                    cls="flex items-center justify-between",
-                                ),
-                                cls="p-3 border-b border-gray-200 dark:border-gray-700",
+                                Div("当前登录用户", cls="text-[11px] tracking-[0.18em] text-[#8b8b8b]"),
+                                Div(user_name, cls="mt-1 text-sm font-semibold text-[#2c3030]"),
+                                Div(account_summary, cls="mt-2 text-xs leading-5 text-[#6b7280]"),
+                                cls="border-b border-[#f2d6d6] px-4 py-4",
                             ),
                             Div(
-                                Div("切换账号", cls="text-xs text-gray-500 px-2 py-1"),
-                                *[
-                                    A(
-                                        Span(acc.get("name", acc.get("id", "")), cls="text-sm text-gray-700 dark:text-gray-300"),
-                                        Span(acc.get("label", ""), cls="text-xs text-gray-400"),
-                                        href=acc.get("switch_url", "#"),
-                                        cls="w-full flex items-center justify-between px-2 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
-                                    )
-                                    for acc in accounts
-                                    if current is None or acc.get("id") != current.get("id") or acc.get("kind") != current.get("kind")
-                                ],
-                                cls="p-2 border-b border-gray-200 dark:border-gray-700",
-                            ),
-                            Div(
-                                A(
-                                    "账号管理",
-                                    href="/system/accounts",
-                                    cls="block px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
-                                ),
-                                A(
-                                    "退出登录",
-                                    href="/auth/logout",
-                                    cls="block px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg",
-                                ),
+                                menu_action("重设密码", "/auth/profile#password-settings", "settings"),
+                                menu_action("退出登录", "/auth/logout", "log-out"),
                                 cls="p-2",
                             ),
                             id="user-dropdown",
-                            cls="hidden absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50",
+                            cls="quantide-surface absolute right-0 top-[calc(100%+12px)] z-50 hidden w-64 overflow-hidden rounded-2xl bg-white",
+                            role="menu",
                         ),
                         id="user-menu",
                         cls="relative",
                     ),
                     cls="flex items-center",
                 ),
-                cls="flex items-center space-x-6",
+                cls="flex items-center gap-3",
             ),
-            cls="h-full flex items-center justify-between px-4",
+            cls="mx-auto flex h-full max-w-[1280px] items-center gap-4 px-5",
         ),
         Script(
-            "function toggleUserMenu(){const d=document.getElementById('user-dropdown');if(d){d.classList.toggle('hidden');}}"
-            "document.addEventListener('click',function(e){const m=document.getElementById('user-menu');const d=document.getElementById('user-dropdown');if(m&&d&&!m.contains(e.target)){d.classList.add('hidden');}});"
+            "function setUserMenu(open){const button=document.getElementById('user-menu-button');const dropdown=document.getElementById('user-dropdown');if(!button||!dropdown){return;}if(open){dropdown.classList.remove('hidden');button.setAttribute('aria-expanded','true');}else{dropdown.classList.add('hidden');button.setAttribute('aria-expanded','false');}}"
+            "function toggleUserMenu(event){if(event){event.stopPropagation();}const dropdown=document.getElementById('user-dropdown');if(!dropdown){return;}setUserMenu(dropdown.classList.contains('hidden'));}"
+            "document.addEventListener('click',function(event){const menu=document.getElementById('user-menu');if(menu&&!menu.contains(event.target)){setUserMenu(false);}});"
+            "document.addEventListener('keydown',function(event){if(event.key==='Escape'){setUserMenu(false);}});"
         ),
-        cls="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 h-16 sticky top-0 z-50",
+        cls="sticky top-0 z-50 h-16 border-b border-black/5 shadow-[0_10px_30px_rgba(120,12,12,0.18)]",
+        style=f"background-color: {PRIMARY_COLOR};",
     )

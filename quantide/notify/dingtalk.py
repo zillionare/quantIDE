@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class DingTalkMessage:
     """
     钉钉的机器人消息推送类，封装了常用的消息类型以及加密算法
-    需要在配置文件中配置钉钉的机器人的access_token
-    如果配置了加签，需要在配置文件中配置钉钉的机器人的secret
-    如果配置了自定义关键词，需要在配置文件中配置钉钉的机器人的keyword，多个关键词用英文逗号分隔
-    全部的配置文件示例如下, 其中secret和keyword可以不配置, access_token必须配置
+        需要在运行时配置中提供机器人的 access_token。
+        如果配置了加签，需要同时提供机器人的 secret。
+        如果配置了自定义关键词，需要同时提供 keyword，多个关键词用英文逗号分隔。
+        其中 secret 和 keyword 可以不配置，access_token 必须配置。
     notify:
       dingtalk_access_token: xxxx
       dingtalk_secret: xxxx

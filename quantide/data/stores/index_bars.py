@@ -10,7 +10,7 @@ from typing import Callable
 import polars as pl
 
 from quantide.data.models.calendar import Calendar
-from quantide.data.stores.base import ParquetStorage
+from quantide.data.stores.base import ParquetStorage, _as_date_bound, _as_datetime_bound
 
 
 _REMOVED_MESSAGE = "指数抓取功能已从 quantide 主体移除。"
@@ -69,9 +69,9 @@ class IndexBarsStore(ParquetStorage):
 
         # 过滤日期
         if start is not None:
-            lf = lf.filter(pl.col("date") >= start)
+            lf = lf.filter(pl.col("date") >= _as_datetime_bound(start))
         if end is not None:
-            lf = lf.filter(pl.col("date") <= end)
+            lf = lf.filter(pl.col("date") <= _as_datetime_bound(end))
 
         # 过滤指数
         if symbols is not None:
@@ -120,9 +120,9 @@ class IndexBarsStore(ParquetStorage):
         lazy = lazy.with_columns(pl.col("date").cast(pl.Date))
 
         if start is not None:
-            lazy = lazy.filter(pl.col("date") >= start)
+            lazy = lazy.filter(pl.col("date").dt.strftime("%F") >= start.isoformat())
         if end is not None:
-            lazy = lazy.filter(pl.col("date") <= end)
+            lazy = lazy.filter(pl.col("date").dt.strftime("%F") <= end.isoformat())
 
         df = lazy.group_by("date").agg(pl.len().alias("n")).collect()
         dates = df["date"].to_list()

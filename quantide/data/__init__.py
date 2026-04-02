@@ -48,4 +48,5 @@ def init_data(
 
     if init_db:
         target_db_path = Path(db_path).expanduser() if db_path is not None else get_app_db_path()
-        db.init(target_db_path)
+        if not db.is_initialized_for(target_db_path):
+            db.init(target_db_path)

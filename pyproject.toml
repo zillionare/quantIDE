@@ -93,6 +93,11 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
 
+[tool.pytest.ini_options]
+markers = [
+    "e2e: HTTP-level end-to-end tests organized by user journey",
+]
+
 [dependency-groups]
 dev = [
     "mypy (>=1.19.1,<2.0.0)",

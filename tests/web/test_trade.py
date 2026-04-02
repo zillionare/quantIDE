@@ -18,6 +18,8 @@ from quantide.core.enums import BrokerKind
 from quantide.data.sqlite import db as _db
 from quantide.service.registry import BrokerRegistry
 from quantide.service.sim_broker import SimulationBroker
+from quantide.web.middleware_feature import FeatureCheckMiddleware
+import quantide.web.middleware_feature as middleware_feature
 
 
 @pytest.fixture(scope="module")
@@ -46,6 +48,7 @@ def test_app():
         from quantide.web.auth.manager import AuthManager
         from quantide.web.middleware import BrokerRegistryMiddleware, exception_handler
         from quantide.core.errors import BaseTradeError
+        from quantide.web.middleware_feature import FeatureCheckMiddleware
         from quantide.web.pages.home import home_app
         from quantide.web.pages.trade import trade_app
         from quantide.web.pages.live import live_app
@@ -56,7 +59,10 @@ def test_app():
         app, rt = fast_app(
             hdrs=tuple(Theme.blue.headers()),
             before=auth.create_beforeware(),
-            middleware=(Middleware(BrokerRegistryMiddleware, registry=reg),),
+            middleware=(
+                Middleware(FeatureCheckMiddleware),
+                Middleware(BrokerRegistryMiddleware, registry=reg),
+            ),
             exception_handlers={
                 Exception: exception_handler,
                 BaseTradeError: exception_handler,
@@ -91,6 +97,18 @@ def test_client(test_app):
     """创建测试客户端"""
     client = TestClient(test_app)
     yield client
+
+
+@pytest.fixture(autouse=True)
+def feature_status_available(monkeypatch):
+    def _features():
+        return {
+            "backtest": {"name": "回测功能", "available": True},
+            "simulation": {"name": "仿真交易", "available": True},
+            "live_trading": {"name": "实盘交易", "available": True},
+        }
+
+    monkeypatch.setattr(middleware_feature, "get_feature_status", _features)
 
 
 @pytest.fixture
@@ -183,6 +201,57 @@ class TestLoginRoutes:
         assert response.status_code == 200
         assert "首页" in response.text
 
+    def test_authenticated_header_shows_avatar_menu_actions(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "匡醍量化" in response.text
+        assert "策略" in response.text
+        assert "系统维护" in response.text
+        assert "实盘" in response.text
+        assert "仿真" in response.text
+        assert "重设密码" in response.text
+        assert "/auth/profile#password-settings" in response.text
+        assert "/auth/logout" in response.text
+
+    def test_profile_page_contains_password_reset_section(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/auth/profile", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "个人设置" in response.text
+        assert "重设密码" in response.text
+        assert "当前密码" in response.text
+
+    def test_auth_logout_redirects_to_login(self, test_client):
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/auth/logout", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/auth/login"
+
     def test_create_simulation_account_modal(self, test_client):
         """测试创建仿真账户对话框"""
         response = test_client.get("/trade/simulation/create")
@@ -253,6 +322,66 @@ class TestLiveTrade:
         response = test_client.get("/trade/live/create")
         assert response.status_code == 200
         assert "Gateway" in response.text or "qmt-gateway" in response.text
+
+
+class TestFeatureGate:
+    """测试 gateway 未启用时的交易入口收紧。"""
+
+    @staticmethod
+    def _disabled_features():
+        return {
+            "backtest": {"name": "回测功能", "available": True},
+            "simulation": {"name": "仿真交易", "available": False},
+            "live_trading": {"name": "实盘交易", "available": False},
+        }
+
+    def test_simulation_entry_blocked_without_gateway(self, test_client, monkeypatch):
+        monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
+
+        response = test_client.get("/trade/simulation", follow_redirects=False)
+
+        assert response.status_code == 403
+        assert "仿真交易功能已禁用" in response.text
+        assert "/init-wizard?force=true" in response.text
+
+    def test_simulation_create_blocked_without_gateway(self, test_client, monkeypatch):
+        monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
+
+        response = test_client.post(
+            "/trade/simulation/create",
+            data={
+                "name": "测试账户",
+                "principal": "1000000",
+                "commission": "0.0001",
+                "market_value_update_interval": "10",
+                "info": "测试描述",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 403
+        assert response.json()["error"].startswith("仿真交易功能已禁用")
+
+    def test_live_entry_blocked_without_gateway(self, test_client, monkeypatch):
+        monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
+
+        response = test_client.get("/trade/live", follow_redirects=False)
+
+        assert response.status_code == 403
+        assert "实盘交易功能已禁用" in response.text
+
+    def test_live_htmx_modal_returns_disabled_fragment(self, test_client, monkeypatch):
+        monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
+
+        response = test_client.get(
+            "/trade/live/create",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 403
+        assert "实盘交易功能已禁用" in response.text
+        assert "<!DOCTYPE html>" not in response.text
 
 
 class TestBrokerRegistry:
