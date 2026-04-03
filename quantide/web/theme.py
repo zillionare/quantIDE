@@ -4,6 +4,7 @@
 """
 
 from fasthtml.common import *
+from monsterui.all import Theme
 
 
 # 主色调
@@ -19,45 +20,41 @@ class AppTheme:
     @staticmethod
     def headers():
         """获取主题 headers（CSS 和脚本）"""
-        # 使用 DaisyUI 的 red 主题作为基础，然后通过自定义 CSS 覆盖
-        return [
-            # Tailwind CSS
-            Script(src="https://cdn.tailwindcss.com"),
-            # DaisyUI
-            Link(
-                rel="stylesheet",
-                href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css",
-            ),
-            # 自定义主题 CSS
-            Style(f"""
-                :root {{
-                    --p: 1 83% 49%;
-                    --pf: 1 83% 42%;
-                    --pc: 0 0% 100%; /* primary content */
-                }}
-                body {{
-                    background-color: #f5f5f5;
-                    color: {TEXT_COLOR};
-                }}
-                .btn-primary {{
-                    background-color: {PRIMARY_COLOR} !important;
-                    border-color: {PRIMARY_COLOR} !important;
-                }}
-                .text-primary {{
-                    color: {PRIMARY_COLOR} !important;
-                }}
-                .bg-primary {{
-                    background-color: {PRIMARY_COLOR} !important;
-                }}
-                .border-primary {{
-                    border-color: {PRIMARY_COLOR} !important;
-                }}
-                .quantide-surface {{
-                    background: #ffffff;
-                    border: 1px solid rgba(44, 48, 48, 0.08);
-                    box-shadow: 0 18px 45px rgba(44, 48, 48, 0.08);
-                }}
-            """),
-            # HTMX
-            Script(src="https://unpkg.com/htmx.org@1.9.12"),
-        ]
+        # 使用 monsterui 的 Theme 获取基础 headers（包含 Tailwind, FrankenUI, DaisyUI）
+        base_headers = Theme.red.headers()
+        
+        # 添加自定义主题 CSS
+        custom_css = Style(f"""
+            :root {{
+                --p: 1 83% 49%;
+                --pf: 1 83% 42%;
+                --pc: 0 0% 100%; /* primary content */
+            }}
+            body {{
+                background-color: #f5f5f5;
+                color: {TEXT_COLOR};
+            }}
+            .btn-primary {{
+                background-color: {PRIMARY_COLOR} !important;
+                border-color: {PRIMARY_COLOR} !important;
+            }}
+            .text-primary {{
+                color: {PRIMARY_COLOR} !important;
+            }}
+            .bg-primary {{
+                background-color: {PRIMARY_COLOR} !important;
+            }}
+            .border-primary {{
+                border-color: {PRIMARY_COLOR} !important;
+            }}
+            .quantide-surface {{
+                background: #ffffff;
+                border: 1px solid rgba(44, 48, 48, 0.08);
+                box-shadow: 0 18px 45px rgba(44, 48, 48, 0.08);
+            }}
+        """)
+        
+        # 添加 HTMX
+        htmx_script = Script(src="https://unpkg.com/htmx.org@1.9.12")
+        
+        return list(base_headers) + [custom_css, htmx_script]
