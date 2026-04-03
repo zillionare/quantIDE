@@ -37,6 +37,7 @@ from quantide.web.pages.accounts import accounts_app, accounts_list
 from quantide.web.pages.analysis import analysis_handler
 from quantide.web.pages.data_calendar import data_calendar_app
 from quantide.web.pages.data_db import data_db_app
+from quantide.web.pages.system.calendar import calendar_page, calendar_sync
 from quantide.web.pages.data_market import data_market_app
 from quantide.web.pages.data_stocks import data_stocks_app
 from quantide.web.pages.history_orders import history_orders_list
@@ -199,12 +200,12 @@ def create_app(
             ),
             Route(
                 "/system",
-                lambda req: RedirectResponse("/data/market", status_code=303),
+                lambda req: RedirectResponse("/system/calendar", status_code=303),
                 methods=["GET"],
             ),
             Route(
                 "/system/",
-                lambda req: RedirectResponse("/data/market", status_code=303),
+                lambda req: RedirectResponse("/system/calendar", status_code=303),
                 methods=["GET"],
             ),
             Route(
@@ -248,6 +249,8 @@ def create_app(
             Mount("/data/market", data_market_app),
             Mount("/data/stocks", data_stocks_app),
             Mount("/data/db", data_db_app),
+            Route("/system/calendar", calendar_page, methods=["GET"]),
+            Route("/system/calendar/sync", calendar_sync, methods=["POST"]),
             Mount("/", home_app),
         ],
     )
