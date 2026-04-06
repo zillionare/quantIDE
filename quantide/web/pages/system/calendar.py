@@ -63,7 +63,7 @@ def _build_day_cell(item):
         # 交易日：正常显示
         return f'<div class="p-3 text-center min-h-[70px] flex flex-col items-center justify-center"><span class="text-gray-800 font-medium text-lg">{day_num}</span></div>'
     else:
-        # 休市日（包括周末和工作日休市）：红色显示
+        # 休市日（包括周末和工作日休市）：红色显示带阴影背景
         if day_of_week < 5:
             return f'<div class="p-3 text-center bg-red-50 min-h-[70px] flex flex-col items-center justify-center"><span class="text-red-500 font-medium text-lg">{day_num}</span><span class="text-xs text-red-400 mt-1">休市</span></div>'
         else:
@@ -105,9 +105,17 @@ async def calendar_page(req, year: int = None, month: int = None):
     # 构建日历行
     calendar_rows = ''.join([f'<div class="grid grid-cols-7 gap-1 mb-1">{"".join([day if day else "<div class=\'p-3 min-h-[70px]\'></div>" for day in week])}</div>' for week in weeks])
     
-    # 构建年份选项
+    # 构建年份选项（前后5年）
     year_opts = ''.join([f'<option value="{y}" {"selected" if y == year else ""}>{y}</option>' for y in range(year - 5, year + 6)])
     month_opts = ''.join([f'<option value="{m}" {"selected" if m == month else ""}>{m}</option>' for m in range(1, 13)])
+    
+    # 计算上月、下月、上年、下年的链接
+    prev_month = month - 1 if month > 1 else 12
+    prev_month_year = year if month > 1 else year - 1
+    next_month = month + 1 if month < 12 else 1
+    next_month_year = year if month < 12 else year + 1
+    prev_year = year - 1
+    next_year = year + 1
     
     # 完整的 HTML 页面
     html_content = f"""<!DOCTYPE html>
@@ -122,23 +130,34 @@ async def calendar_page(req, year: int = None, month: int = None):
     <div class="container mx-auto p-4 max-w-6xl">
         <h2 class="text-2xl font-bold text-gray-800 mb-4">交易日历</h2>
         
-        <div class="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow">
-            <div class="flex items-center">
-                <select id="year-select" class="select select-bordered select-sm w-24 mr-2">
-                    {year_opts}
-                </select>
-                <span class="mr-2">年</span>
-                <select id="month-select" class="select select-bordered select-sm w-20">
-                    {month_opts}
-                </select>
-                <span class="mr-2">月</span>
-                <button onclick="navigateMonth()" class="btn btn-sm btn-primary mr-2">跳转</button>
-            </div>
+        <!-- 第一行：更新按钮 -->
+        <div class="flex justify-end mb-4">
             <button hx-post="/system/calendar/sync" hx-target="body" hx-swap="innerHTML" class="btn btn-sm btn-secondary">
                 立即更新
             </button>
         </div>
         
+        <!-- 第二行：日历工具条 -->
+        <div class="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow">
+            <div class="flex items-center space-x-2">
+                <button onclick="navigateToYear({prev_year})" class="btn btn-sm btn-outline" title="上一年">&lt;&lt;</button>
+                <button onclick="navigateToMonth({prev_month_year}, {prev_month})" class="btn btn-sm btn-outline" title="上一月">&lt;</button>
+                <button onclick="navigateToMonth({next_month_year}, {next_month})" class="btn btn-sm btn-outline" title="下一月">&gt;</button>
+                <button onclick="navigateToYear({next_year})" class="btn btn-sm btn-outline" title="下一年">&gt;&gt;</button>
+            </div>
+            <div class="flex items-center">
+                <select id="year-select" onchange="navigateToSelectedMonth()" class="select select-bordered select-sm w-24 mr-2">
+                    {year_opts}
+                </select>
+                <span class="mr-2">年</span>
+                <select id="month-select" onchange="navigateToSelectedMonth()" class="select select-bordered select-sm w-20">
+                    {month_opts}
+                </select>
+                <span class="ml-1">月</span>
+            </div>
+        </div>
+        
+        <!-- 第三行：日历表格 -->
         <div class="bg-white rounded-lg shadow-lg overflow-hidden">
             <div class="grid grid-cols-7 gap-1 mb-2 bg-gray-200 p-2 rounded-t-lg">
                 {weekday_headers}
@@ -146,20 +165,30 @@ async def calendar_page(req, year: int = None, month: int = None):
             {calendar_rows}
         </div>
         
+        <!-- 图例说明 -->
         <div class="flex mt-4 p-4 bg-white rounded-lg shadow">
             <div class="flex items-center mr-4">
-                <div class="w-4 h-4 bg-white mr-2"></div>
+                <div class="w-4 h-4 bg-white mr-2 border border-gray-300"></div>
                 <span class="text-sm">交易日</span>
             </div>
             <div class="flex items-center">
-                <div class="w-4 h-4 bg-red-50 mr-2"></div>
-                <span class="text-sm">休市日（含周末）</span>
+                <div class="w-4 h-4 bg-red-50 mr-2 border border-gray-300"></div>
+                <span class="text-sm text-red-500">休市日（含周末）</span>
             </div>
         </div>
     </div>
     
     <script>
-    function navigateMonth() {{
+    function navigateToMonth(year, month) {{
+        window.location.href = `/system/calendar?year=${{year}}&month=${{month}}`;
+    }}
+    
+    function navigateToYear(year) {{
+        const currentMonth = document.getElementById('month-select').value;
+        window.location.href = `/system/calendar?year=${{year}}&month=${{currentMonth}}`;
+    }}
+    
+    function navigateToSelectedMonth() {{
         const year = document.getElementById('year-select').value;
         const month = document.getElementById('month-select').value;
         window.location.href = `/system/calendar?year=${{year}}&month=${{month}}`;

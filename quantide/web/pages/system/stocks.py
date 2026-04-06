@@ -84,7 +84,7 @@ def _build_stock_table_page(page: int = 1, per_page: int = 20, query: str = ""):
 
 
 def _build_pagination(page: int, total_pages: int, per_page: int, total: int, query: str):
-    """构建分页控件"""
+    """构建分页控件（最多7个页码）"""
     # 生成页码列表（最多7个）
     start_page = max(1, page - 3)
     end_page = min(total_pages, start_page + 6)
@@ -132,7 +132,7 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
     per_page = int(req.query_params.get("per_page", per_page))
     logger.info(f"stocks_page called with query='{query}', page={page}, per_page={per_page}")
     
-    # 构建搜索框
+    # 构建搜索框和更新按钮
     search_box = f'''
     <div class="mb-4">
         <div class="flex justify-between items-center">
