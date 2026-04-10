@@ -143,17 +143,20 @@ async def index(req, page: int = 1, per_page: int = 20, q: str = ""):
         ),
         Div(
             Div(
-                Form(
-                    Input(
-                        type="text",
-                        name="q",
-                        value=query,
-                        placeholder="搜索股票代码、名称或拼音...",
-                        cls="input input-bordered w-full max-w-md"
-                    ),
-                    Button("搜索", type="submit", cls="btn btn-primary ml-2"),
-                    cls="flex items-center"
+                Input(
+                    type="text",
+                    name="q",
+                    value=query,
+                    placeholder="输入代码、名称或拼音搜索...",
+                    cls="input input-bordered w-full max-w-md",
+                    hx_get="/system/stocks/search",
+                    hx_trigger="keyup changed delay:200ms, search",
+                    hx_target="#stocks-content",
+                    hx_swap="innerHTML",
+                    hx_include="[name='per_page']",
+                    hx_vals='{"page": "1"}',
                 ),
+                Input(type="hidden", name="per_page", value=str(per_page)),
                 cls="flex-1"
             ),
             Button(
@@ -199,3 +202,44 @@ async def sync_stocks():
             f"同步失败: {str(e)}",
             cls="flex items-center p-4 bg-red-50 text-red-700 rounded-lg"
         )
+
+
+@rt("/search")
+async def search(req, q: str = "", per_page: int = 20):
+    """HTMX 搜索 API，返回表格内容。
+
+    用于防抖自动搜索，仅返回表格部分。
+    """
+    query = q.strip()
+    per_page = int(req.query_params.get("per_page", per_page))
+    page = int(req.query_params.get("page", 1))
+
+    logger.info(f"search called with query='{query}', page={page}, per_page={per_page}")
+
+    try:
+        if query:
+            result_df = stock_list.fuzzy_search(query, id_only=False)
+            total = len(result_df)
+            if total > 0:
+                # 搜索结果分页
+                start_idx = (page - 1) * per_page
+                end_idx = min(start_idx + per_page, total)
+                data = result_df.iloc[start_idx:end_idx].to_dict("records")
+            else:
+                data = []
+        else:
+            df = stock_list.data
+            if df is not None:
+                total = len(df)
+                start_idx = (page - 1) * per_page
+                end_idx = min(start_idx + per_page, total)
+                data = df.slice(start_idx, end_idx - start_idx).to_pandas().to_dict("records")
+            else:
+                total = 0
+                data = []
+    except Exception as e:
+        logger.error(f"搜索失败: {e}")
+        total = 0
+        data = []
+
+    return _build_stock_table(data, page, per_page, total, query)

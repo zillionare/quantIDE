@@ -107,29 +107,56 @@ class StockList:
     def fuzzy_search(
         self, query: str, id_only: bool = True
     ) -> pd.DataFrame | list[str]:
-        """Return dataframe rows that fuzzy match given query across asset/name/pinyin.
+        """根据输入模式进行模糊搜索。
 
-        - Normalizes query: strip and uppercase for asset & pinyin
-        - Keeps Chinese name matching case-sensitive (contains)
-        - Supports codes with suffix (e.g., '000001.SZ') by matching cleaned asset
+        搜索规则：
+        - 全数字：匹配股票代码开头
+        - 汉字：匹配股票名称（任意位置）
+        - 英文字母：转大写后匹配拼音开头
+
+        Args:
+            query: 搜索关键字
+            id_only: 仅返回代码列表还是完整 DataFrame
+
+        Returns:
+            匹配的股票代码列表或 DataFrame
         """
-        filters = []
+        if not query or not query.strip():
+            if id_only:
+                return []
+            return pd.DataFrame()
 
+        q = query.strip()
+
+        # 提取 symbol（不含后缀的代码）
         tmp = self.data.with_columns(
             pl.col("asset").str.split(".").list.get(0).alias("symbol")
         )
 
-        filters = [
-            pl.col("symbol").str.contains(query.strip()),
-            pl.col("name").str.contains(query.strip()),
-            pl.col("pinyin").str.contains(query.upper().strip()),
-        ]
+        # 判断输入类型
+        is_all_digits = q.isdigit()
+        is_all_chinese = all("\u4e00" <= char <= "\u9fff" for char in q)
+        is_all_letters = all(char.isalpha() for char in q)
 
-        result = tmp.filter(pl.any_horizontal(filters))
+        if is_all_digits:
+            # 全数字：匹配股票代码开头
+            result = tmp.filter(pl.col("symbol").str.starts_with(q))
+        elif is_all_chinese:
+            # 汉字：匹配股票名称（任意位置）
+            result = tmp.filter(pl.col("name").str.contains(q))
+        elif is_all_letters:
+            # 英文字母：转大写后匹配拼音开头
+            q_upper = q.upper()
+            result = tmp.filter(pl.col("pinyin").str.to_uppercase().str.starts_with(q_upper))
+        else:
+            # 混合输入：匹配代码或名称
+            result = tmp.filter(
+                pl.col("symbol").str.contains(q) | pl.col("name").str.contains(q)
+            )
 
         if id_only:
             return result["asset"].to_list()
-        return result.to_pandas()
+        return result.drop("symbol").to_pandas()
 
     def get_name(self, asset: str) -> str:
         """获取股票名称
