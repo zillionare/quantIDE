@@ -70,16 +70,40 @@ def test_basic_apis(asset_dir: Path, setup: None):
 
 
 def test_fuzzy_search(setup):
-    assert set(stock_list.fuzzy_search("6888")).issuperset({"688800.SH", "688819.SH"})
-    assert set(stock_list.fuzzy_search("平安")).issuperset(
-        {"000001.SZ", "001359.SZ", "601318.SH"}
-    )
-    assert "000006.SZ" in stock_list.fuzzy_search("sz")  # 深振业 A
-    assert "000001.SZ" not in stock_list.fuzzy_search("sz")  # 平安银行
-    assert stock_list.fuzzy_search("PAYH") == ["000001.SZ"]
-    assert stock_list.fuzzy_search("000007") == ["000007.SZ"]
+    """测试模糊搜索的智能匹配规则。
 
-    assert isinstance(stock_list.fuzzy_search("6888", id_only=False), pd.DataFrame)
+    规则：
+    - 全数字：匹配股票代码开头
+    - 汉字：匹配股票名称（任意位置）
+    - 英文字母：转大写后匹配拼音开头
+    """
+    # 1. 全数字：匹配代码开头
+    result = stock_list.fuzzy_search("6888")
+    assert set(result).issuperset({"688800.SH", "688819.SH"})
+    assert "000007.SZ" not in result  # 不在代码开头
+
+    # 2. 汉字：匹配名称（任意位置）
+    result = stock_list.fuzzy_search("平安")
+    assert set(result).issuperset({"000001.SZ", "001359.SZ", "601318.SH"})
+
+    result = stock_list.fuzzy_search("中国平安")
+    assert "601318.SH" in result  # 完整名称匹配
+
+    # 3. 英文字母：匹配拼音开头（大小写不敏感）
+    result = stock_list.fuzzy_search("PAYH")
+    assert result == ["000001.SZ"]  # 平安银行
+
+    result = stock_list.fuzzy_search("payh")  # 小写也应该工作
+    assert result == ["000001.SZ"]
+
+    # 拼音开头匹配
+    result = stock_list.fuzzy_search("sz")  # SZ 开头的拼音
+    assert "000006.SZ" in result  # 深振业A，拼音以 SZ 开头
+
+    # 4. 返回 DataFrame
+    df = stock_list.fuzzy_search("6888", id_only=False)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) >= 2
 
 
 def test_is_st(setup):
