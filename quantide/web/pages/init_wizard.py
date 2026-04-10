@@ -588,38 +588,36 @@ def Step3_Admin(state: dict | None = None):
     }.get(strength, "#6b7280")
 
     return Div(
-        Card(
-            CardBody(
-                # 管理员密码
-                FormLabel("管理员密码", required=True, tooltip="建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。"),
-                Div(
-                    Input(
-                        name=ADMIN_FORM_FIELDS["password"],
-                        type="password",
-                        value=password,
-                        placeholder="请输入管理员密码",
-                        required=True,
-                        oninput="checkPasswordStrength(this.value)",
-                        cls="uk-input",
-                    ),
-                    # 密码强度提示
-                    Div(
-                        Span(strength_text, style=f"{FONT_STYLES['hint']} color: {strength_color};"),
-                        id="password-strength",
-                        cls="mt-1 mb-4",
-                    ) if password else Div(id="password-strength", cls="mt-1 mb-4"),
-                ),
-                # 确认密码
-                FormLabel("确认密码", required=True),
+        Div(
+            # 管理员密码
+            FormLabel("管理员密码", required=True, tooltip="建议使用8位以上密码，包含字母大小写、数字、特殊符号各一。"),
+            Div(
                 Input(
-                    name=ADMIN_FORM_FIELDS["confirm"],
+                    name=ADMIN_FORM_FIELDS["password"],
                     type="password",
-                    value=state.get(ADMIN_FORM_FIELDS["confirm"], ""),
-                    placeholder="再次输入管理员密码",
+                    value=password,
+                    placeholder="请输入管理员密码",
                     required=True,
-                    cls="uk-input mb-4",
+                    oninput="checkPasswordStrength(this.value)",
+                    cls="uk-input",
                 ),
-            )
+                # 密码强度提示
+                Div(
+                    Span(strength_text, style=f"{FONT_STYLES['hint']} color: {strength_color};"),
+                    id="password-strength",
+                    cls="mt-1 mb-4",
+                ) if password else Div(id="password-strength", cls="mt-1 mb-4"),
+            ),
+            # 确认密码
+            FormLabel("确认密码", required=True),
+            Input(
+                name=ADMIN_FORM_FIELDS["confirm"],
+                type="password",
+                value=state.get(ADMIN_FORM_FIELDS["confirm"], ""),
+                placeholder="再次输入管理员密码",
+                required=True,
+                cls="uk-input mb-4",
+            ),
         ),
         # 密码强度检查脚本
         Script(r"""
@@ -666,55 +664,53 @@ def Step2_Runtime(state: dict | None = None):
     values = _runtime_form_state(state)
 
     return Div(
-        Card(
-            CardBody(
-                # 数据存储位置
-                FormLabel("数据存储位置", tooltip="行情数据和相关缓存将存放在此处。留空时默认使用 ~/.quantide。配置数据库固定保存在系统配置目录。"),
+        Div(
+            # 数据存储位置
+            FormLabel("数据存储位置", tooltip="行情数据和相关缓存将存放在此处。留空时默认使用 ~/.quantide。配置数据库固定保存在系统配置目录。"),
+            Input(
+                name=RUNTIME_FORM_FIELDS["home"],
+                value=values[RUNTIME_FORM_FIELDS["home"]],
+                placeholder=DEFAULT_DATA_HOME,
+                cls="uk-input mb-4",
+            ),
+            # 只允许本机访问
+            Div(
+                Label(
+                    Input(
+                        type="checkbox",
+                        name=RUNTIME_FORM_FIELDS["localhost_only"],
+                        value="true",
+                        checked=values[RUNTIME_FORM_FIELDS["localhost_only"]],
+                        cls="uk-checkbox mr-2",
+                    ),
+                    Span("只允许本机访问", style=FONT_STYLES["label"]),
+                    InfoTooltip("勾选后仅允许本机访问，取消勾选则允许外部访问。"),
+                    cls="flex items-center mb-4",
+                ),
+            ),
+            # 监听端口
+            FormRow(
+                "监听端口",
                 Input(
-                    name=RUNTIME_FORM_FIELDS["home"],
-                    value=values[RUNTIME_FORM_FIELDS["home"]],
-                    placeholder=DEFAULT_DATA_HOME,
-                    cls="uk-input mb-4",
+                    name=RUNTIME_FORM_FIELDS["port"],
+                    type="number",
+                    value=values[RUNTIME_FORM_FIELDS["port"]],
+                    placeholder="8130",
+                    cls="uk-input",
                 ),
-                # 只允许本机访问
-                Div(
-                    Label(
-                        Input(
-                            type="checkbox",
-                            name=RUNTIME_FORM_FIELDS["localhost_only"],
-                            value="true",
-                            checked=values[RUNTIME_FORM_FIELDS["localhost_only"]],
-                            cls="uk-checkbox mr-2",
-                        ),
-                        Span("只允许本机访问", style=FONT_STYLES["label"]),
-                        InfoTooltip("勾选后仅允许本机访问，取消勾选则允许外部访问。"),
-                        cls="flex items-center mb-4",
-                    ),
+                tooltip="除非端口已被其它应用占用，否则可使用默认值。",
+            ),
+            # 路径前缀
+            FormRow(
+                "路径前缀",
+                Input(
+                    name=RUNTIME_FORM_FIELDS["prefix"],
+                    value=values[RUNTIME_FORM_FIELDS["prefix"]],
+                    placeholder="/quantide",
+                    cls="uk-input",
                 ),
-                # 监听端口
-                FormRow(
-                    "监听端口",
-                    Input(
-                        name=RUNTIME_FORM_FIELDS["port"],
-                        type="number",
-                        value=values[RUNTIME_FORM_FIELDS["port"]],
-                        placeholder="8130",
-                        cls="uk-input",
-                    ),
-                    tooltip="除非端口已被其它应用占用，否则可使用默认值。",
-                ),
-                # 路径前缀
-                FormRow(
-                    "路径前缀",
-                    Input(
-                        name=RUNTIME_FORM_FIELDS["prefix"],
-                        value=values[RUNTIME_FORM_FIELDS["prefix"]],
-                        placeholder="/quantide",
-                        cls="uk-input",
-                    ),
-                    tooltip="可选。如果不明白含义，可保持默认。",
-                ),
-            )
+                tooltip="可选。如果不明白含义，可保持默认。",
+            ),
         ),
         cls="w-full",
     )
@@ -726,73 +722,71 @@ def Step4_Gateway(state: dict | None = None):
     enabled = bool(values[GATEWAY_FORM_FIELDS["enabled"]])
 
     return Div(
-        Card(
-            CardBody(
-                # 启用 gateway
-                Div(
-                    Label(
-                        Input(
-                            type="checkbox",
-                            name=GATEWAY_FORM_FIELDS["enabled"],
-                            value="true",
-                            checked=enabled,
-                            cls="uk-checkbox mr-2",
-                        ),
-                        Span("启用 gateway", style=FONT_STYLES["label"]),
-                        InfoTooltip("请安装 quantide gateway 并配置，否则无法获得实时行情和执行交易。"),
-                        cls="flex items-center mb-4",
-                    ),
-                ),
-                # gateway 服务器地址
-                FormRow(
-                    "服务器地址",
+        Div(
+            # 启用 gateway
+            Div(
+                Label(
                     Input(
-                        name=GATEWAY_FORM_FIELDS["server"],
-                        value=values[GATEWAY_FORM_FIELDS["server"]],
-                        placeholder="localhost",
-                        disabled=not enabled,
-                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                        type="checkbox",
+                        name=GATEWAY_FORM_FIELDS["enabled"],
+                        value="true",
+                        checked=enabled,
+                        cls="uk-checkbox mr-2",
                     ),
-                    tooltip="gateway 服务器的主机名或 IP 地址。",
+                    Span("启用 gateway", style=FONT_STYLES["label"]),
+                    InfoTooltip("请安装 quantide gateway 并配置，否则无法获得实时行情和执行交易。"),
+                    cls="flex items-center mb-4",
                 ),
-                # gateway 端口
-                FormRow(
-                    "端口",
-                    Input(
-                        name=GATEWAY_FORM_FIELDS["port"],
-                        type="number",
-                        value=values[GATEWAY_FORM_FIELDS["port"]],
-                        placeholder="8000",
-                        disabled=not enabled,
-                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
-                    ),
-                    tooltip="gateway 服务监听的端口号。",
+            ),
+            # gateway 服务器地址
+            FormRow(
+                "服务器地址",
+                Input(
+                    name=GATEWAY_FORM_FIELDS["server"],
+                    value=values[GATEWAY_FORM_FIELDS["server"]],
+                    placeholder="localhost",
+                    disabled=not enabled,
+                    cls=f"uk-input {'uk-disabled' if not enabled else ''}",
                 ),
-                # gateway 访问密钥
-                FormRow(
-                    "访问密钥",
-                    Input(
-                        name=GATEWAY_FORM_FIELDS["api_key"],
-                        value=values[GATEWAY_FORM_FIELDS["api_key"]],
-                        placeholder="",
-                        disabled=not enabled,
-                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
-                    ),
-                    tooltip="可在 gateway 用户头像菜单中生成和查看密钥。",
+                tooltip="gateway 服务器的主机名或 IP 地址。",
+            ),
+            # gateway 端口
+            FormRow(
+                "端口",
+                Input(
+                    name=GATEWAY_FORM_FIELDS["port"],
+                    type="number",
+                    value=values[GATEWAY_FORM_FIELDS["port"]],
+                    placeholder="8000",
+                    disabled=not enabled,
+                    cls=f"uk-input {'uk-disabled' if not enabled else ''}",
                 ),
-                # 路径前缀
-                FormRow(
-                    "路径前缀",
-                    Input(
-                        name=GATEWAY_FORM_FIELDS["prefix"],
-                        value=values[GATEWAY_FORM_FIELDS["prefix"]],
-                        placeholder="/",
-                        disabled=not enabled,
-                        cls=f"uk-input {'uk-disabled' if not enabled else ''}",
-                    ),
-                    tooltip="默认值为 /。",
+                tooltip="gateway 服务监听的端口号。",
+            ),
+            # gateway 访问密钥
+            FormRow(
+                "访问密钥",
+                Input(
+                    name=GATEWAY_FORM_FIELDS["api_key"],
+                    value=values[GATEWAY_FORM_FIELDS["api_key"]],
+                    placeholder="",
+                    disabled=not enabled,
+                    cls=f"uk-input {'uk-disabled' if not enabled else ''}",
                 ),
-            )
+                tooltip="可在 gateway 用户头像菜单中生成和查看密钥。",
+            ),
+            # 路径前缀
+            FormRow(
+                "路径前缀",
+                Input(
+                    name=GATEWAY_FORM_FIELDS["prefix"],
+                    value=values[GATEWAY_FORM_FIELDS["prefix"]],
+                    placeholder="/",
+                    disabled=not enabled,
+                    cls=f"uk-input {'uk-disabled' if not enabled else ''}",
+                ),
+                tooltip="默认值为 /。",
+            ),
         ),
         cls="w-full",
     )
@@ -837,63 +831,61 @@ def Step5_DataSetup(state: dict | None = None):
     download_start, download_end = _calculate_download_range(years)
 
     return Div(
-        Card(
-            CardBody(
-                FormRow(
-                    "当前数据源",
-                    Select(
-                        Option("Tushare", value="tushare", selected=data_source == "tushare"),
-                        name=DATA_INIT_FORM_FIELDS["data_source"],
-                        cls="uk-select",
-                    ),
-                    required=True,
-                    tooltip="当前版本先接入 Tushare，后续可以在同一标准接口下扩展更多数据源。",
+        Div(
+            FormRow(
+                "当前数据源",
+                Select(
+                    Option("Tushare", value="tushare", selected=data_source == "tushare"),
+                    name=DATA_INIT_FORM_FIELDS["data_source"],
+                    cls="uk-select",
                 ),
-                # 数据起始日
-                FormRow(
-                    "数据起始日",
-                    Input(
-                        name=DATA_INIT_FORM_FIELDS["epoch"],
-                        value=epoch,
-                        placeholder="2005-01-01",
-                        required=True,
-                        cls="uk-input",
-                    ),
+                required=True,
+                tooltip="当前版本先接入 Tushare，后续可以在同一标准接口下扩展更多数据源。",
+            ),
+            # 数据起始日
+            FormRow(
+                "数据起始日",
+                Input(
+                    name=DATA_INIT_FORM_FIELDS["epoch"],
+                    value=epoch,
+                    placeholder="2005-01-01",
                     required=True,
-                    tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。",
+                    cls="uk-input",
                 ),
-                # Tushare 访问密钥
-                FormRow(
-                    "Tushare 访问密钥",
-                    Input(
-                        name=DATA_INIT_FORM_FIELDS["tushare_token"],
-                        value=values[DATA_INIT_FORM_FIELDS["tushare_token"]],
-                        placeholder="请输入您的 tushare token",
-                        required=True,
-                        cls="uk-input",
-                    ),
+                required=True,
+                tooltip="行情数据的起始日，为确保数据有效、一致，不建议配置太早的起始日。比如，tushare 的数据集中，ST/涨跌停历史数据可能会从2016年起。",
+            ),
+            # Tushare 访问密钥
+            FormRow(
+                "Tushare 访问密钥",
+                Input(
+                    name=DATA_INIT_FORM_FIELDS["tushare_token"],
+                    value=values[DATA_INIT_FORM_FIELDS["tushare_token"]],
+                    placeholder="请输入您的 tushare token",
                     required=True,
-                    tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。",
+                    cls="uk-input",
                 ),
-                # 首次下载时长
-                FormRow(
-                    "首次下载时长（年）",
-                    Input(
-                        type="number",
-                        name=DATA_INIT_FORM_FIELDS["history_years"],
-                        min="1",
-                        value=years_raw,
-                        required=True,
-                        cls="uk-input",
-                        hx_trigger="change",
-                        hx_post=_with_force_query("/init-wizard/update-download-range"),
-                        hx_target="#download-range-info",
-                        hx_include="[name='history_years']",
-                    ),
+                required=True,
+                tooltip="访问 tushare 需要密钥，请在 https://tushare.pro/user/token 页面获取。",
+            ),
+            # 首次下载时长
+            FormRow(
+                "首次下载时长（年）",
+                Input(
+                    type="number",
+                    name=DATA_INIT_FORM_FIELDS["history_years"],
+                    min="1",
+                    value=years_raw,
                     required=True,
-                    tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。",
+                    cls="uk-input",
+                    hx_trigger="change",
+                    hx_post=_with_force_query("/init-wizard/update-download-range"),
+                    hx_target="#download-range-info",
+                    hx_include="[name='history_years']",
                 ),
-            )
+                required=True,
+                tooltip="本次初始化时，会下载从今天起往前推若干年的数据，默认为1年。后续还会有后台任务继续下载，所以为使您快速进入系统使用，建议就设置为1年。下载一年的数据，大约需要30分钟左右，也取决于您账号的限速。",
+            ),
         ),
         # 下载范围描述
         Div(
