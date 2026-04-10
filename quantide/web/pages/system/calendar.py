@@ -11,6 +11,9 @@ from quantide.data.models.calendar import calendar as trade_calendar
 from quantide.web.layouts.main import MainLayout
 from quantide.web.theme import AppTheme, PRIMARY_COLOR
 
+# 定义子路由应用
+system_calendar_app, rt = fast_app(hdrs=AppTheme.headers())
+
 
 def _get_calendar_data(year: int, month: int) -> list[dict]:
     """获取指定年月的日历数据"""
@@ -45,7 +48,6 @@ def _build_calendar_grid(year: int, month: int) -> Div:
     """构建日历网格"""
     cal_data = _get_calendar_data(year, month)
 
-    # 生成日历网格
     weeks = []
     current_week = [None] * 7
 
@@ -60,14 +62,12 @@ def _build_calendar_grid(year: int, month: int) -> Div:
     if any(day is not None for day in current_week):
         weeks.append(current_week)
 
-    # 星期标题
     weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     header_cells = [
         Div(name, cls="text-center font-bold p-2 text-gray-600")
         for name in weekday_names
     ]
 
-    # 日历行
     rows = []
     for week in weeks:
         cells = []
@@ -77,7 +77,6 @@ def _build_calendar_grid(year: int, month: int) -> Div:
             else:
                 day_num = item["date"].day
                 if item["is_trading"]:
-                    # 交易日：正常显示
                     cells.append(
                         Div(
                             Span(str(day_num), cls="text-gray-800 font-medium text-lg"),
@@ -85,10 +84,8 @@ def _build_calendar_grid(year: int, month: int) -> Div:
                         )
                     )
                 else:
-                    # 休市日
                     day_of_week = item["day_of_week"]
                     if day_of_week < 5:
-                        # 工作日休市
                         cells.append(
                             Div(
                                 Span(str(day_num), cls="text-red-500 font-medium text-lg"),
@@ -97,7 +94,6 @@ def _build_calendar_grid(year: int, month: int) -> Div:
                             )
                         )
                     else:
-                        # 周末
                         cells.append(
                             Div(
                                 Span(str(day_num), cls="text-red-500 font-medium text-lg"),
@@ -113,7 +109,8 @@ def _build_calendar_grid(year: int, month: int) -> Div:
     )
 
 
-async def calendar_page(req, year: int = None, month: int = None):
+@rt("/")
+async def index(req, year: int = None, month: int = None):
     """交易日历页面"""
     now = datetime.datetime.now()
     if year is None:
@@ -129,24 +126,20 @@ async def calendar_page(req, year: int = None, month: int = None):
     prev_year = year - 1
     next_year = year + 1
 
-    # 年份选项
     year_options = [
         Option(str(y), value=str(y), selected=(y == year))
         for y in range(year - 5, year + 6)
     ]
 
-    # 月份选项
     month_options = [
         Option(str(m), value=str(m), selected=(m == month))
         for m in range(1, 13)
     ]
 
-    # 构建页面内容
     layout = MainLayout(title="交易日历")
     layout.set_sidebar_active("/system/calendar")
 
     page_content = Div(
-        # 页面标题
         Div(
             Div(
                 UkIcon("calendar", size=32, cls="mr-3", style=f"color: {PRIMARY_COLOR};"),
@@ -155,7 +148,6 @@ async def calendar_page(req, year: int = None, month: int = None):
             ),
             cls="mb-6"
         ),
-        # 第一行：更新按钮
         Div(
             Button(
                 "立即更新",
@@ -166,16 +158,15 @@ async def calendar_page(req, year: int = None, month: int = None):
             ),
             cls="flex justify-end mb-4"
         ),
-        # 第二行：日历工具条
         Div(
             Div(
-                A("<<", href=f"/system/calendar?year={prev_year}&month={month}",
+                A("<<", href=f"/system/calendar/?year={prev_year}&month={month}",
                   cls="btn btn-sm btn-outline", title="上一年"),
-                A("<", href=f"/system/calendar?year={prev_month_year}&month={prev_month}",
+                A("<", href=f"/system/calendar/?year={prev_month_year}&month={prev_month}",
                   cls="btn btn-sm btn-outline ml-1", title="上一月"),
-                A(">", href=f"/system/calendar?year={next_month_year}&month={next_month}",
+                A(">", href=f"/system/calendar/?year={next_month_year}&month={next_month}",
                   cls="btn btn-sm btn-outline ml-1", title="下一月"),
-                A(">>", href=f"/system/calendar?year={next_year}&month={month}",
+                A(">>", href=f"/system/calendar/?year={next_year}&month={month}",
                   cls="btn btn-sm btn-outline ml-1", title="下一年"),
                 cls="flex items-center space-x-1"
             ),
@@ -190,12 +181,10 @@ async def calendar_page(req, year: int = None, month: int = None):
             ),
             cls="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow"
         ),
-        # 第三行：日历表格
         Div(
             _build_calendar_grid(year, month),
             id="calendar-content"
         ),
-        # 图例说明
         Div(
             Div(
                 Div(cls="w-4 h-4 bg-white mr-2 border border-gray-300"),
@@ -216,10 +205,12 @@ async def calendar_page(req, year: int = None, month: int = None):
     return layout.render()
 
 
-async def calendar_sync(req):
+@rt("/sync", methods="post")
+async def sync_calendar():
     """同步交易日历数据"""
     try:
-        await trade_calendar.update()
+        import asyncio
+        await asyncio.to_thread(trade_calendar.update)
         logger.info("交易日历同步完成")
 
         now = datetime.datetime.now()

@@ -8,9 +8,11 @@ from loguru import logger
 from monsterui.all import *
 
 from quantide.data.models.daily_bars import daily_bars
-from quantide.data.models.calendar import calendar
 from quantide.web.layouts.main import MainLayout
 from quantide.web.theme import AppTheme, PRIMARY_COLOR
+
+# 定义子路由应用
+system_market_app, rt = fast_app(hdrs=AppTheme.headers())
 
 
 def _get_market_data(
@@ -51,7 +53,6 @@ def _get_market_data(
         data = df.to_pandas().to_dict("records")
         total = len(data)
 
-        # 分页
         start_idx = (page - 1) * per_page
         end_idx = min(start_idx + per_page, total)
         page_data = data[start_idx:end_idx]
@@ -81,7 +82,6 @@ def _build_market_table(data: list, page: int = 1, per_page: int = 20, total: in
             adjust_val = f"{row.get('adjust', 1.0):.4f}" if row.get('adjust') is not None else "-"
             is_st = "是" if row.get('is_st') else "否"
 
-            # 计算涨跌
             pre_close = row.get('pre_close', row.get('open', 0))
             cur_close = row.get('close', 0)
             if pre_close and cur_close and pre_close != 0:
@@ -117,13 +117,11 @@ def _build_market_table(data: list, page: int = 1, per_page: int = 20, total: in
             )
         )
 
-    # 分页
     total_pages = max(1, (total + per_page - 1) // per_page) if total > 0 else 1
     pagination_info = f"显示第 {(page - 1) * per_page + 1} 到 {min(page * per_page, total)} 条，共 {total} 条" if total > 0 else "暂无数据"
 
-    # 构建分页链接的基础URL
     def page_url(p):
-        return f"/system/market?code={code}&start_date={start_date}&end_date={end_date}&adjust={adjust}&page={p}&per_page={per_page}"
+        return f"/system/market/?code={code}&start_date={start_date}&end_date={end_date}&adjust={adjust}&page={p}&per_page={per_page}"
 
     return Div(
         Div(
@@ -175,8 +173,9 @@ def _build_market_table(data: list, page: int = 1, per_page: int = 20, total: in
     )
 
 
-async def market_page(req, code: str = "", start_date: str = "", end_date: str = "",
-                      adjust: str = "none", page: int = 1, per_page: int = 20):
+@rt("/")
+async def index(req, code: str = "", start_date: str = "", end_date: str = "",
+                adjust: str = "none", page: int = 1, per_page: int = 20):
     """行情数据页面"""
     code = code or req.query_params.get("code", "")
     start_date = start_date or req.query_params.get("start_date", "")
@@ -187,21 +186,17 @@ async def market_page(req, code: str = "", start_date: str = "", end_date: str =
 
     logger.info(f"market_page called with code='{code}', start_date='{start_date}', end_date='{end_date}'")
 
-    # 获取数据
     data, total = _get_market_data(code, start_date, end_date, adjust, page, per_page)
 
-    # 构建页面内容
     layout = MainLayout(title="行情数据")
     layout.set_sidebar_active("/system/market")
 
-    # 复权按钮
     def adjust_btn(label: str, value: str) -> A:
-        url = f"/system/market?code={code}&start_date={start_date}&end_date={end_date}&adjust={value}&page=1&per_page={per_page}"
+        url = f"/system/market/?code={code}&start_date={start_date}&end_date={end_date}&adjust={value}&page=1&per_page={per_page}"
         return A(label, href=url,
                  cls=f"btn btn-sm {'btn-primary' if adjust == value else 'btn-outline'} mx-0.5")
 
     page_content = Div(
-        # 页面标题
         Div(
             Div(
                 UkIcon("bar-chart-2", size=32, cls="mr-3", style=f"color: {PRIMARY_COLOR};"),
@@ -210,7 +205,6 @@ async def market_page(req, code: str = "", start_date: str = "", end_date: str =
             ),
             cls="mb-6"
         ),
-        # 筛选条件
         Div(
             Form(
                 Div(
@@ -243,7 +237,6 @@ async def market_page(req, code: str = "", start_date: str = "", end_date: str =
             ),
             cls="mb-4"
         ),
-        # 复权方式按钮和更新按钮
         Div(
             Div(
                 Span("复权方式：", cls="text-sm font-medium text-gray-700"),
@@ -260,7 +253,6 @@ async def market_page(req, code: str = "", start_date: str = "", end_date: str =
             ),
             cls="bg-white p-3 rounded-lg shadow flex justify-between items-center mb-4"
         ),
-        # 行情表格
         Div(
             _build_market_table(data, page, per_page, total, code, start_date, end_date, adjust),
             id="market-content"
@@ -272,13 +264,13 @@ async def market_page(req, code: str = "", start_date: str = "", end_date: str =
     return layout.render()
 
 
-async def market_sync(req):
+@rt("/sync", methods="post")
+async def sync_market(req):
     """同步行情数据"""
     try:
         await asyncio.to_thread(daily_bars.store.update)
         logger.info("行情数据同步完成")
 
-        # 返回当前页面
         code = req.query_params.get("code", "")
         start_date = req.query_params.get("start_date", "")
         end_date = req.query_params.get("end_date", "")

@@ -11,6 +11,9 @@ from quantide.data.models.stocks import stock_list
 from quantide.web.layouts.main import MainLayout
 from quantide.web.theme import AppTheme, PRIMARY_COLOR
 
+# 定义子路由应用
+system_stocks_app, rt = fast_app(hdrs=AppTheme.headers())
+
 
 def _build_stock_table(data: list, page: int = 1, per_page: int = 20, total: int = 0, query: str = ""):
     """构建股票列表表格"""
@@ -46,11 +49,11 @@ def _build_stock_table(data: list, page: int = 1, per_page: int = 20, total: int
             )
         )
 
-    # 分页信息
     total_pages = max(1, (total + per_page - 1) // per_page) if total > 0 else 1
-
-    # 分页控件
     pagination_info = f"显示第 {(page - 1) * per_page + 1} 到 {min(page * per_page, total)} 条，共 {total} 条" if total > 0 else "暂无数据"
+
+    def page_url(p, pp=per_page):
+        return f"/system/stocks/?page={p}&per_page={pp}&q={query}"
 
     return Div(
         Div(
@@ -72,17 +75,17 @@ def _build_stock_table(data: list, page: int = 1, per_page: int = 20, total: int
             Div(pagination_info, cls="text-sm text-gray-700"),
             Div(
                 Span("每页: ", cls="text-sm text-gray-600 mr-1"),
-                A("20", href=f"/system/stocks?page=1&per_page=20&q={query}",
+                A("20", href=page_url(1, 20),
                   cls=f"btn btn-sm {'btn-primary' if per_page == 20 else 'btn-outline'} mx-0.5"),
-                A("50", href=f"/system/stocks?page=1&per_page=50&q={query}",
+                A("50", href=page_url(1, 50),
                   cls=f"btn btn-sm {'btn-primary' if per_page == 50 else 'btn-outline'} mx-0.5"),
-                A("100", href=f"/system/stocks?page=1&per_page=100&q={query}",
+                A("100", href=page_url(1, 100),
                   cls=f"btn btn-sm {'btn-primary' if per_page == 100 else 'btn-outline'} mx-0.5"),
                 cls="flex items-center ml-4"
             ),
             Div(
                 *[
-                    A(str(p), href=f"/system/stocks?page={p}&per_page={per_page}&q={query}",
+                    A(str(p), href=page_url(p),
                       cls=f"btn btn-sm {'btn-primary' if p == page else 'btn-outline'} mx-0.5")
                     for p in range(max(1, page - 2), min(total_pages + 1, page + 3))
                 ],
@@ -94,7 +97,8 @@ def _build_stock_table(data: list, page: int = 1, per_page: int = 20, total: int
     )
 
 
-async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
+@rt("/")
+async def index(req, page: int = 1, per_page: int = 20, q: str = ""):
     """股票列表页面"""
     query = q or req.query_params.get("q", "")
     page = int(req.query_params.get("page", page))
@@ -102,7 +106,6 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
 
     logger.info(f"stocks_page called with query='{query}', page={page}, per_page={per_page}")
 
-    # 获取数据
     try:
         if query:
             result_df = stock_list.fuzzy_search(query, id_only=False)
@@ -115,7 +118,6 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
             df = stock_list.data
             if df is not None:
                 total = len(df)
-                # 分页
                 start_idx = (page - 1) * per_page
                 end_idx = min(start_idx + per_page, total)
                 data = df.slice(start_idx, end_idx - start_idx).to_pandas().to_dict("records")
@@ -127,12 +129,10 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
         total = 0
         data = []
 
-    # 构建页面内容
     layout = MainLayout(title="股票列表")
     layout.set_sidebar_active("/system/stocks")
 
     page_content = Div(
-        # 页面标题
         Div(
             Div(
                 UkIcon("list", size=32, cls="mr-3", style=f"color: {PRIMARY_COLOR};"),
@@ -141,7 +141,6 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
             ),
             cls="mb-6"
         ),
-        # 搜索框和更新按钮
         Div(
             Div(
                 Form(
@@ -166,7 +165,6 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
             ),
             cls="flex justify-between items-center mb-4"
         ),
-        # 股票表格
         Div(
             _build_stock_table(data, page, per_page, total, query),
             id="stocks-content"
@@ -178,13 +176,13 @@ async def stocks_page(req, page: int = 1, per_page: int = 20, q: str = ""):
     return layout.render()
 
 
-async def stocks_sync(req):
+@rt("/sync", methods="post")
+async def sync_stocks():
     """同步股票列表数据"""
     try:
         await asyncio.to_thread(stock_list.update)
         logger.info(f"Stock list synced: {stock_list.size} records")
 
-        # 返回更新后的表格
         df = stock_list.data
         if df is not None:
             total = len(df)
