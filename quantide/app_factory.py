@@ -244,6 +244,26 @@ def create_app(
             Mount("/broker", broker_api_app),
             Mount("/api/v1/kline", kline_router),
             Mount("/api/v1/search", search_router),
+            Route(
+                "/data/calendar",
+                lambda req: RedirectResponse("/data/calendar/", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/data/market",
+                lambda req: RedirectResponse("/data/market/", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/data/stocks",
+                lambda req: RedirectResponse("/data/stocks/", status_code=303),
+                methods=["GET"],
+            ),
+            Route(
+                "/data/db",
+                lambda req: RedirectResponse("/data/db/", status_code=303),
+                methods=["GET"],
+            ),
             Mount("/data/calendar", data_calendar_app),
             Mount("/data/market", data_market_app),
             Mount("/data/stocks", data_stocks_app),
