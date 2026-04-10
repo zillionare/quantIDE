@@ -24,8 +24,17 @@ def sidebar_component(menu_items: list[dict] | None = None):
         any_child_active = any(child.get("active", False) for child in children)
         is_open = item_active or any_child_active
 
+        icon_path = item.get("icon_path")
         icon_name = item.get("icon", "folder" if has_children else "file")
-        icon_cmp = UkIcon(icon_name, cls="w-5 h-5")
+        
+        if icon_path:
+            # 使用自定义 SVG path
+            icon_cmp = Svg(
+                Path(d=icon_path, stroke="currentColor", fill="none", stroke_width="2", stroke_linecap="round", stroke_linejoin="round"),
+                cls="w-5 h-5"
+            )
+        else:
+            icon_cmp = UkIcon(icon_name, cls="w-5 h-5")
 
         if has_children:
             child_items = []
@@ -36,10 +45,26 @@ def sidebar_component(menu_items: list[dict] | None = None):
                     c_cls += f"bg-[#fcfcfc] {active_cls}"
                 else:
                     c_cls += f"{base_text_cls} {hover_cls}"
+                
+                # 支持子菜单项的 icon_path
+                child_icon_path = child.get("icon_path")
+                child_icon_name = child.get("icon", "file")
+                
+                if child_icon_path:
+                    child_icon = Svg(
+                        Path(d=child_icon_path, stroke="currentColor", fill="none", stroke_width="2", stroke_linecap="round", stroke_linejoin="round"),
+                        cls="w-4 h-4 mr-2"
+                    )
+                else:
+                    child_icon = UkIcon(child_icon_name, cls="w-4 h-4 mr-2")
 
                 child_items.append(
                     A(
-                        child.get("title", ""),
+                        Div(
+                            child_icon,
+                            Span(child.get("title", "")),
+                            cls="flex items-center gap-2"
+                        ),
                         href=child.get("url", "#"),
                         cls=c_cls,
                     )
