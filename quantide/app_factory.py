@@ -40,6 +40,9 @@ from quantide.web.pages.data_db import data_db_app
 from quantide.web.pages.system.calendar import system_calendar_app
 from quantide.web.pages.system.stocks import system_stocks_app
 from quantide.web.pages.system.market import system_market_app
+from quantide.web.pages.system.jobs import system_jobs_app
+from quantide.web.pages.system.gateway import system_gateway_app
+from quantide.web.pages.system.datasource import system_datasource_app
 from quantide.web.pages.data_market import data_market_app
 from quantide.web.pages.data_stocks import data_stocks_app
 from quantide.web.pages.history_orders import history_orders_list
@@ -289,6 +292,24 @@ def create_app(
             Mount("/system/calendar", system_calendar_app),
             Mount("/system/stocks", system_stocks_app),
             Mount("/system/market", system_market_app),
+            Route(
+                "/system/jobs",
+                lambda req: RedirectResponse("/system/jobs/", status_code=303),
+                methods=["GET"],
+            ),
+            Mount("/system/jobs", system_jobs_app),
+            Route(
+                "/system/gateway",
+                lambda req: RedirectResponse("/system/gateway/", status_code=303),
+                methods=["GET"],
+            ),
+            Mount("/system/gateway", system_gateway_app),
+            Route(
+                "/system/datasource",
+                lambda req: RedirectResponse("/system/datasource/", status_code=303),
+                methods=["GET"],
+            ),
+            Mount("/system/datasource", system_datasource_app),
             Mount("/", home_app),
         ],
     )
