@@ -11,7 +11,7 @@ from starlette.testclient import TestClient
 from starlette.routing import Route
 from starlette.staticfiles import StaticFiles
 from starlette.middleware import Middleware
-from fasthtml.common import fast_app, Mount
+from fasthtml.common import Mount, fast_app
 from monsterui.all import Theme
 
 from quantide.core.enums import BrokerKind
@@ -219,8 +219,39 @@ class TestLoginRoutes:
         assert "实盘" in response.text
         assert "仿真" in response.text
         assert "重设密码" in response.text
-        assert "/auth/profile#password-settings" in response.text
+        assert "showGatewayRequiredModal(event)" in response.text
+        assert "gateway-required-modal" in response.text
         assert "/auth/logout" in response.text
+
+    def test_home_skips_account_prompt_when_gateway_disabled(self, monkeypatch):
+        from quantide.web.pages import home as home_page
+
+        monkeypatch.setattr(
+            home_page.init_wizard,
+            "get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": False,
+                "live_trading": False,
+            },
+        )
+
+        assert home_page._should_show_no_account_dialog([]) is False
+
+    def test_home_still_skips_account_prompt_after_gateway_enabled(self, monkeypatch):
+        from quantide.web.pages import home as home_page
+
+        monkeypatch.setattr(
+            home_page.init_wizard,
+            "get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": True,
+                "live_trading": True,
+            },
+        )
+
+        assert home_page._should_show_no_account_dialog([]) is False
 
     def test_profile_page_contains_password_reset_section(self, test_client):
         with test_client as client:
@@ -342,7 +373,7 @@ class TestFeatureGate:
 
         assert response.status_code == 403
         assert "仿真交易功能已禁用" in response.text
-        assert "/init-wizard?force=true" in response.text
+        assert "/system/gateway/" in response.text
 
     def test_simulation_create_blocked_without_gateway(self, test_client, monkeypatch):
         monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
@@ -361,6 +392,7 @@ class TestFeatureGate:
 
         assert response.status_code == 403
         assert response.json()["error"].startswith("仿真交易功能已禁用")
+        assert "交易网关页面配置 gateway" in response.json()["error"]
 
     def test_live_entry_blocked_without_gateway(self, test_client, monkeypatch):
         monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
@@ -369,6 +401,7 @@ class TestFeatureGate:
 
         assert response.status_code == 403
         assert "实盘交易功能已禁用" in response.text
+        assert "/system/gateway/" in response.text
 
     def test_live_htmx_modal_returns_disabled_fragment(self, test_client, monkeypatch):
         monkeypatch.setattr(middleware_feature, "get_feature_status", self._disabled_features)
@@ -382,6 +415,60 @@ class TestFeatureGate:
         assert response.status_code == 403
         assert "实盘交易功能已禁用" in response.text
         assert "<!DOCTYPE html>" not in response.text
+
+
+class TestGatewayFirstNavigation:
+    def test_build_header_menu_marks_trade_entries_when_gateway_missing(self):
+        from quantide.web.layouts.main import build_header_menu
+
+        menu = build_header_menu(False)
+
+        gated_titles = {
+            item["title"]
+            for item in menu
+            if item.get("requires_gateway")
+        }
+        assert gated_titles == {"实盘", "仿真"}
+
+    def test_build_header_menu_keeps_trade_entries_open_when_gateway_ready(self):
+        from quantide.web.layouts.main import build_header_menu
+
+        menu = build_header_menu(True)
+
+        assert all(not item.get("requires_gateway") for item in menu)
+
+    def test_home_defaults_to_live_nav_when_gateway_ready(self, monkeypatch):
+        from quantide.web.layouts.main import MainLayout
+
+        monkeypatch.setattr(
+            "quantide.web.layouts.main.init_wizard.get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": True,
+                "live_trading": True,
+            },
+        )
+
+        layout = MainLayout(title="首页", user="admin")
+
+        assert layout._resolve_header_active() == "实盘"
+        assert any(item.get("title") == "下单" for item in layout._get_sidebar_menu())
+
+    def test_home_does_not_default_to_live_nav_without_gateway(self, monkeypatch):
+        from quantide.web.layouts.main import MainLayout
+
+        monkeypatch.setattr(
+            "quantide.web.layouts.main.init_wizard.get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": False,
+                "live_trading": False,
+            },
+        )
+
+        layout = MainLayout(title="首页", user="admin")
+
+        assert layout._resolve_header_active() == ""
 
 
 class TestBrokerRegistry:

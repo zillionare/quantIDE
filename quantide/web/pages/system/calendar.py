@@ -170,14 +170,18 @@ async def index(req, year: int = None, month: int = None):
                   cls="btn btn-sm btn-outline ml-1", title="下一年"),
                 cls="flex items-center space-x-1"
             ),
-            Div(
-                Select(*year_options, name="year", id="year-select",
-                       cls="select select-bordered select-sm w-24"),
-                Span(" 年 ", cls="mx-1"),
-                Select(*month_options, name="month", id="month-select",
-                       cls="select select-bordered select-sm w-20"),
-                Span(" 月", cls="ml-1"),
-                cls="flex items-center"
+                 Form(
+                  Div(
+                      Select(*year_options, name="year", id="year-select",
+                          cls="select select-bordered select-sm w-24", onchange="this.form.submit()"),
+                      Span(" 年 ", cls="mx-1"),
+                      Select(*month_options, name="month", id="month-select",
+                          cls="select select-bordered select-sm w-20", onchange="this.form.submit()"),
+                      Span(" 月", cls="ml-1"),
+                      cls="flex items-center"
+                  ),
+                  action="/system/calendar/",
+                  method="get",
             ),
             cls="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow"
         ),

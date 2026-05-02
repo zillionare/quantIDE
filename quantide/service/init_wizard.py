@@ -266,6 +266,7 @@ class InitWizardService:
         port: int,
         prefix: str,
         api_key: str,
+        timeout: int | None = None,
     ) -> None:
         """保存网关配置.
 
@@ -296,6 +297,8 @@ class InitWizardService:
         state.gateway_port = int(port)
         state.gateway_base_url = prefix.strip() or "/"
         state.gateway_api_key = normalized_api_key
+        if timeout is not None:
+            state.gateway_timeout = max(1, int(timeout))
         self.save_state(state)
         logger.info("网关配置已保存")
 

@@ -26,7 +26,21 @@ def _get_market_data(
     """获取行情数据"""
     try:
         if not code and not start_date and not end_date:
-            return [], 0
+            df = daily_bars.get_bars(
+                1,
+                end=datetime.datetime.now(),
+                assets=None,
+                adjust=None,
+                eager_mode=True,
+            )
+            if df is None or len(df) == 0:
+                return [], 0
+
+            data = df.sort("asset").to_pandas().to_dict("records")
+            total = len(data)
+            start_idx = (page - 1) * per_page
+            end_idx = min(start_idx + per_page, total)
+            return data[start_idx:end_idx], total
 
         if not start_date:
             start_date = (datetime.datetime.now() - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -113,7 +127,7 @@ def _build_market_table(data: list, page: int = 1, per_page: int = 20, total: in
     else:
         rows.append(
             Tr(
-                Td("暂无数据，请输入查询条件", colspan="12", cls="px-4 py-8 text-center text-gray-500")
+                Td("暂无数据", colspan="12", cls="px-4 py-8 text-center text-gray-500")
             )
         )
 
@@ -236,6 +250,10 @@ async def index(req, code: str = "", start_date: str = "", end_date: str = "",
                 cls="bg-white p-4 rounded-lg shadow mb-3"
             ),
             cls="mb-4"
+        ),
+        P(
+            "未提供筛选条件时，默认展示最近一个交易日的首页数据。",
+            cls="text-sm text-gray-500 mb-4",
         ),
         Div(
             Div(

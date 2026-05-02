@@ -1,5 +1,8 @@
 """系统维护 - 行情数据页面测试"""
 
+import datetime
+
+import polars as pl
 from starlette.testclient import TestClient
 
 import pytest
@@ -45,3 +48,49 @@ class TestMarketPage:
         resp = client.get("/system/market/", follow_redirects=True)
         assert "不复权" in resp.text
         assert "前复权" in resp.text
+
+
+def test_market_defaults_to_latest_page_data(monkeypatch):
+    """无筛选条件时默认返回最近一个交易日首页数据"""
+    from quantide.web.pages.system import market as market_page
+
+    sample = pl.DataFrame(
+        [
+            {
+                "date": datetime.date(2024, 6, 3),
+                "asset": "000001.SZ",
+                "open": 10.0,
+                "high": 10.5,
+                "low": 9.8,
+                "close": 10.2,
+                "volume": 1000.0,
+                "amount": 10000.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+                "adjust": 1.0,
+                "is_st": False,
+            },
+            {
+                "date": datetime.date(2024, 6, 3),
+                "asset": "000002.SZ",
+                "open": 20.0,
+                "high": 20.5,
+                "low": 19.8,
+                "close": 20.2,
+                "volume": 2000.0,
+                "amount": 20000.0,
+                "up_limit": 22.0,
+                "down_limit": 18.0,
+                "adjust": 1.0,
+                "is_st": False,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(market_page.daily_bars, "get_bars", lambda *args, **kwargs: sample)
+
+    data, total = market_page._get_market_data(page=1, per_page=20)
+
+    assert total == 2
+    assert data[0]["asset"] == "000001.SZ"
+    assert data[1]["asset"] == "000002.SZ"

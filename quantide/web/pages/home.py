@@ -8,6 +8,7 @@ from monsterui.all import *
 from quantide.core.enums import BrokerKind, OrderSide, OrderStatus
 from quantide.data.sqlite import Position, db
 from quantide.service.registry import BrokerRegistry
+from quantide.service.init_wizard import init_wizard
 from quantide.web.apis.broker import build_asset_overview
 from quantide.web.layouts.main import MainLayout
 
@@ -673,6 +674,14 @@ def NoAccountDialog():
     )
 
 
+def _should_show_no_account_dialog(accounts: list[dict]) -> bool:
+    """首页不主动弹出账号创建对话框。
+
+    交易账号创建属于交易入口流程的一部分，不应在用户访问首页时抢占界面。
+    """
+    return False
+
+
 def main_block(
     asset_overview: dict | None = None,
     brokers: list[dict] | None = None,
@@ -790,7 +799,7 @@ def index(req, session):
                 accounts.append(account)
 
         # 检查是否有任何账户
-        show_no_account_dialog = not accounts
+        show_no_account_dialog = _should_show_no_account_dialog(accounts)
 
         # 检查 session 中是否有活动账户
         active_kind = session.get("active_account_kind")

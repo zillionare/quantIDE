@@ -5,6 +5,7 @@ from monsterui.all import *
 
 from quantide.core.enums import BrokerKind
 from quantide.service.registry import BrokerRegistry
+from quantide.service.init_wizard import init_wizard
 
 from ..components.header import header_component
 from ..components.sidebar import sidebar_component
@@ -89,11 +90,30 @@ SIDEBAR_MENUS = {
 }
 
 HEADER_MENU = [
-    ("策略", "/strategy"),
-    ("系统维护", "/system"),
-    ("实盘", "/live"),
-    ("仿真", "/papertrade"),
+    {"title": "策略", "url": "/strategy"},
+    {"title": "系统维护", "url": "/system"},
+    {"title": "实盘", "url": "/live"},
+    {"title": "仿真", "url": "/papertrade"},
 ]
+
+
+def build_header_menu(trade_enabled: bool) -> list[dict[str, object]]:
+    menu = copy.deepcopy(HEADER_MENU)
+    if trade_enabled:
+        return menu
+
+    for item in menu:
+        if item["title"] in {"实盘", "仿真"}:
+            item["requires_gateway"] = True
+    return menu
+
+
+def _menu_titles(menu_items: list[dict[str, object]]) -> set[str]:
+    return {
+        str(item.get("title", "")).strip()
+        for item in menu_items
+        if str(item.get("title", "")).strip()
+    }
 
 
 class MainLayout(BaseLayout):
@@ -106,7 +126,7 @@ class MainLayout(BaseLayout):
         self.header_accounts: list[dict] = []
         self.active_account: dict | None = None
         self.header_active = ""
-        self.header_menu = list(HEADER_MENU)
+        self.header_menu = copy.deepcopy(HEADER_MENU)
         self.sidebar_menu: list[dict] | None = None
         self._sidebar_active_url: str = "/"
 
@@ -116,13 +136,16 @@ class MainLayout(BaseLayout):
 
     def _resolve_header_active(self) -> str:
         explicit = str(self.header_active or "").strip()
-        available_titles = {title for title, _ in self.header_menu}
+        available_titles = _menu_titles(self.header_menu)
         if explicit in available_titles:
             return explicit
 
         inferred = self._infer_header_active()
         if inferred:
             return inferred
+
+        if self._trade_entries_enabled():
+            return "实盘"
 
         legacy_aliases = {
             "数据管理": "系统维护",
@@ -162,6 +185,13 @@ class MainLayout(BaseLayout):
                         child["active"] = child.get("url") == self._sidebar_active_url
         return menu
 
+    def _trade_entries_enabled(self) -> bool:
+        try:
+            status = init_wizard.get_feature_status()
+        except Exception:
+            return True
+        return bool(status.get("simulation") and status.get("live_trading"))
+
     def main_block(self):
         """主内容块，子类需要重写此方法。"""
         return Div(H1(self.title), P("这是页面的主要内容区域。"), cls="p-4")
@@ -197,7 +227,7 @@ class MainLayout(BaseLayout):
                 header_component(
                     logo="/static/logo.png",
                     brand="匡醍量化",
-                    nav_items=self.header_menu,
+                    nav_items=build_header_menu(self._trade_entries_enabled()),
                     user=self.user,
                     accounts=accounts,
                     active_account=active_account,

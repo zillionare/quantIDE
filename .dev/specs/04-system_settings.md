@@ -12,13 +12,13 @@
 
 系统预置以下任务，不允许用户删除或新增：
 
-| 任务 ID | 任务名称 | 调度时间 | 说明 |
-| ------- | -------- | -------- | ---- |
-| `daily_bars_sync` | 日线数据同步 | 每天 15:35 | 从数据源下载当交易日行情数据 |
-| `stock_list_sync` | 股票列表同步 | 每天 16:00 | 更新证券列表（上市/退市） |
-| `calendar_sync` | 交易日历同步 | 每周一 09:00 | 更新节假日和调休数据 |
-| `daily_snapshot` | 日终快照 | 每天 15:05 | 记录当天收盘持仓快照 |
-| `market_snapshot` | 行情快照 | 每 5 分钟 | 记录最新行情数据 |
+| 任务 ID           | 任务名称     | 调度时间     | 说明                         |
+| ----------------- | ------------ | ------------ | ---------------------------- |
+| `daily_bars_sync` | 日线数据同步 | 每天 15:35   | 从数据源下载当交易日行情数据 |
+| `stock_list_sync` | 股票列表同步 | 每天 16:00   | 更新证券列表（上市/退市）    |
+| `calendar_sync`   | 交易日历同步 | 每周一 09:00 | 更新节假日和调休数据         |
+| `daily_snapshot`  | 日终快照     | 每天 15:05   | 记录当天收盘持仓快照         |
+| `market_snapshot` | 行情快照     | 每 5 分钟    | 记录最新行情数据             |
 
 ### 任务列表
 
@@ -73,12 +73,12 @@
 
 ### API 接口
 
-| 接口 | 方法 | 说明 |
-| ---- | ---- | ---- |
-| `/api/system/jobs` | GET | 获取所有任务状态列表 |
-| `/api/system/jobs/{id}/toggle` | POST | 启用/禁用任务 |
-| `/api/system/jobs/{id}/run` | POST | 手动触发一次执行 |
-| `/api/system/jobs/{id}/history` | GET | 获取最近 N 次执行记录 |
+| 接口                            | 方法 | 说明                  |
+| ------------------------------- | ---- | --------------------- |
+| `/api/system/jobs`              | GET  | 获取所有任务状态列表  |
+| `/api/system/jobs/{id}/toggle`  | POST | 启用/禁用任务         |
+| `/api/system/jobs/{id}/run`     | POST | 手动触发一次执行      |
+| `/api/system/jobs/{id}/history` | GET  | 获取最近 N 次执行记录 |
 
 ---
 
@@ -128,11 +128,11 @@
 
 ### API 接口
 
-| 接口 | 方法 | 说明 |
-| ---- | ---- | ---- |
-| `/api/system/gateway/status` | GET | 获取网关连接状态 |
-| `/api/system/gateway/test` | POST | 测试网关连接 |
-| `/api/system/gateway/config` | GET | 获取网关配置（不包含密钥） |
+| 接口                         | 方法 | 说明                       |
+| ---------------------------- | ---- | -------------------------- |
+| `/api/system/gateway/status` | GET  | 获取网关连接状态           |
+| `/api/system/gateway/test`   | POST | 测试网关连接               |
+| `/api/system/gateway/config` | GET  | 获取网关配置（不包含密钥） |
 
 ---
 
@@ -185,13 +185,13 @@
 
 ### API 接口
 
-| 接口 | 方法 | 说明 |
-| ---- | ---- | ---- |
-| `/api/system/datasource/status` | GET | 获取各数据类型的数据状态 |
-| `/api/system/datasource/sync` | POST | 触发全量数据同步 |
-| `/api/system/datasource/sync/progress` | GET | 获取同步进度（SSE） |
-| `/api/system/datasource/config` | GET | 获取数据源配置（不包含 Token） |
-| `/api/system/datasource/config` | PUT | 更新数据源 Token |
+| 接口                                   | 方法 | 说明                           |
+| -------------------------------------- | ---- | ------------------------------ |
+| `/api/system/datasource/status`        | GET  | 获取各数据类型的数据状态       |
+| `/api/system/datasource/sync`          | POST | 触发全量数据同步               |
+| `/api/system/datasource/sync/progress` | GET  | 获取同步进度（SSE）            |
+| `/api/system/datasource/config`        | GET  | 获取数据源配置（不包含 Token） |
+| `/api/system/datasource/config`        | PUT  | 更新数据源 Token               |
 
 ---
 
@@ -205,10 +205,6 @@
 - 底部说明文字使用 `text-sm text-gray-500` 灰色样式
 - 卡片使用 `bg-white rounded-lg shadow` 样式
 - 主内容区 padding 为 `p-8`
-
-### 权限要求
-
-系统设置页面仅允许 `admin` 用户访问。非管理员用户访问时返回 403 禁止页面。
 
 ### 侧边栏菜单
 

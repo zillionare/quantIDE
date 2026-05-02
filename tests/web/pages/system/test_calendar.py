@@ -46,3 +46,10 @@ class TestCalendarPage:
         resp = client.get("/system/calendar/?year=2024&month=6", follow_redirects=True)
         assert "year=2023" in resp.text  # 上一年
         assert "year=2025" in resp.text  # 下一年
+
+    def test_calendar_selectors_auto_submit(self, client):
+        """年月选择器变更后自动提交"""
+        resp = client.get("/system/calendar/?year=2024&month=6", follow_redirects=True)
+        assert 'id="year-select"' in resp.text
+        assert 'id="month-select"' in resp.text
+        assert 'onchange="this.form.submit()"' in resp.text

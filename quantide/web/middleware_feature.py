@@ -32,8 +32,8 @@ def _disabled_fragment_html(feature_name: str) -> str:
     <div class="max-w-xl mx-auto mt-10 p-6 bg-white rounded-lg shadow border border-gray-200 text-center">
         <h3 class="text-lg font-semibold text-red-700 mb-3">🔒 {feature_name}功能已禁用</h3>
         <p class="text-gray-700 mb-2">您当前未配置 gateway，因此无法使用{feature_name}功能。</p>
-        <p class="text-gray-600 mb-4">如需启用，请重新进入初始化向导完成 gateway 配置。</p>
-        <a href="/init-wizard?force=true" class="btn btn-primary" style="background: #D13527; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; display: inline-block;">前往初始化向导</a>
+        <p class="text-gray-600 mb-4">如需启用，请先前往交易网关页面完成配置。</p>
+        <a href="/system/gateway/" class="btn btn-primary" style="background: #D13527; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; display: inline-block;">前往交易网关</a>
     </div>
     """
 
@@ -86,7 +86,7 @@ class FeatureCheckMiddleware(BaseHTTPMiddleware):
                         htmx=_is_htmx_request(request.headers),
                     )
                 return JSONResponse(
-                    {"error": f"{feature_name}功能已禁用，请先在初始化向导中配置 gateway"},
+                    {"error": f"{feature_name}功能已禁用，请先在交易网关页面配置 gateway"},
                     status_code=403,
                 )
         response = await call_next(request)

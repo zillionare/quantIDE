@@ -61,6 +61,9 @@ PREDEFINED_JOBS = {
 }
 
 
+JOB_SETTINGS_TABLE = "job_settings"
+
+
 # ========== 任务历史记录模型 ==========
 
 @dataclass
@@ -81,11 +84,14 @@ class JobHistoryRecord:
     @classmethod
     def from_dict(cls, data: dict) -> "JobHistoryRecord":
         """从字典创建实例"""
+        executed_at = data.get("executed_at", datetime.datetime.now())
+        if isinstance(executed_at, str):
+            executed_at = datetime.datetime.fromisoformat(executed_at)
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             job_id=data.get("job_id", ""),
             job_name=data.get("job_name", ""),
-            executed_at=data.get("executed_at", datetime.datetime.now()),
+            executed_at=executed_at,
             status=data.get("status", "success"),
             message=data.get("message", ""),
             duration_ms=data.get("duration_ms", 0),
@@ -120,6 +126,40 @@ def _init_job_history_table():
             pk="id",
         )
         logger.info("Created job_history table")
+
+
+def _init_job_settings_table():
+    """初始化任务配置表"""
+    if JOB_SETTINGS_TABLE not in db.table_names():
+        db[JOB_SETTINGS_TABLE].create(
+            {
+                "job_id": str,
+                "enabled": int,
+                "updated_at": str,
+            },
+            pk="job_id",
+        )
+        logger.info("Created job_settings table")
+
+
+def _load_persisted_job_enabled_state() -> dict[str, bool]:
+    """从数据库加载任务启用状态"""
+    _init_job_settings_table()
+    rows = list(db[JOB_SETTINGS_TABLE].rows)
+    return {str(row["job_id"]): bool(int(row["enabled"])) for row in rows}
+
+
+def _save_job_enabled_state(job_id: str, enabled: bool) -> None:
+    """持久化任务启用状态"""
+    _init_job_settings_table()
+    db[JOB_SETTINGS_TABLE].upsert(
+        {
+            "job_id": job_id,
+            "enabled": int(bool(enabled)),
+            "updated_at": datetime.datetime.now().isoformat(),
+        },
+        pk="job_id",
+    )
 
 
 def _save_job_history(
@@ -240,6 +280,7 @@ _job_enabled_state: dict[str, bool] = {}
 def _init_scheduler_jobs():
     """初始化调度器任务"""
     _init_job_history_table()
+    _job_enabled_state.update(_load_persisted_job_enabled_state())
 
     # 确保调度器已初始化
     if not scheduler._is_running:
@@ -277,6 +318,7 @@ def _init_scheduler_jobs():
 def _toggle_job(job_id: str, enabled: bool):
     """启用/禁用任务"""
     _job_enabled_state[job_id] = enabled
+    _save_job_enabled_state(job_id, enabled)
 
     job = scheduler.scheduler.get_job(job_id)
     if job:

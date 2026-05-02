@@ -4,10 +4,17 @@ from monsterui.all import *
 from quantide.web.theme import PRIMARY_COLOR
 
 
+def _normalize_nav_item(item):
+    if isinstance(item, dict):
+        return item
+    title, url = item
+    return {"title": title, "url": url}
+
+
 def header_component(
     logo: str,
     brand: str,
-    nav_items: list[tuple],
+    nav_items: list[tuple] | list[dict],
     user: str | None = None,
     accounts: list[dict] | None = None,
     active_account: dict | None = None,
@@ -16,16 +23,28 @@ def header_component(
 ):
     """构建主导航栏。"""
     nav_links = []
-    for title, url in (nav_items or []):
+    for raw_item in nav_items or []:
+        item = _normalize_nav_item(raw_item)
+        title = str(item.get("title", ""))
+        url = str(item.get("url", "#"))
+        requires_gateway = bool(item.get("requires_gateway", False))
         is_active = title == active_title
         active_cls = "border-b-2 border-primary text-primary"
         inactive_cls = "text-gray-600 hover:text-gray-900 border-b-2 border-transparent"
+        attrs = {}
+        if requires_gateway:
+            attrs = {
+                "onclick": "showGatewayRequiredModal(event)",
+                "aria_disabled": "true",
+                "title": "请先配置交易网关",
+            }
         nav_links.append(
             A(
                 title,
                 href=url,
                 cls="inline-flex items-center px-4 py-5 text-sm font-medium transition "
                 + (active_cls if is_active else inactive_cls),
+                **attrs,
             )
         )
 
@@ -135,6 +154,37 @@ def header_component(
             ),
             cls="mx-auto flex h-full max-w-[1280px] items-center gap-4 px-5",
         ),
+        Div(
+            Div(
+                Div(
+                    UkIcon("alert-triangle", cls="w-8 h-8 text-amber-500"),
+                    cls="flex justify-center",
+                ),
+                H3("请先配置交易网关", cls="mt-4 text-lg font-semibold text-gray-900 text-center"),
+                P(
+                    "当前尚未启用 gateway，因此还不能进入实盘或仿真交易。请先完成交易网关配置。",
+                    cls="mt-2 text-sm leading-6 text-gray-600 text-center",
+                ),
+                Div(
+                    A(
+                        "前往交易网关",
+                        href="/system/gateway/",
+                        cls="inline-flex items-center justify-center rounded-lg bg-[#e41815] px-4 py-2 text-sm font-medium text-white hover:bg-[#c91412]",
+                    ),
+                    Button(
+                        "稍后配置",
+                        type="button",
+                        cls="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50",
+                        onclick="closeGatewayRequiredModal()",
+                    ),
+                    cls="mt-6 flex justify-center gap-3",
+                ),
+                cls="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl",
+            ),
+            id="gateway-required-modal",
+            cls="fixed inset-0 z-[60] hidden items-center justify-center bg-black/40 px-4",
+            onclick="if(event.target===this){closeGatewayRequiredModal()}"
+        ),
         Div(id="global-reset-password-modal-container"),
         Script(
             "function setUserMenu(open){const button=document.getElementById('user-menu-button');const dropdown=document.getElementById('user-dropdown');if(!button||!dropdown){return;}if(open){dropdown.classList.remove('hidden');button.setAttribute('aria-expanded','true');}else{dropdown.classList.add('hidden');button.setAttribute('aria-expanded','false');}}"
@@ -142,6 +192,8 @@ def header_component(
             "document.addEventListener('click',function(event){const menu=document.getElementById('user-menu');if(menu&&!menu.contains(event.target)){setUserMenu(false);}});"
             "document.addEventListener('keydown',function(event){if(event.key==='Escape'){setUserMenu(false);}});"
             "function showGlobalResetPasswordModal(event){if(event){event.preventDefault(); event.stopPropagation();} setUserMenu(false); htmx.ajax('GET', '/auth/modal/reset-password', {target: '#global-reset-password-modal-container'});}"
+            "function showGatewayRequiredModal(event){if(event){event.preventDefault(); event.stopPropagation();} const modal=document.getElementById('gateway-required-modal'); if(!modal){return;} modal.classList.remove('hidden'); modal.classList.add('flex');}"
+            "function closeGatewayRequiredModal(){const modal=document.getElementById('gateway-required-modal'); if(!modal){return;} modal.classList.remove('flex'); modal.classList.add('hidden');}"
         ),
         cls="sticky top-0 z-50 h-16 border-b border-black/5 shadow-[0_4px_15px_rgba(0,0,0,0.1)] bg-white",
     )

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+from typing import Any
 
 from fasthtml.common import *
 from loguru import logger
@@ -15,6 +16,7 @@ from monsterui.all import *
 from quantide.config.settings import get_settings
 from quantide.data.models.app_state import AppState
 from quantide.data.sqlite import db
+from quantide.service.init_wizard import init_wizard
 from quantide.web.layouts.main import MainLayout
 from quantide.web.theme import AppTheme, PRIMARY_COLOR
 
@@ -24,7 +26,7 @@ system_datasource_app, rt = fast_app(hdrs=AppTheme.headers())
 
 # ========== 数据获取 ==========
 
-def _load_datasource_config() -> dict:
+def _load_datasource_config() -> dict[str, Any]:
     """从数据库加载数据源配置"""
     try:
         row = db["app_state"].get(1)
@@ -34,6 +36,7 @@ def _load_datasource_config() -> dict:
                 "data_source": state.data_source,
                 "tushare_token": state.tushare_token,
                 "epoch": state.epoch,
+                "history_years": state.history_years,
             }
     except Exception as e:
         logger.warning(f"加载数据源配置失败: {e}")
@@ -43,6 +46,7 @@ def _load_datasource_config() -> dict:
         "data_source": settings.data_source,
         "tushare_token": settings.tushare_token if hasattr(settings, 'tushare_token') else "",
         "epoch": settings.epoch,
+        "history_years": 3,
     }
 
 
@@ -168,7 +172,16 @@ def _build_data_status_card(status: dict) -> Div:
     )
 
 
-def _build_config_card(config: dict) -> Div:
+def _build_flash(message: str, tone: str) -> Div:
+    color_map = {
+        "success": ("bg-green-50", "border-green-200", "text-green-700"),
+        "error": ("bg-red-50", "border-red-200", "text-red-700"),
+    }
+    bg, border, text = color_map.get(tone, color_map["success"])
+    return Div(message, cls=f"mb-4 rounded-lg border px-4 py-3 text-sm {bg} {border} {text}")
+
+
+def _build_config_card(config: dict[str, Any]) -> Div:
     """构建配置信息卡片"""
     masked_token = ""
     if config.get("tushare_token"):
@@ -187,23 +200,46 @@ def _build_config_card(config: dict) -> Div:
             H3("当前数据源", cls="text-lg font-semibold text-gray-900 mb-3"),
             cls="border-b pb-2 mb-4",
         ),
-        Div(
+        Form(
             Div(
-                Span("数据源:", cls="text-sm text-gray-500"),
-                Span("Tushare Pro", cls="text-sm font-medium text-gray-900 ml-2"),
-                cls="flex justify-between py-2 border-b border-gray-100",
+                Label("数据源", cls="block text-sm font-medium text-gray-700 mb-1"),
+                Select(
+                    Option("Tushare Pro", value="tushare", selected=str(config.get("data_source", "tushare")) == "tushare"),
+                    name="data_source",
+                    cls="select select-bordered w-full",
+                ),
+                cls="mb-3",
             ),
             Div(
-                Span("Token:", cls="text-sm text-gray-500"),
-                Span(masked_token or "-", cls="text-sm font-medium text-gray-900 ml-2"),
-                cls="flex justify-between py-2 border-b border-gray-100",
+                Label("Tushare Token", cls="block text-sm font-medium text-gray-700 mb-1"),
+                Input(
+                    type="password",
+                    name="tushare_token",
+                    value=config.get("tushare_token", ""),
+                    placeholder=masked_token or "请输入 Tushare Token",
+                    cls="input input-bordered w-full",
+                ),
+                cls="mb-3",
             ),
             Div(
-                Span("数据起始日:", cls="text-sm text-gray-500"),
-                Span(epoch_str or "-", cls="text-sm font-medium text-gray-900 ml-2"),
-                cls="flex justify-between py-2",
+                Label("数据起始日", cls="block text-sm font-medium text-gray-700 mb-1"),
+                Input(
+                    type="date",
+                    name="epoch",
+                    value=epoch_str,
+                    cls="input input-bordered w-full",
+                ),
+                Input(
+                    type="hidden",
+                    name="history_years",
+                    value=str(config.get("history_years", 3)),
+                ),
+                cls="mb-4",
             ),
-            cls="text-sm",
+            Div(
+                Button("保存配置", type="submit", formaction="/system/datasource/save", formmethod="post", cls="btn btn-primary"),
+                cls="flex justify-start",
+            ),
         ),
         cls="p-6 bg-white rounded-lg shadow",
     )
@@ -248,15 +284,23 @@ def _build_sync_history_card(history: list[dict]) -> Div:
 
 # ========== 路由 ==========
 
-@rt("/")
-async def index():
-    """数据源页面"""
-    config = _load_datasource_config()
+def _render_page(
+    config: dict[str, Any],
+    *,
+    success_message: str | None = None,
+    error_message: str | None = None,
+):
     data_status = _get_data_status()
     sync_history = _get_sync_history()
 
     layout = MainLayout(title="数据源")
     layout.set_sidebar_active("/system/datasource")
+
+    flashes: list[Any] = []
+    if success_message:
+        flashes.append(_build_flash(success_message, "success"))
+    if error_message:
+        flashes.append(_build_flash(error_message, "error"))
 
     page_content = Div(
         Div(
@@ -267,22 +311,10 @@ async def index():
             ),
             cls="mb-6",
         ),
-        # 配置信息
-        Div(
-            _build_config_card(config),
-            cls="mb-6",
-        ),
-        # 数据状态
-        Div(
-            _build_data_status_card(data_status),
-            cls="mb-6",
-        ),
-        # 同步记录
-        Div(
-            _build_sync_history_card(sync_history),
-            cls="mb-6",
-        ),
-        # 操作按钮
+        *flashes,
+        Div(_build_config_card(config), cls="mb-6"),
+        Div(_build_data_status_card(data_status), cls="mb-6"),
+        Div(_build_sync_history_card(sync_history), cls="mb-6"),
         Div(
             Div(
                 P(
@@ -303,6 +335,48 @@ async def index():
 
     layout.main_block = page_content
     return layout.render()
+
+
+@rt("/")
+async def index():
+    """数据源页面"""
+    config = _load_datasource_config()
+    return _render_page(config)
+
+
+@rt("/save", methods=["POST"])
+async def save_config(req):
+    """保存数据源配置"""
+    form = await req.form()
+    data_source = str(form.get("data_source", "tushare")).strip() or "tushare"
+    token = str(form.get("tushare_token", "")).strip()
+    epoch_raw = str(form.get("epoch", "")).strip()
+    history_years_raw = str(form.get("history_years", "3")).strip() or "3"
+
+    current = _load_datasource_config()
+    current.update(
+        {
+            "data_source": data_source,
+            "tushare_token": token,
+            "epoch": epoch_raw or current.get("epoch"),
+            "history_years": history_years_raw,
+        }
+    )
+
+    try:
+        epoch = datetime.datetime.strptime(epoch_raw, "%Y-%m-%d").date()
+        history_years = max(1, int(history_years_raw))
+        init_wizard.save_data_init_config(
+            epoch=epoch,
+            tushare_token=token,
+            history_years=history_years,
+            data_source=data_source,
+        )
+        saved = _load_datasource_config()
+        return _render_page(saved, success_message="数据源配置已保存")
+    except Exception as exc:
+        logger.warning(f"保存数据源配置失败: {exc}")
+        return _render_page(current, error_message=f"保存失败：{exc}")
 
 
 @rt("/sync")
@@ -344,33 +418,5 @@ async def sync_data():
 
     results.append("同步完成！")
 
-    layout = MainLayout(title="数据源")
-    layout.set_sidebar_active("/system/datasource")
-
-    page_content = Div(
-        Div(
-            Div(
-                UkIcon("database", size=32, cls="mr-3", style=f"color: {PRIMARY_COLOR};"),
-                H2("数据源", cls="text-2xl font-bold"),
-                cls="flex items-center",
-            ),
-            cls="mb-6",
-        ),
-        Div(
-            H3("同步结果", cls="text-lg font-semibold text-gray-900 mb-3"),
-            Div(
-                *[P(r, cls="py-1") for r in results],
-                cls="p-4 bg-gray-50 rounded-lg mb-4",
-            ),
-            A(
-                "返回",
-                href="/system/datasource/",
-                cls="btn btn-primary",
-            ),
-            cls="mb-6",
-        ),
-        cls="p-8",
-    )
-
-    layout.main_block = page_content
-    return layout.render()
+    config = _load_datasource_config()
+    return _render_page(config, success_message="；".join(results))
