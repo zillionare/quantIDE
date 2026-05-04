@@ -52,6 +52,7 @@ def test_app():
         from quantide.web.pages.home import home_app
         from quantide.web.pages.trade import trade_app
         from quantide.web.pages.live import live_app
+        from quantide.web.pages.strategy import strategy_app
         from quantide.web.apis.broker import app as broker_api_app
 
         auth = AuthManager(db_path=test_db_path, config={"login_path": "/auth/login"})
@@ -71,6 +72,7 @@ def test_app():
                 Route("/login", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
                 Route("/login/", lambda req: RedirectResponse("/auth/login", status_code=303), methods=["GET"]),
                 Mount("/home", home_app),
+                Mount("/strategy", strategy_app),
                 Mount("/trade/simulation", trade_app),
                 Mount("/trade/live", live_app),
                 Mount("/broker", broker_api_app),
@@ -109,6 +111,22 @@ def feature_status_available(monkeypatch):
         }
 
     monkeypatch.setattr(middleware_feature, "get_feature_status", _features)
+    monkeypatch.setattr(
+        "quantide.web.pages.home.init_wizard.get_feature_status",
+        lambda: {
+            "backtest": True,
+            "simulation": True,
+            "live_trading": True,
+        },
+    )
+    monkeypatch.setattr(
+        "quantide.web.layouts.main.init_wizard.get_feature_status",
+        lambda: {
+            "backtest": True,
+            "simulation": True,
+            "live_trading": True,
+        },
+    )
 
 
 @pytest.fixture
@@ -222,6 +240,58 @@ class TestLoginRoutes:
         assert "showGatewayRequiredModal(event)" in response.text
         assert "gateway-required-modal" in response.text
         assert "/auth/logout" in response.text
+
+    def test_root_redirects_to_strategy_list_when_gateway_unavailable(self, test_client, monkeypatch):
+        from quantide.web.pages import home as home_page
+
+        monkeypatch.setattr(
+            home_page.init_wizard,
+            "get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": False,
+                "live_trading": False,
+            },
+        )
+
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/strategy/"
+
+    def test_root_strategy_redirect_renders_strategy_list_content(self, test_client, monkeypatch):
+        from quantide.web.pages import home as home_page
+
+        monkeypatch.setattr(
+            home_page.init_wizard,
+            "get_feature_status",
+            lambda: {
+                "backtest": True,
+                "simulation": False,
+                "live_trading": False,
+            },
+        )
+
+        with test_client as client:
+            login = client.post(
+                "/auth/login",
+                data={"username": "admin", "password": "admin123"},
+                follow_redirects=False,
+            )
+            assert login.status_code == 303
+
+            response = client.get("/", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert "策略列表" in response.text
 
     def test_home_skips_account_prompt_when_gateway_disabled(self, monkeypatch):
         from quantide.web.pages import home as home_page
@@ -468,7 +538,24 @@ class TestGatewayFirstNavigation:
 
         layout = MainLayout(title="首页", user="admin")
 
-        assert layout._resolve_header_active() == ""
+        assert layout._resolve_header_active() == "策略"
+        assert any(item.get("title") == "策略列表" for item in layout._get_sidebar_menu())
+
+    def test_home_defaults_to_strategy_when_gateway_status_lookup_fails(self, monkeypatch):
+        from quantide.web.layouts.main import MainLayout
+
+        def _boom():
+            raise RuntimeError("gateway status unavailable")
+
+        monkeypatch.setattr(
+            "quantide.web.layouts.main.init_wizard.get_feature_status",
+            _boom,
+        )
+
+        layout = MainLayout(title="首页", user="admin")
+
+        assert layout._trade_entries_enabled() is False
+        assert layout._resolve_header_active() == "策略"
 
 
 class TestBrokerRegistry:

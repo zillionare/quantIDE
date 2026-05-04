@@ -83,7 +83,7 @@ def test_get_state_loads_defaults_from_config(db, monkeypatch):
     assert state.notify_mail_to == "to@example.com"
 
 
-def test_feature_status_and_redirect_follow_gateway_state(db):
+def test_feature_status_and_redirect_follow_gateway_state(db, monkeypatch):
     service = InitWizardService()
 
     state = AppState(
@@ -111,10 +111,42 @@ def test_feature_status_and_redirect_follow_gateway_state(db):
     )
     service.complete_initialization()
 
+    monkeypatch.setattr(service, "test_gateway_connection", lambda **kwargs: (True, "ok"))
+
     status = service.get_feature_status()
     assert status["simulation"] is True
     assert status["live_trading"] is True
     assert service.get_completion_redirect() == "/"
+
+
+def test_feature_status_treats_unreachable_gateway_as_unavailable(db, monkeypatch):
+    service = InitWizardService()
+    service.save_state(
+        AppState(
+            init_completed=True,
+            init_step=WIZARD_FINAL_STEP,
+            app_home="/tmp/market-home",
+            tushare_token="ts-token",
+            gateway_enabled=True,
+            gateway_server="127.0.0.1",
+            gateway_port=8000,
+            gateway_base_url="/",
+            gateway_api_key="k1",
+            gateway_timeout=3,
+        )
+    )
+
+    monkeypatch.setattr(
+        service,
+        "test_gateway_connection",
+        lambda **kwargs: (False, "unreachable"),
+    )
+
+    status = service.get_feature_status()
+
+    assert status["backtest"] is True
+    assert status["simulation"] is False
+    assert status["live_trading"] is False
 
 
 def test_gateway_connection_handles_invalid_url_input(db):

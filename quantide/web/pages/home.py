@@ -4,6 +4,7 @@ from typing import Any
 from fasthtml.common import *
 from loguru import logger
 from monsterui.all import *
+from starlette.responses import RedirectResponse
 
 from quantide.core.enums import BrokerKind, OrderSide, OrderStatus
 from quantide.data.sqlite import Position, db
@@ -682,6 +683,15 @@ def _should_show_no_account_dialog(accounts: list[dict]) -> bool:
     return False
 
 
+def _should_redirect_to_strategy() -> bool:
+    """当交易入口不可用时，根页面直接落到策略列表。"""
+    try:
+        status = init_wizard.get_feature_status()
+    except Exception:
+        return True
+    return not bool(status.get("simulation") and status.get("live_trading"))
+
+
 def main_block(
     asset_overview: dict | None = None,
     brokers: list[dict] | None = None,
@@ -770,6 +780,9 @@ def _auto_select_account(reg: BrokerRegistry, session: dict) -> tuple[str, str] 
 
 @rt("/", methods="get")
 def index(req, session):
+    if _should_redirect_to_strategy():
+        return RedirectResponse("/strategy/", status_code=303)
+
     layout = MainLayout(
         title="首页",
         user=session.get("auth"),

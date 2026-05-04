@@ -147,6 +147,8 @@ class MainLayout(BaseLayout):
         if self._trade_entries_enabled():
             return "实盘"
 
+        return "策略"
+
         legacy_aliases = {
             "数据管理": "系统维护",
         }
@@ -189,7 +191,7 @@ class MainLayout(BaseLayout):
         try:
             status = init_wizard.get_feature_status()
         except Exception:
-            return True
+            return False
         return bool(status.get("simulation") and status.get("live_trading"))
 
     def main_block(self):

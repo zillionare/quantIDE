@@ -194,12 +194,30 @@ class InitWizardService:
             - live_trading: 实盘交易是否可用
         """
         state = self.get_state()
+        live_trading_available = self._is_gateway_available(state)
 
         return {
             "backtest": state.can_use_backtest(),
-            "simulation": state.can_use_live_trading(),
-            "live_trading": state.can_use_live_trading(),
+            "simulation": live_trading_available,
+            "live_trading": live_trading_available,
         }
+
+    def _is_gateway_available(self, state: AppState) -> bool:
+        """判断 gateway 是否处于可用状态。"""
+        if not state.can_use_live_trading():
+            return False
+        if not str(state.gateway_server or "").strip():
+            return False
+        if not str(state.gateway_api_key or "").strip():
+            return False
+
+        ok, _ = self.test_gateway_connection(
+            server=state.gateway_server,
+            port=state.gateway_port,
+            prefix=state.gateway_base_url or "/",
+            timeout=min(float(state.gateway_timeout or 3), 1.0),
+        )
+        return ok
 
     def start_initialization(self, reset_step: bool = False) -> AppState:
         """开始初始化流程
